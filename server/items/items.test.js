@@ -204,54 +204,14 @@ test('poin tidak cukup menolak pembelian', async () => {
   assert.equal(db.getUserItems(u.user.id).forceReturn, 2);
 });
 
-test('fitur inject diamond: hanya seliron_id yang boleh, user lain ditolak 403', async () => {
-  // Register user biasa
-  const normalUser = await register();
-  const resForbidden = await fetch(`${url}/api/shop/inject-diamonds`, {
+test('poin tidak bisa ditambah lewat endpoint inject (sudah dihapus)', async () => {
+  const u = await register();
+  const res = await fetch(`${url}/api/shop/inject-diamonds`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${normalUser.token}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${u.token}` },
     body: JSON.stringify({ amount: 1000 })
   });
-  assert.equal(resForbidden.status, 403);
-  const dataForbidden = await resForbidden.json();
-  assert.equal(dataForbidden.success, false);
-  assert.match(dataForbidden.error, /khusus untuk username seliron_id/i);
-
-  // Register user seliron_id (or register if not exists)
-  const selironRes = await fetch(`${url}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'seliron_id', password: 'Password#123' })
-  });
-  let selironAuth = await selironRes.json();
-  if (!selironAuth.token) {
-    // jika sudah terdaftar
-    const loginRes = await fetch(`${url}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'seliron_id', password: 'Password#123' })
-    });
-    selironAuth = await loginRes.json();
-  }
-
-  const initialPoints = selironAuth.user?.points || 0;
-
-  // Inject 2500 diamond
-  const resSuccess = await fetch(`${url}/api/shop/inject-diamonds`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${selironAuth.token}` },
-    body: JSON.stringify({ amount: 2500 })
-  });
-  assert.equal(resSuccess.status, 200);
-  const dataSuccess = await resSuccess.json();
-  assert.equal(dataSuccess.success, true);
-  assert.equal(dataSuccess.user.points, initialPoints + 2500);
-
-  // Gunakan poin/diamond hasil inject untuk membeli item
-  const buyRes = await buy(selironAuth.token, 'forceReturn');
-  assert.equal(buyRes.success, true);
-  assert.equal(buyRes.user.points, initialPoints + 2500 - 100);
-  assert.equal(db.getUserItems(selironAuth.user.id).forceReturn >= 1, true);
+  assert.equal(res.status, 404);
 });
 
 // ---------- Universal Shield ----------

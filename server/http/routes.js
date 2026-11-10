@@ -119,34 +119,6 @@ function createApiRouter() {
     });
   });
 
-  // Fitur inject diamond khusus untuk username seliron_id
-  api.post('/shop/inject-diamonds', (req, res) => {
-    const user = requireUser(req, res, 'Silakan login terlebih dahulu.');
-    if (!user) return;
-
-    if (String(user.username || '').toLowerCase() !== 'seliron_id') {
-      return res.status(403).json({
-        success: false,
-        error: 'Fitur inject diamond hanya tersedia khusus untuk username seliron_id.'
-      });
-    }
-
-    const amount = Number(req.body?.amount) || 1000;
-    if (!Number.isInteger(amount) || amount <= 0 || amount > 100000) {
-      return res.status(400).json({ success: false, error: 'Jumlah diamond harus bilangan bulat antara 1 sampai 100.000.' });
-    }
-
-    const result = db.addPoints({ userId: user.id, amount });
-    if (result.error) return res.status(400).json({ success: false, error: result.error });
-
-    res.json({
-      success: true,
-      message: `Berhasil menambahkan ${amount.toLocaleString('id-ID')} Diamond!`,
-      amount,
-      user: withKing(result.user)
-    });
-  });
-
   registerSocialRoutes(api);
 
   api.use((req, res) => res.status(404).json({ success: false, error: 'Endpoint tidak ditemukan.' }));
