@@ -199,7 +199,7 @@ function executeAutoPlay(room, player) {
     player.autoPlayCount = MAX_AUTO_PLAY;
     addHistory(room, `❌ ${player.name} dinyatakan OUT (batas ${MAX_AUTO_PLAY}x auto-play tercapai tanpa respon).`);
     room.message = `❌ ${player.name} dinyatakan OUT!`;
-    if (store.deleteIfAllHumansOut(room)) return;
+    if (store.deleteIfAllHumansOut(room, `${player.name} dinyatakan OUT karena ${MAX_AUTO_PLAY}x tidak jalan. Room ditutup karena tidak ada pemain lain.`)) return;
     advanceTurn(room);
     return;
   }

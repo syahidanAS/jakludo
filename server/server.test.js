@@ -438,3 +438,20 @@ test('hitung mundur giliran dikirim ke klien dan hilang saat pemain bertindak', 
   assert.equal(room.turnClock, null, 'jam berhenti begitu dadu dilempar');
   clearTimeout(room.turnTimer);
 });
+
+test('pemain diberi tahu saat room ditutup karena semua pemain manusia OUT', async () => {
+  const { sockets, room } = await createRoomWith(['A']);
+  const a = sockets[0].socket;
+  a.emit('room:add_bot');
+  await wait(50);
+  a.emit('game:start');
+  await wait(80);
+  clearTimeout(room.turnTimer);
+  const closed = new Promise(resolve => a.once('room:closed', resolve));
+  room.players[0].autoPlayCount = 3; // sudah 3x tidak jalan
+  require('./game/engine').executeAutoPlay(room, room.players[0]);
+  const msg = await closed;
+  assert.equal(msg.code, room.code);
+  assert.match(msg.reason, /OUT/);
+  assert.equal(rooms.has(room.code), false);
+});

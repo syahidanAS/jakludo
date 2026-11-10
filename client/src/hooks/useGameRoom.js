@@ -147,6 +147,15 @@ export function useGameRoom({ authToken, currentUser, onNeedLogin }) {
         setTimeout(() => setMemberNotice(prev => (prev?.id === id ? null : prev)), 3500);
       },
 
+      // Room dihapus server (mis. semua pemain OUT): kembali ke beranda dengan alasannya
+      'room:closed': ({ reason } = {}) => {
+        storage.remove('active_room', 'session_id');
+        if (location.search.includes('room=')) history.replaceState({}, '', location.pathname);
+        setCode('');
+        resetRoomState();
+        showError(reason || 'Room sudah ditutup.');
+      },
+
       'room:error': err => {
         showError(err);
         if (err.includes('tab atau perangkat lain')) {
