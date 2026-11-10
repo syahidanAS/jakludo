@@ -348,16 +348,11 @@ function LudoBoardView({
         className={cellClass}
         style={{ gridRow: r + 1, gridColumn: c + 1 }}
       >
-        {/* Petak tujuan bidak: tombol asli agar bisa dipilih dengan sentuhan maupun keyboard */}
+        {/* Petak tujuan hanya penanda, bukan tombol: bidak dipilih dengan mengetuk bidaknya */}
         {isValidTarget && (
-          <button
-            type="button"
-            className="target-tile"
-            onClick={() => !room.animatingMove && handlePawnClick(targetInfo.pawnIdx, true)}
-            aria-label={`Jalankan bidak ${targetInfo.pawnIdx + 1} ke petak ini${isBlackHole ? ' (Black Hole!)' : ''}`}
-          >
-            <span className="target-dot" aria-hidden="true" />
-          </button>
+          <span className="target-tile" aria-hidden="true">
+            <span className="target-dot" />
+          </span>
         )}
 
         {isStar && safeZonesActive && (
@@ -441,14 +436,9 @@ function LudoBoardView({
         <div className="goal-center-point" />
 
         {isGoalTarget && (
-          <button
-            type="button"
-            className="target-tile"
-            onClick={() => !room.animatingMove && handlePawnClick(validTargets['5,5'].pawnIdx, true)}
-            aria-label={`Masukkan bidak ${validTargets['5,5'].pawnIdx + 1} ke finish`}
-          >
-            <span className="target-dot" aria-hidden="true" />
-          </button>
+          <span className="target-tile" aria-hidden="true">
+            <span className="target-dot" />
+          </span>
         )}
       </div>
     );
