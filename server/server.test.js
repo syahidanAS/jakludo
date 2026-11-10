@@ -421,3 +421,20 @@ test('catatan dadu pemain tersimpan di server tapi tidak dikirim ke klien', asyn
   assert.equal(room.players[0].diceStats.total, 1);
   assert.equal(pub.players[0].diceStats, undefined);
 });
+
+test('hitung mundur giliran dikirim ke klien dan hilang saat pemain bertindak', async () => {
+  const { sockets, room } = await createRoomWith(['A', 'B']);
+  const a = sockets[0].socket;
+  const withClock = new Promise(resolve => a.on('room:update', r => r.turnClock && resolve(r)));
+  a.emit('game:start');
+  const pub = await withClock;
+  assert.equal(pub.turnClock.playerId, room.players[0].id);
+  assert.equal(pub.turnClock.totalMs, 15000);
+  assert.ok(pub.turnClock.remainingMs > 14000 && pub.turnClock.remainingMs <= 15000);
+  assert.equal(pub.turnClock.endsAt, undefined, 'jam server tidak dikirim, cukup sisa waktunya');
+
+  a.emit('game:roll');
+  await wait(50);
+  assert.equal(room.turnClock, null, 'jam berhenti begitu dadu dilempar');
+  clearTimeout(room.turnTimer);
+});

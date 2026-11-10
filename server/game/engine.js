@@ -147,6 +147,7 @@ function triggerTurn(room) {
 
   if (room.botTimeout) clearTimeout(room.botTimeout);
   if (room.turnTimer) clearTimeout(room.turnTimer);
+  room.turnClock = null;
 
   if (currentPlayer.isOut) {
     advanceTurn(room);
@@ -171,6 +172,9 @@ function triggerTurn(room) {
   room.turnTimer = roomTimeout(room, () => {
     if (room.players[room.turn]?.id === currentPlayer.id) executeAutoPlay(room, currentPlayer);
   }, delay);
+  // Hitung mundur yang terlihat di klien (sisa waktu sebelum langkah dijalankan sistem)
+  room.turnClock = { id: eventId(), playerId: currentPlayer.id, totalMs: delay, endsAt: Date.now() + delay };
+  emitRoom(room);
 }
 
 function scheduleAutoMove(room, player, isAuto) {
@@ -222,6 +226,7 @@ function handleRoll(room, playerId, isAuto = false) {
   if (room.dice !== null || room.rolling || room.animatingMove || room.pendingShield) return;
 
   if (room.turnTimer) clearTimeout(room.turnTimer);
+  room.turnClock = null;
   if (!isAuto && !currentPlayer.isBot) currentPlayer.autoPlayCount = 0;
 
   room.rolling = true;
@@ -294,6 +299,7 @@ function handleMove(room, playerId, pawnIdx, isAuto = false) {
   if (!canPawnMove(room, player, pawnIdx, room.dice)) return;
 
   if (room.turnTimer) clearTimeout(room.turnTimer);
+  room.turnClock = null;
   if (!isAuto && !player.isBot) player.autoPlayCount = 0;
 
   const pawns = room.pawns[playerId];

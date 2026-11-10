@@ -65,6 +65,10 @@ function publicRoom(r) {
     lastBlackHole: r.lastBlackHole || null,
     lastGoal: r.lastGoal || null,
     lastItemEvent: r.lastItemEvent || null,
+    // Sisa waktu giliran pemain manusia (dihitung saat dikirim agar tidak bergantung jam klien)
+    turnClock: r.turnClock && !r.pendingShield && !r.winner
+      ? { id: r.turnClock.id, playerId: r.turnClock.playerId, totalMs: r.turnClock.totalMs, remainingMs: Math.max(0, r.turnClock.endsAt - Date.now()) }
+      : null,
     // Keputusan perisai yang sedang ditunggu (data lanjutan permainan tidak dikirim ke klien)
     pendingShield: r.pendingShield
       ? { id: r.pendingShield.id, playerId: r.pendingShield.playerId, itemId: r.pendingShield.itemId, event: r.pendingShield.event, pawnIdx: r.pendingShield.pawnIdx, attackerId: r.pendingShield.attackerId, remainingMs: Math.max(0, r.pendingShield.expiresAt - Date.now()) }
@@ -115,6 +119,7 @@ function clearRoomTimers(r) {
     if (r[key]) clearTimeout(r[key]);
     r[key] = null;
   }
+  r.turnClock = null;
 }
 
 // ==========================================

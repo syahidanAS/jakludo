@@ -7,6 +7,7 @@ import {
   getPawnCoord
 } from './boardConstants';
 import { sound } from './sound';
+import { HudTimer } from './components/game/TurnTimer';
 
 // Pemetaan sudut layar (Top-Left, Top-Right, Bottom-Left, Bottom-Right)
 // berdasarkan sudut rotasi papan agar badge nama pemain selalu sejajar dengan letak markasnya
@@ -459,6 +460,7 @@ function LudoBoardView({
         key={`hud-${color}`}
         className={`player-hud-card hud-${color} ${isThisPlayerTurn ? 'hud-active-turn' : ''} ${player?.isOut ? 'hud-player-out' : ''}`}
       >
+        {player && room.turnClock?.playerId === player.id && <HudTimer key={room.turnClock.id} clock={room.turnClock} />}
         <div className={`hud-avatar color-${color}`} aria-hidden="true">
           {player ? player.name.charAt(0).toUpperCase() : '?'}
           {isThisPlayerTurn && <span className="hud-turn-pulse" />}

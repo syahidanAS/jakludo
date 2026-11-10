@@ -21,6 +21,8 @@
 }
 
 .player-hud-card {
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -30,6 +32,34 @@
   border-radius: var(--radius-sm);
   background: var(--surface);
   border: 2px solid var(--border);
+}
+
+/* Sisa waktu giliran: bar tipis di tepi bawah kartu, merah saat sisa 5 detik */
+.hud-timer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--brand);
+  transform-origin: left;
+  animation:
+    hud-timer-run var(--timer-duration) linear forwards,
+    hud-timer-urgent 0s linear var(--timer-urgent-delay) forwards;
+}
+
+@keyframes hud-timer-run {
+  from { transform: scaleX(var(--timer-start)); }
+  to { transform: scaleX(0); }
+}
+
+@keyframes hud-timer-urgent {
+  to { background: var(--danger); }
+}
+
+/* Animasi dimatikan: bar akan langsung kosong, jadi sembunyikan (angka detik tetap ada di panel giliran) */
+@media (prefers-reduced-motion: reduce) {
+  .hud-timer { display: none; }
 }
 
 .player-hud-card.hud-active-turn {
