@@ -203,12 +203,13 @@ test('dalam jangka panjang tiap angka tetap keluar sekitar 1/6', () => {
   for (const c of counts) assert.ok(Math.abs(c / 60000 - 1 / 6) < 0.01, `frekuensi ${c / 60000}`);
 });
 
-test('lemparan setelah makan tidak lagi didorong, dan makan beruntun diredam', () => {
+test('peluang makan turun eksponensial setiap kali makan beruntun', () => {
   // Hanya angka 3 yang memakan (lihat test dorongan makan di atas)
   const room = makeRoom({ a: [2, 0, 0, 0], b: [35, 0, 0, 0] });
-  const cfg = { gamma: 0.4, maxAdd: 0.06, chainAfter: 2, chainDamp: 0.4 };
-  const afterOne = diceWeights(room, room.players[0], { ...freshStats(), captureStreak: 1 }, cfg);
-  assert.ok(Math.abs(share(afterOne, [3]) - 1 / 6) < 1e-9, 'tanpa dorongan setelah 1x makan');
-  const afterTwo = diceWeights(room, room.players[0], { ...freshStats(), captureStreak: 2 }, cfg);
-  assert.ok(Math.abs(share(afterTwo, [3]) - 0.4 / 5.4) < 1e-9, 'diredam setelah 2x makan beruntun');
+  const cfg = { gamma: 0.4, maxAdd: 0.06, chainDecay: 0.5 };
+  const chance = streak => share(diceWeights(room, room.players[0], { ...freshStats(), captureStreak: streak }, cfg), [3]);
+  assert.ok(Math.abs(chance(0) - 1.4 / 6.4) < 1e-9, 'makan pertama sedikit didorong');
+  assert.ok(Math.abs(chance(1) - 0.7 / 5.7) < 1e-9, 'makan kedua di bawah peluang normal');
+  assert.ok(Math.abs(chance(2) - 0.35 / 5.35) < 1e-9, 'makan ketiga makin kecil');
+  assert.ok(chance(0) > 1 / 6 && chance(1) < 1 / 6 && chance(2) < chance(1) / 1.8);
 });

@@ -261,20 +261,16 @@ function captureFaces(room, player) {
 // Bobot tiap angka untuk lemparan berikutnya:
 // 1. Koreksi defisit (beta): angka yang kurang keluar di permainan ini sedikit lebih mungkin muncul,
 //    sehingga nasib buruk beruntun ditekan tapi peluang jangka panjang tetap 1/6.
-// 2. Dorongan makan (gamma): angka yang bisa memakan lawan dikali (1 + gamma), dengan total
-//    peluangnya naik paling banyak maxAdd (mis. 0.06 = 6 poin persen). Hanya berlaku jika
-//    lemparan sebelumnya tidak makan, agar lemparan bonus setelah makan tidak ikut didorong.
-// 3. Redam makan beruntun: setelah chainAfter kali makan berturut-turut, peluang angka makan
-//    dikali chainDamp (< 1) supaya satu pemain tidak memakan 3 bidak beruntun terlalu sering.
+// 2. Dorongan makan (gamma) yang meluruh: angka yang bisa memakan lawan dikali
+//    (1 + gamma) x chainDecay^streak, streak = berapa kali pemain ini makan berturut-turut.
+//    Dengan gamma 0.4 dan chainDecay 0.5: 1.4 -> 0.7 -> 0.35 -> 0.175, jadi makan pertama
+//    sedikit didorong, makan kedua sudah di bawah normal, dan makan ketiga jarang terjadi.
+//    Kenaikan peluang dibatasi maxAdd (mis. 0.06 = 6 poin persen).
 // stats = { counts: [6 angka], total, captureStreak } milik pemain di permainan ini.
-function diceWeights(room, player, stats, { beta = 0, gamma = 0, maxAdd = 1, chainAfter = 2, chainDamp = 1 } = {}) {
+function diceWeights(room, player, stats, { beta = 0, gamma = 0, maxAdd = 1, chainDecay = 1 } = {}) {
   const expected = stats.total / 6;
   const weights = stats.counts.map(c => Math.exp(beta * (expected - c)));
-  const streak = stats.captureStreak || 0;
-
-  let mult = 1;
-  if (gamma > 0 && streak === 0) mult = 1 + gamma;
-  if (streak >= chainAfter) mult *= chainDamp;
+  const mult = (1 + gamma) * Math.pow(chainDecay, stats.captureStreak || 0);
   if (mult === 1) return weights;
 
   const capture = captureFaces(room, player);
