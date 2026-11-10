@@ -213,3 +213,10 @@ test('peluang makan turun eksponensial setiap kali makan beruntun', () => {
   assert.ok(Math.abs(chance(2) - 0.35 / 5.35) < 1e-9, 'makan ketiga makin kecil');
   assert.ok(chance(0) > 1 / 6 && chance(1) < 1 / 6 && chance(2) < chance(1) / 1.8);
 });
+
+test('peringkat akhir: pemenang, lalu bidak finish, total langkah, dan pemain OUT paling bawah', () => {
+  const { rankPlayers } = require('./rules');
+  const room = makeRoom({ a: [44, 44, 44, 44], b: [44, 10, 0, 0], c: [44, 20, 5, 0], d: [44, 44, 0, 0] });
+  room.players[3].isOut = true; // d menyerah walau 2 bidaknya sudah finish
+  assert.deepEqual(rankPlayers(room, 'a'), ['a', 'c', 'b', 'd']);
+});

@@ -12,6 +12,7 @@ const {
   canPawnMove,
   getMovablePawns,
   chooseBestPawn,
+  rankPlayers,
   getBlackHoles,
   relocateBlackHoles,
   isPawnProtected,
@@ -79,7 +80,7 @@ function declareWinner(room, winnerPlayer) {
     // Match khusus grup hanya dihitung di leaderboard grup (tidak memengaruhi poin/peringkat global)
     social.recordGroupMatchResult(room.groupId, { winnerPlayerId: winnerPlayer.id, players: room.players });
   } else {
-    db.recordMatchResult({ winnerPlayerId: winnerPlayer.id, players: room.players });
+    db.recordMatchResult({ winnerPlayerId: winnerPlayer.id, players: room.players, ranking: rankPlayers(room, winnerPlayer.id) });
     room.players.forEach(p => {
       p.isLudoKing = db.checkIsLudoKing(p.userId);
     });

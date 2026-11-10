@@ -235,6 +235,29 @@ function chooseBestPawn(room, player, dice) {
 }
 
 // ==========================================
+// PERINGKAT AKHIR
+// ==========================================
+
+// Urutan pemain saat permainan selesai: pemenang dulu, lalu pemain yang masih main di atas
+// pemain yang OUT/menyerah. Sesama itu diurutkan dari jumlah bidak finish, lalu total langkah.
+function rankPlayers(room, winnerId) {
+  const progress = p => {
+    const pawns = room.pawns[p.id] || [];
+    return { finished: pawns.filter(v => v === FINISH).length, steps: pawns.reduce((a, b) => a + b, 0) };
+  };
+  return [...room.players]
+    .sort((a, b) => {
+      if (a.id === winnerId) return -1;
+      if (b.id === winnerId) return 1;
+      if (!!a.isOut !== !!b.isOut) return a.isOut ? 1 : -1;
+      const pa = progress(a);
+      const pb = progress(b);
+      return pb.finished - pa.finished || pb.steps - pa.steps;
+    })
+    .map(p => p.id);
+}
+
+// ==========================================
 // DADU SEIMBANG (lihat riset "Dadu Seimbang JakLudo")
 // ==========================================
 
@@ -315,6 +338,7 @@ module.exports = {
   captureRisk,
   evaluateMove,
   chooseBestPawn,
+  rankPlayers,
   captureFaces,
   diceWeights,
   rollWeighted,

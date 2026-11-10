@@ -162,7 +162,7 @@ test('menang melawan bot tidak memberi poin; hanya akun terdaftar yang dicatat',
 
   db.recordMatchResult({ winnerPlayerId: 'p1', players: [{ id: 'p1', userId: u1.user.id }, { id: 'p2', userId: u2.user.id }, { id: 'g', name: 'tamu' }] });
   const board = db.getLeaderboard();
-  assert.equal(board.find(e => e.userId === u1.user.id).points, before + 25);
+  assert.equal(board.find(e => e.userId === u1.user.id).points, before + 30);
   assert.ok(!board.some(e => e.username === 'tamu'));
 });
 
@@ -454,4 +454,19 @@ test('pemain diberi tahu saat room ditutup karena semua pemain manusia OUT', asy
   assert.equal(msg.code, room.code);
   assert.match(msg.reason, /OUT/);
   assert.equal(rooms.has(room.code), false);
+});
+
+test('poin akhir mengikuti peringkat dan jumlah pemain', async () => {
+  const users = [await register('rank_satu'), await register('rank_dua'), await register('rank_tiga'), await register('rank_empat')];
+  const pts = u => db.getLeaderboard().find(e => e.userId === u.user.id).points;
+  const before = users.map(pts);
+  const players = users.map((u, i) => ({ id: 'r' + i, userId: u.user.id }));
+
+  db.recordMatchResult({ winnerPlayerId: 'r2', players, ranking: ['r2', 'r0', 'r3', 'r1'] });
+  assert.deepEqual(users.map((u, i) => pts(u) - before[i]), [20, 5, 30, 15]);
+
+  // Dua pemain: yang kalah hanya dapat 5
+  const mid = users.map(pts);
+  db.recordMatchResult({ winnerPlayerId: 'r0', players: players.slice(0, 2) });
+  assert.deepEqual([pts(users[0]) - mid[0], pts(users[1]) - mid[1]], [30, 5]);
 });

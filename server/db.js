@@ -23,8 +23,13 @@ const LOCAL_STATE_FILE = path.join(DATA_DIR, 'jakludo-state.json');
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 hari
 const STARTER_POINTS = 200;
-const WIN_POINTS = 25;
-const PLAY_POINTS = 5;
+// Poin per peringkat, menurut jumlah pemain di room (bot ikut dihitung). Peringkat terakhir selalu 5,
+// supaya pemain yang kalah di permainan 2 orang tidak dapat poin hampir sebesar pemenangnya.
+const RANK_POINTS = {
+  2: [30, 5],
+  3: [30, 15, 5],
+  4: [30, 20, 15, 5]
+};
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -635,11 +640,17 @@ function ensureLeaderboardEntry(user) {
   return state.leaderboard.get(user.id);
 }
 
-function recordMatchResult({ winnerPlayerId, players }) {
+// Catat hasil pertandingan. Hanya akun terdaftar yang mendapat poin, dan hanya
+// jika lawannya mencakup minimal satu manusia lain (menang lawan bot tidak dihitung).
+// ranking: id pemain dari peringkat 1 ke bawah (lihat rankPlayers). Tanpa ranking, pemenang dianggap
+// peringkat 1 dan sisanya mengikuti urutan players.
+function recordMatchResult({ winnerPlayerId, players, ranking }) {
   if (!players || players.length === 0) return;
   const humans = players.filter(p => !p.isBot);
-  if (humans.length < 2) return;
+  if (humans.length < 2) return; // menang melawan bot tidak memberi poin
 
+  const order = ranking || [winnerPlayerId, ...players.map(p => p.id).filter(id => id !== winnerPlayerId)];
+  const table = RANK_POINTS[Math.min(Math.max(players.length, 2), 4)];
   const updates = [];
   for (const p of humans) {
     const user = p.userId ? findUserById(p.userId) : null;
@@ -647,7 +658,8 @@ function recordMatchResult({ winnerPlayerId, players }) {
     const entry = ensureLeaderboardEntry(user);
     const won = p.id === winnerPlayerId;
     const deltaWins = won ? 1 : 0;
-    const deltaPoints = won ? WIN_POINTS : PLAY_POINTS;
+    const rank = Math.max(0, order.indexOf(p.id));
+    const deltaPoints = table[Math.min(rank, table.length - 1)];
     entry.matchesPlayed += 1;
     entry.wins += deltaWins;
     entry.points += deltaPoints;
