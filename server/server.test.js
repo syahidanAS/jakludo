@@ -208,6 +208,7 @@ test('memakan bidak lawan di petak Black Hole tetap memberi bonus giliran', asyn
   assert.equal(room.pawns[pb.id][0], 0, 'bidak lawan harus kembali ke markas');
   assert.equal(room.turn, 0, 'pemain yang memakan harus mendapat giliran lagi');
   assert.equal(room.dice, null);
+  assert.equal(pa.diceStats.captureStreak, 1, 'rantai makan tercatat untuk peredam dadu');
 });
 
 test('koneksi putus di lobby tidak langsung menghapus kursi', async () => {

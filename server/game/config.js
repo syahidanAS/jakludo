@@ -15,8 +15,9 @@ module.exports = {
   // Waktu pemain memutuskan memakai perisai (Universal Shield); lewat dari ini perisai otomatis dipakai
   SHIELD_DECISION_MS: 10000,
   // Dadu seimbang: beta = koreksi defisit, gamma = dorongan untuk angka yang bisa memakan lawan,
-  // maxAdd = kenaikan maksimum peluang makan. beta dan gamma 0 = dadu random murni.
-  DICE: { beta: 0.3, gamma: 0.4, maxAdd: 0.06 },
+  // maxAdd = kenaikan maksimum peluang makan, chainDamp = peredam peluang makan setelah
+  // chainAfter kali makan berturut-turut. beta 0, gamma 0, chainDamp 1 = dadu random murni.
+  DICE: { beta: 0.3, gamma: 0.4, maxAdd: 0.06, chainAfter: 2, chainDamp: 0.4 },
   // Batas auto-play berturut-turut sebelum pemain dinyatakan OUT
   MAX_AUTO_PLAY: 3,
   MAX_PLAYERS: 4,

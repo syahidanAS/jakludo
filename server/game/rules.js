@@ -262,23 +262,30 @@ function captureFaces(room, player) {
 // 1. Koreksi defisit (beta): angka yang kurang keluar di permainan ini sedikit lebih mungkin muncul,
 //    sehingga nasib buruk beruntun ditekan tapi peluang jangka panjang tetap 1/6.
 // 2. Dorongan makan (gamma): angka yang bisa memakan lawan dikali (1 + gamma), dengan total
-//    peluangnya naik paling banyak maxAdd (mis. 0.06 = 6 poin persen).
-// stats = { counts: [6 angka], total } milik pemain di permainan ini.
-function diceWeights(room, player, stats, { beta = 0, gamma = 0, maxAdd = 1 } = {}) {
+//    peluangnya naik paling banyak maxAdd (mis. 0.06 = 6 poin persen). Hanya berlaku jika
+//    lemparan sebelumnya tidak makan, agar lemparan bonus setelah makan tidak ikut didorong.
+// 3. Redam makan beruntun: setelah chainAfter kali makan berturut-turut, peluang angka makan
+//    dikali chainDamp (< 1) supaya satu pemain tidak memakan 3 bidak beruntun terlalu sering.
+// stats = { counts: [6 angka], total, captureStreak } milik pemain di permainan ini.
+function diceWeights(room, player, stats, { beta = 0, gamma = 0, maxAdd = 1, chainAfter = 2, chainDamp = 1 } = {}) {
   const expected = stats.total / 6;
-  let weights = stats.counts.map(c => Math.exp(beta * (expected - c)));
-  if (gamma <= 0) return weights;
+  const weights = stats.counts.map(c => Math.exp(beta * (expected - c)));
+  const streak = stats.captureStreak || 0;
+
+  let mult = 1;
+  if (gamma > 0 && streak === 0) mult = 1 + gamma;
+  if (streak >= chainAfter) mult *= chainDamp;
+  if (mult === 1) return weights;
 
   const capture = captureFaces(room, player);
   if (capture.size === 0 || capture.size === 6) return weights;
   const sum = weights.reduce((a, b) => a + b, 0);
   const captureWeight = [...capture].reduce((s, f) => s + weights[f - 1], 0);
   const before = captureWeight / sum;
-  const boosted = (captureWeight * (1 + gamma)) / (sum + captureWeight * gamma);
-  const target = Math.min(boosted, before + maxAdd);
+  let target = (captureWeight * mult) / (sum - captureWeight + captureWeight * mult);
+  if (mult > 1) target = Math.min(target, before + maxAdd);
   const k = (target * (sum - captureWeight)) / ((1 - target) * captureWeight);
-  weights = weights.map((w, i) => (capture.has(i + 1) ? w * k : w));
-  return weights;
+  return weights.map((w, i) => (capture.has(i + 1) ? w * k : w));
 }
 
 // random() -> [0, 1)

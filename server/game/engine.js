@@ -25,7 +25,7 @@ const { addHistory, emitRoom, roomTimeout, clearRoomTimers } = store;
 const eventId = () => Date.now() + Math.random();
 // Sumber acak kriptografis [0, 1) untuk dadu
 const secureRandom = () => crypto.randomInt(2 ** 47) / 2 ** 47;
-const newDiceStats = () => ({ counts: [0, 0, 0, 0, 0, 0], total: 0 });
+const newDiceStats = () => ({ counts: [0, 0, 0, 0, 0, 0], total: 0, captureStreak: 0 });
 
 // ==========================================
 // MULAI & SELESAI
@@ -240,6 +240,9 @@ function handleRoll(room, playerId, isAuto = false) {
     room.dice = roll;
     room.consecutiveSixes = roll === 6 ? (room.consecutiveSixes || 0) + 1 : 0;
 
+    // Lemparan tanpa langkah (hangus 3x angka 6 / tidak ada bidak yang bisa jalan) memutus rantai makan
+    if (room.consecutiveSixes >= 3 || getMovablePawns(room, currentPlayer, roll).length === 0) stats.captureStreak = 0;
+
     if (room.consecutiveSixes >= 3) {
       room.message = `${currentPlayer.name} dapat angka 6 tiga kali berturut-turut! Giliran hangus.`;
       addHistory(room, `${currentPlayer.name} melempar 6 (3x berturut-turut) - giliran hangus!`);
@@ -328,6 +331,7 @@ function handleMove(room, playerId, pawnIdx, isAuto = false) {
 // Lanjutan langkah setelah efek petak selesai: menang, finish, bonus giliran, atau giliran berikutnya
 function finishMove(room, player, { pawnIdx, fromVal, toVal, rollVal, captured }) {
   const pawns = room.pawns[player.id];
+  if (player.diceStats) player.diceStats.captureStreak = captured ? (player.diceStats.captureStreak || 0) + 1 : 0;
   if (pawns.every(v => v === FINISH)) {
     declareWinner(room, player);
     return;
