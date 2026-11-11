@@ -80,7 +80,10 @@ function declareWinner(room, winnerPlayer) {
     // Match khusus grup hanya dihitung di leaderboard grup (tidak memengaruhi poin/peringkat global)
     social.recordGroupMatchResult(room.groupId, { winnerPlayerId: winnerPlayer.id, players: room.players });
   } else {
-    db.recordMatchResult({ winnerPlayerId: winnerPlayer.id, players: room.players, ranking: rankPlayers(room, winnerPlayer.id) });
+    const ranking = rankPlayers(room, winnerPlayer.id);
+    const awards = db.recordMatchResult({ winnerPlayerId: winnerPlayer.id, players: room.players, ranking });
+    // Peringkat resmi + poin yang didapat, ditampilkan di layar hasil
+    room.matchResult = { ranking, awards };
     room.players.forEach(p => {
       p.isLudoKing = db.checkIsLudoKing(p.userId);
     });

@@ -24,10 +24,20 @@ function rankPlayers(room) {
     );
 }
 
+// Urutan resmi dari server (dipakai untuk menghitung poin). Room versi lama belum punya, pakai urutan lokal.
+function officialRanking(room) {
+  const local = rankPlayers(room);
+  const order = room.matchResult?.ranking;
+  if (!order) return local;
+  return [...local].sort((a, b) => order.indexOf(a.player.id) - order.indexOf(b.player.id));
+}
+
 // Hasil pertandingan. Host bisa memulai ulang, pemain lain menunggu atau keluar.
 export default function WinnerDialog({ room, me, actions }) {
   const winner = room.players.find(p => p.id === room.winner);
-  const ranking = room.winner ? rankPlayers(room) : [];
+  const ranking = room.winner ? officialRanking(room) : [];
+  const awards = room.matchResult?.awards || {};
+  const myAward = me ? awards[me.id] : null;
   return (
     <Modal
       isOpen={!!room.winner}
@@ -58,10 +68,21 @@ export default function WinnerDialog({ room, me, actions }) {
                 {player.isOut && <span className="badge badge--danger">Out</span>}
               </span>
             </span>
-            <strong className="final-ranking__score" title="Bidak masuk finish">★ {finished}/4</strong>
+            <span className="final-ranking__score">
+              <strong title="Bidak masuk finish">★ {finished}/4</strong>
+              {awards[player.id] && (
+                <span className="final-ranking__points" title="Poin yang didapat">+{awards[player.id].points + awards[player.id].dailyBonus} poin</span>
+              )}
+            </span>
           </li>
         ))}
       </ol>
+      {myAward && (
+        <p className="final-ranking__award" role="status">
+          Kamu dapat <strong>+{myAward.points} poin</strong>
+          {myAward.dailyBonus > 0 && <> dan <strong>+{myAward.dailyBonus} bonus harian</strong></>}.
+        </p>
+      )}
       {!me?.isHost && <p className="muted" role="status">Menunggu host memulai putaran baru...</p>}
       {me?.isHost && <p className="muted">Main lagi dengan pemain yang sama. Pemain yang sudah keluar tidak ikut.</p>}
     </Modal>

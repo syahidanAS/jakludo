@@ -65,6 +65,7 @@ function publicRoom(r) {
     lastBlackHole: r.lastBlackHole || null,
     lastGoal: r.lastGoal || null,
     lastItemEvent: r.lastItemEvent || null,
+    matchResult: r.winner ? r.matchResult || null : null,
     // Sisa waktu giliran pemain manusia (dihitung saat dikirim agar tidak bergantung jam klien)
     turnClock: r.turnClock && !r.pendingShield && !r.winner
       ? { id: r.turnClock.id, playerId: r.turnClock.playerId, totalMs: r.turnClock.totalMs, remainingMs: Math.max(0, r.turnClock.endsAt - Date.now()) }
@@ -111,6 +112,7 @@ function resetRoomEvents(r) {
   r.pendingShield = null;
   r.lastItemEvent = null;
   r.lastBlackHoleShift = null;
+  r.matchResult = null;
 }
 
 function clearRoomTimers(r) {
