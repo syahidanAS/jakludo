@@ -162,7 +162,7 @@ test('menang melawan bot tidak memberi poin; hanya akun terdaftar yang dicatat',
 
   db.recordMatchResult({ winnerPlayerId: 'p1', players: [{ id: 'p1', userId: u1.user.id }, { id: 'p2', userId: u2.user.id }, { id: 'g', name: 'tamu' }] });
   const board = db.getLeaderboard();
-  assert.equal(board.find(e => e.userId === u1.user.id).points, before + 30);
+  assert.equal(board.find(e => e.userId === u1.user.id).points, before + 30 + 5, 'peringkat 1 + bonus harian pertama');
   assert.ok(!board.some(e => e.username === 'tamu'));
 });
 
@@ -464,10 +464,32 @@ test('poin akhir mengikuti peringkat dan jumlah pemain', async () => {
   const players = users.map((u, i) => ({ id: 'r' + i, userId: u.user.id }));
 
   db.recordMatchResult({ winnerPlayerId: 'r2', players, ranking: ['r2', 'r0', 'r3', 'r1'] });
-  assert.deepEqual(users.map((u, i) => pts(u) - before[i]), [20, 5, 30, 15]);
+  // Termasuk bonus harian +5 karena ini permainan pertama mereka hari ini
+  assert.deepEqual(users.map((u, i) => pts(u) - before[i]), [25, 10, 35, 20]);
 
-  // Dua pemain: yang kalah hanya dapat 5
+  // Dua pemain: yang kalah hanya dapat 5 (bonus harian sudah diambil)
   const mid = users.map(pts);
   db.recordMatchResult({ winnerPlayerId: 'r0', players: players.slice(0, 2) });
   assert.deepEqual([pts(users[0]) - mid[0], pts(users[1]) - mid[1]], [30, 5]);
+});
+
+test('bonus harian 5 poin hanya sekali per hari (WIB) dan tidak untuk pemain OUT', async () => {
+  const a = await register('harian_a');
+  const b = await register('harian_b');
+  const pts = u => db.getLeaderboard().find(e => e.userId === u.user.id).points;
+  const day1 = Date.UTC(2030, 0, 1, 10, 0); // 1 Jan 17.00 WIB
+  const players = [{ id: 'a', userId: a.user.id }, { id: 'b', userId: b.user.id, isOut: true }];
+
+  const before = [pts(a), pts(b)];
+  const awards = db.recordMatchResult({ winnerPlayerId: 'a', players, now: day1 });
+  assert.deepEqual(awards, { a: { points: 30, dailyBonus: 5 }, b: { points: 5, dailyBonus: 0 } });
+  assert.deepEqual([pts(a) - before[0], pts(b) - before[1]], [35, 5]);
+
+  // Masih hari yang sama (23.30 WIB): tidak dapat bonus lagi
+  const again = db.recordMatchResult({ winnerPlayerId: 'a', players, now: day1 + 6.5 * 3600 * 1000 });
+  assert.equal(again.a.dailyBonus, 0);
+
+  // Lewat tengah malam WIB (00.30 WIB = 17.30 UTC hari sebelumnya): dapat bonus lagi
+  const nextDay = db.recordMatchResult({ winnerPlayerId: 'a', players, now: day1 + 7.5 * 3600 * 1000 });
+  assert.equal(nextDay.a.dailyBonus, 5);
 });

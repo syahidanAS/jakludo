@@ -110,6 +110,7 @@ export default function ShopModal({ isOpen, onClose, currentUser, onUpdateUser, 
           <li>Peringkat 2: <strong>+20 poin</strong> (main 4 orang) atau <strong>+15</strong> (main 3 orang)</li>
           <li>Peringkat 3 (main 4 orang): <strong>+15 poin</strong></li>
           <li>Peringkat terakhir: <strong>+5 poin</strong></li>
+          <li>Bonus harian: <strong>+5 poin</strong> untuk pertandingan pertama yang kamu selesaikan tiap hari</li>
           <li>Bonus akun baru: <strong>200 poin</strong></li>
         </ul>
         <p className="muted">Peringkat dihitung dari jumlah bidak yang sudah finish saat ada pemenang. Poin hanya dihitung untuk pertandingan bersama minimal satu pemain lain (bukan hanya bot).</p>
