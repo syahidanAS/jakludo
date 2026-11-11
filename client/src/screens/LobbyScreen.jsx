@@ -177,7 +177,7 @@ export default function LobbyScreen({ room, me, playerId, currentUser, error, ac
       <section className="lobby__code card card--focus">
         {room.group && (
           <span className="badge badge--brand lobby__group-badge">
-            <Icon name="trophy" size={14} /> Match Grup: {room.group.name} · Khusus leaderboard grup
+            <Icon name="trophy" size={14} /> Match Grup: {room.group.name} · Khusus anggota grup
           </span>
         )}
         <p className="muted">Kode room</p>

@@ -252,7 +252,7 @@ test('chat grup: kirim teks, kompresi foto (WebP) & voice note ke MinIO dengan p
   assert.ok(chunk.length > 0 && chunk.length <= 64);
 });
 
-test('match khusus grup hanya bisa diikuti anggota grup dan hanya masuk ke leaderboard grup', async () => {
+test('match grup hanya untuk anggota, poin & dadu sama dengan permainan biasa, dan tercatat di leaderboard grup', async () => {
   const p1 = await register('grp_p1');
   const p2 = await register('grp_p2');
   const outsider = await register('outsider');
@@ -284,20 +284,27 @@ test('match khusus grup hanya bisa diikuti anggota grup dan hanya masuk ke leade
   await wait(60);
   clearTimeout(room.turnTimer);
 
+  // Dadu seimbang juga dipakai di room grup (catatan lemparan per pemain)
+  s1.emit('game:roll');
+  await wait(900);
+  clearTimeout(room.turnTimer);
+  assert.equal(room.players[0].diceStats.total, 1);
+
   // P1 memenangkan match grup
   engine.declareWinner(room, room.players[0]);
   await wait(80);
 
-  // Leaderboard global TIDAK bertambah
+  // Poin global bertambah seperti permainan biasa: peringkat 1 dari 2 pemain (+30) + bonus harian (+5)
   const globalAfterP1 = db.getLeaderboard().find(e => e.userId === p1.user.id).points;
-  assert.equal(globalAfterP1, globalBeforeP1, 'poin global tidak terpengaruh match grup');
+  assert.equal(globalAfterP1, globalBeforeP1 + 35, 'match grup memberi poin global yang sama');
+  assert.deepEqual(room.matchResult.awards[room.players[0].id], { points: 30, dailyBonus: 5 });
 
-  // Leaderboard grup mencatat kemenangan P1 (+25 poin, 1 menang) dan partisipasi P2 (+5 poin, 0 menang)
+  // Leaderboard grup mencatat poin peringkat yang sama (tanpa bonus harian): P1 +30, P2 +5
   const grpLb = await apiFetch(p1.token, 'GET', `/api/groups/${group.id}/leaderboard`);
   assert.equal(grpLb.success, true);
   assert.equal(grpLb.leaderboard[0].userId, p1.user.id);
   assert.equal(grpLb.leaderboard[0].wins, 1);
-  assert.equal(grpLb.leaderboard[0].points, 25);
+  assert.equal(grpLb.leaderboard[0].points, 30);
   assert.equal(grpLb.leaderboard[1].userId, p2.user.id);
   assert.equal(grpLb.leaderboard[1].wins, 0);
   assert.equal(grpLb.leaderboard[1].points, 5);

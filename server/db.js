@@ -36,6 +36,12 @@ const RANK_POINTS = {
   4: [30, 20, 15, 5]
 };
 
+// Poin untuk peringkat ke-(rank+1) dari playerCount pemain (dipakai permainan biasa maupun grup)
+function rankPoints(playerCount, rank) {
+  const table = RANK_POINTS[Math.min(Math.max(playerCount, 2), 4)];
+  return table[Math.min(Math.max(rank, 0), table.length - 1)];
+}
+
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
@@ -659,7 +665,6 @@ function recordMatchResult({ winnerPlayerId, players, ranking, now = Date.now() 
   const today = todayWib(now);
 
   const order = ranking || [winnerPlayerId, ...players.map(p => p.id).filter(id => id !== winnerPlayerId)];
-  const table = RANK_POINTS[Math.min(Math.max(players.length, 2), 4)];
   const updates = [];
   for (const p of humans) {
     const user = p.userId ? findUserById(p.userId) : null;
@@ -667,16 +672,15 @@ function recordMatchResult({ winnerPlayerId, players, ranking, now = Date.now() 
     const entry = ensureLeaderboardEntry(user);
     const won = p.id === winnerPlayerId;
     const deltaWins = won ? 1 : 0;
-    const rank = Math.max(0, order.indexOf(p.id));
-    const rankPoints = table[Math.min(rank, table.length - 1)];
+    const points = rankPoints(players.length, order.indexOf(p.id));
     // Pemain yang OUT/menyerah tidak dihitung "main" untuk bonus harian
     const dailyBonus = !p.isOut && entry.lastDailyBonus !== today ? DAILY_BONUS_POINTS : 0;
     if (dailyBonus) entry.lastDailyBonus = today;
-    const deltaPoints = rankPoints + dailyBonus;
+    const deltaPoints = points + dailyBonus;
     entry.matchesPlayed += 1;
     entry.wins += deltaWins;
     entry.points += deltaPoints;
-    awards[p.id] = { points: rankPoints, dailyBonus };
+    awards[p.id] = { points, dailyBonus };
     updates.push({ user, deltaWins, deltaPoints, bonusDate: dailyBonus ? today : null });
   }
 
@@ -862,6 +866,7 @@ module.exports = {
   deleteSession,
   pruneExpiredSessions,
   recordMatchResult,
+  rankPoints,
   getLeaderboard,
   checkIsLudoKing,
   sanitizeUser,

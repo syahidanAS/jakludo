@@ -61,7 +61,7 @@ Variabel lingkungan:
 - **Chat Grup, Foto & Voice Note Terkompresi (MinIO S3)**:
   - **Kompresi 2 Lapis**: Foto diperkecil di sisi browser (Canvas WebP maks 1600px, kualitas 0.75) lalu divalidasi & dikompres ulang di server dengan `sharp` (WebP kualitas 75, orientasi otomatis, tanpa EXIF). Voice note direkam di browser dengan `MediaRecorder` Opus 24 kbps (maks 2 menit) lalu dikompres ulang di server dengan `ffmpeg` (`libopus` 24 kbps mono WebM).
   - **Bucket Privat + Presigned URL**: File disimpan di bucket MinIO privat pada key `groups/<groupId>/<yyyy-mm>/<uuid>.<ext>` dan diakses melalui *presigned GET URL* berumur 10 menit yang hanya diberikan kepada anggota grup.
-- **Match Khusus Grup & Leaderboard Grup**: Anggota grup dapat membuat room khusus grup (`room:create` dengan `groupId`). Hanya anggota grup tersebut yang dapat bergabung, kartu undangan otomatis dikirim ke chat grup, dan hasil akhir pertandingan **hanya** tercatat pada `group_leaderboard` grup tersebut tanpa memengaruhi poin/leaderboard global.
+- **Match Khusus Grup & Leaderboard Grup**: Anggota grup dapat membuat room khusus grup (`room:create` dengan `groupId`). Hanya anggota grup tersebut yang dapat bergabung dan kartu undangan otomatis dikirim ke chat grup. Selain itu, aturan main, dadu, dan poin sama persis dengan room biasa: hasilnya menambah poin/leaderboard global (termasuk bonus harian) dan juga dicatat di `group_leaderboard` grup tersebut dengan poin peringkat yang sama (tanpa bonus harian).
 
 ## Migrasi Database (SQLite -> PostgreSQL)
 

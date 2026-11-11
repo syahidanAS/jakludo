@@ -76,19 +76,16 @@ function declareWinner(room, winnerPlayer) {
   room.message = `🏆 SELAMAT! ${winnerPlayer.name} MENANG!`;
   addHistory(room, `🎉 ${winnerPlayer.name} berhasil memenangkan pertandingan JakLudo!`);
 
-  if (room.groupId) {
-    // Match khusus grup hanya dihitung di leaderboard grup (tidak memengaruhi poin/peringkat global)
-    social.recordGroupMatchResult(room.groupId, { winnerPlayerId: winnerPlayer.id, players: room.players });
-  } else {
-    const ranking = rankPlayers(room, winnerPlayer.id);
-    const awards = db.recordMatchResult({ winnerPlayerId: winnerPlayer.id, players: room.players, ranking });
-    // Peringkat resmi + poin yang didapat, ditampilkan di layar hasil
-    room.matchResult = { ranking, awards };
-    room.players.forEach(p => {
-      p.isLudoKing = db.checkIsLudoKing(p.userId);
-    });
-    store.getIo().emit('leaderboard:update', db.getLeaderboard());
-  }
+  // Poin sama untuk permainan biasa dan grup; room grup juga ikut dicatat di leaderboard grupnya
+  const ranking = rankPlayers(room, winnerPlayer.id);
+  const awards = db.recordMatchResult({ winnerPlayerId: winnerPlayer.id, players: room.players, ranking });
+  if (room.groupId) social.recordGroupMatchResult(room.groupId, { winnerPlayerId: winnerPlayer.id, players: room.players, ranking });
+  // Peringkat resmi + poin yang didapat, ditampilkan di layar hasil
+  room.matchResult = { ranking, awards };
+  room.players.forEach(p => {
+    p.isLudoKing = db.checkIsLudoKing(p.userId);
+  });
+  store.getIo().emit('leaderboard:update', db.getLeaderboard());
 
   emitRoom(room);
   store.scheduleCleanup(room);

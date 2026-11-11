@@ -8,8 +8,6 @@ const storage = require('../lib/storage');
 const media = require('../lib/media');
 
 const LOCAL_SOCIAL_FILE = path.join(db.DATA_DIR, 'jakludo-social.json');
-const WIN_POINTS = 25;
-const PLAY_POINTS = 5;
 
 const state = {
   friendships: new Map(),      // "low:high" -> { userLow, userHigh, requesterId, status, createdAt, updatedAt }
@@ -1145,13 +1143,16 @@ async function postGroupMatchMessage(groupId, creatorUserId, roomCode) {
 // LEADERBOARD KHUSUS GRUP
 // ==========================================
 
-function recordGroupMatchResult(groupId, { winnerPlayerId, players }) {
+// Poin grup sama dengan permainan biasa: ikut peringkat (db.rankPoints), tanpa bonus harian.
+// ranking: id pemain dari peringkat 1 ke bawah; tanpa ranking, pemenang dianggap peringkat 1.
+function recordGroupMatchResult(groupId, { winnerPlayerId, players, ranking }) {
   if (!groupId || !state.groups.has(groupId) || !players || players.length === 0) return;
   const humans = players.filter(p => !p.isBot);
   if (humans.length < 2) return;
 
   if (!state.groupLeaderboard.has(groupId)) state.groupLeaderboard.set(groupId, new Map());
   const lbMap = state.groupLeaderboard.get(groupId);
+  const order = ranking || [winnerPlayerId, ...players.map(p => p.id).filter(id => id !== winnerPlayerId)];
   const updates = [];
 
   for (const p of humans) {
@@ -1164,7 +1165,7 @@ function recordGroupMatchResult(groupId, { winnerPlayerId, players }) {
     }
     const won = p.id === winnerPlayerId;
     const deltaWins = won ? 1 : 0;
-    const deltaPoints = won ? WIN_POINTS : PLAY_POINTS;
+    const deltaPoints = db.rankPoints(players.length, order.indexOf(p.id));
     entry.matchesPlayed += 1;
     entry.wins += deltaWins;
     entry.points += deltaPoints;
