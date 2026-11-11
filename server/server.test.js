@@ -173,8 +173,9 @@ test('logout menghapus sesi dan login dibatasi', async () => {
   await fetch(`${url}/api/auth/logout`, { method: 'POST', headers: { Authorization: `Bearer ${u.token}` } });
   assert.equal((await me()).status, 401);
 
+  // Batas login 20 percobaan per 10 menit (server/http/routes.js), percobaan ke-21 ditolak
   let last;
-  for (let i = 0; i < 11; i++) {
+  for (let i = 0; i < 21; i++) {
     last = await fetch(`${url}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
