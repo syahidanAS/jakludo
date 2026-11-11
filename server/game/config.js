@@ -14,7 +14,7 @@ module.exports = {
   LOBBY_SEAT_GRACE_MS: 2 * 60 * 1000,
   // Waktu pemain memutuskan memakai perisai (Universal Shield); lewat dari ini perisai otomatis dipakai
   SHIELD_DECISION_MS: 10000,
-  // Dadu seimbang (penjelasan & angka: docs/peluang-dadu.md). beta = koreksi defisit,
+  // Dadu seimbang (penjelasan & angka: bagian "Aturan dadu" di README.md). beta = koreksi defisit,
   // gamma = dorongan untuk angka yang bisa memakan lawan, maxAdd = kenaikan maksimum peluang makan,
   // chainDecay = pengali per makan beruntun. beta 0, gamma 0, chainDecay 1 = dadu random murni.
   DICE: { beta: 0.3, gamma: 0.4, maxAdd: 0.06, chainDecay: 0.5 },
