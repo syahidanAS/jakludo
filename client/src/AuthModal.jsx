@@ -40,6 +40,54 @@ const PASSWORD_RULES = [
   { key: 'symbol', label: 'Simbol (@, #, $, dll)', test: p => /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?~`]/.test(p) }
 ];
 
+function loadRecaptchaScript(siteKey) {
+  if (!siteKey || typeof window === 'undefined') return Promise.resolve(null);
+  if (window.grecaptcha) return Promise.resolve(window.grecaptcha);
+
+  return new Promise(resolve => {
+    const scriptId = 'google-recaptcha-v3-script';
+    let script = document.getElementById(scriptId);
+    if (script) {
+      if (window.grecaptcha) return resolve(window.grecaptcha);
+      script.addEventListener('load', () => resolve(window.grecaptcha));
+      script.addEventListener('error', () => resolve(null));
+      return;
+    }
+    script = document.createElement('script');
+    script.id = scriptId;
+    script.src = `https://www.google.com/recaptcha/api.js?render=${encodeURIComponent(siteKey)}`;
+    script.async = true;
+    script.onload = () => resolve(window.grecaptcha);
+    script.onerror = () => resolve(null);
+    document.head.appendChild(script);
+  });
+}
+
+async function executeRecaptcha(siteKey, action) {
+  if (!siteKey || typeof window === 'undefined') return null;
+  try {
+    await loadRecaptchaScript(siteKey);
+    if (!window.grecaptcha) return null;
+    return new Promise(resolve => {
+      try {
+        window.grecaptcha.ready(async () => {
+          try {
+            const token = await window.grecaptcha.execute(siteKey, { action });
+            resolve(token);
+          } catch (err) {
+            console.warn('[reCAPTCHA execute error]', err);
+            resolve(null);
+          }
+        });
+      } catch {
+        resolve(null);
+      }
+    });
+  } catch {
+    return null;
+  }
+}
+
 function PasswordField({ id, label, value, onChange, autoComplete, describedBy, disabled }) {
   const [visible, setVisible] = useState(false);
   return (
@@ -73,12 +121,13 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleConfig, setGoogleConfig] = useState({ enabled: false, clientId: '' });
+  const [recaptchaConfig, setRecaptchaConfig] = useState({ enabled: false, siteKey: '' });
   const [googleHelpOpen, setGoogleHelpOpen] = useState(false);
   const [gisReady, setGisReady] = useState(false);
   const googleBtnRef = useRef(null);
   const ids = { user: useId(), pass: useId(), confirm: useId(), rules: useId(), hint: useId() };
 
-  // Ambil konfigurasi Google Client ID dari server saat modal terbuka
+  // Ambil konfigurasi Google Client ID & reCAPTCHA v3 dari server saat modal terbuka
   useEffect(() => {
     if (!isOpen) return;
     let active = true;
@@ -90,6 +139,19 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
         }
       })
       .catch(() => {});
+
+    fetch('/api/auth/recaptcha/config')
+      .then(res => res.json())
+      .then(data => {
+        if (active && data?.success) {
+          setRecaptchaConfig({ enabled: Boolean(data.enabled), siteKey: data.siteKey || '' });
+          if (data.siteKey) {
+            loadRecaptchaScript(data.siteKey).catch(() => {});
+          }
+        }
+      })
+      .catch(() => {});
+
     return () => {
       active = false;
     };
@@ -228,9 +290,14 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
     setError('');
     sound.playClick();
     try {
-      const data = await postJson(isRegister ? '/api/auth/register' : '/api/auth/login', isRegister
-        ? { username: name, password, name }
-        : { username: name, password });
+      const action = isRegister ? 'register' : 'login';
+      const recaptchaToken = await executeRecaptcha(recaptchaConfig.siteKey, action);
+
+      const payload = isRegister
+        ? { username: name, password, name, recaptchaToken }
+        : { username: name, password, recaptchaToken };
+
+      const data = await postJson(isRegister ? '/api/auth/register' : '/api/auth/login', payload);
       onLoginSuccess(data.user, data.token);
     } catch (err) {
       setError(err.message);
@@ -355,6 +422,20 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
         <button type="submit" className="btn btn--primary btn--lg btn--block" disabled={loading}>
           {loading ? (isRegister ? 'Mendaftarkan...' : 'Memeriksa...') : isRegister ? 'Buat akun' : 'Masuk'}
         </button>
+
+        {recaptchaConfig.enabled && (
+          <p className="auth__recaptcha-notice">
+            Dilindungi oleh reCAPTCHA v3 &amp; berlaku{' '}
+            <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">
+              Privasi
+            </a>{' '}
+            serta{' '}
+            <a href="https://policies.google.com/terms" target="_blank" rel="noreferrer">
+              Ketentuan
+            </a>{' '}
+            Google.
+          </p>
+        )}
       </form>
     </Modal>
   );

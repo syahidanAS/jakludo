@@ -771,6 +771,47 @@ test('Update profil: nama, username, email, dan password', async () => {
   assert.equal(loginBody.user.id, user.id);
 });
 
+test('Google reCAPTCHA v3: config endpoint dan verifikasi token login / register', async () => {
+  // 1. GET /api/auth/recaptcha/config
+  const cfgRes = await fetch(`${url}/api/auth/recaptcha/config`);
+  assert.equal(cfgRes.status, 200);
+  const cfg = await cfgRes.json();
+  assert.equal(cfg.success, true);
+  assert.equal(typeof cfg.enabled, 'boolean');
+
+  // 2. Register dengan mock recaptchaToken
+  const testUser = 'rc_' + Math.random().toString(36).slice(2, 8);
+  const regRes = await fetch(`${url}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: testUser,
+      password: 'StrongPassword123!',
+      name: 'User Recaptcha',
+      recaptchaToken: 'mock_recaptcha_token'
+    })
+  });
+  assert.equal(regRes.status, 200);
+  const regBody = await regRes.json();
+  assert.equal(regBody.success, true);
+  assert.equal(regBody.user.username, testUser);
+
+  // 3. Login dengan mock recaptchaToken
+  const loginRes = await fetch(`${url}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: testUser,
+      password: 'StrongPassword123!',
+      recaptchaToken: 'mock_recaptcha_token'
+    })
+  });
+  assert.equal(loginRes.status, 200);
+  const loginBody = await loginRes.json();
+  assert.equal(loginBody.success, true);
+  assert.equal(loginBody.user.id, regBody.user.id);
+});
+
 test('topup diamonds dengan duitku payment gateway (config, reference, verify, notification, simulate, points award)', async () => {
   // 1. GET /api/topup/config
   const cfgRes = await fetch(`${url}/api/topup/config`);

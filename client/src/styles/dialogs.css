@@ -88,6 +88,19 @@
   border-radius: 4px;
 }
 
+.auth__recaptcha-notice {
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  text-align: center;
+  margin-top: var(--space-2);
+  line-height: 1.4;
+}
+
+.auth__recaptcha-notice a {
+  color: var(--brand);
+  text-decoration: underline;
+}
+
 .tabs__tab {
   min-height: 40px;
   border: 0;

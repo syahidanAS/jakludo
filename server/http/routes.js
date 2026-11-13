@@ -12,6 +12,7 @@ const { registerQuizRoutes } = require('../quiz/routes');
 const quizEngine = require('../quiz/engine');
 const social = require('../social/store');
 const duitku = require('../lib/duitku');
+const recaptcha = require('../lib/recaptcha');
 
 const loginLimiter = createLimiter({ windowMs: 10 * 60 * 1000, max: 20 });
 const registerLimiter = createLimiter({ windowMs: 60 * 60 * 1000, max: Number(process.env.REGISTER_RATE_LIMIT || 30) });
@@ -37,21 +38,51 @@ function createApiRouter() {
     if (!registerLimiter(req.ip)) {
       return res.status(429).json({ success: false, error: 'Terlalu banyak pendaftaran dari jaringan ini. Coba lagi nanti.' });
     }
-    const { username, password, name } = req.body || {};
+    const { username, password, name, recaptchaToken } = req.body || {};
+
+    const captchaRes = await recaptcha.verifyRecaptchaToken({
+      token: recaptchaToken,
+      expectedAction: 'register',
+      remoteIp: req.ip
+    });
+    if (!captchaRes.success) {
+      return res.status(400).json({ success: false, error: captchaRes.error });
+    }
+
     const result = await db.registerUser({ username, password, name });
     if (result.error) return res.status(400).json({ success: false, error: result.error });
     res.json({ success: true, user: withKing(result.user), token: result.token });
   }));
 
   api.post('/auth/login', asyncRoute(async (req, res) => {
-    const { username, password } = req.body || {};
+    const { username, password, recaptchaToken } = req.body || {};
     if (!loginLimiter(`${req.ip}:${String(username || '').toLowerCase()}`)) {
       return res.status(429).json({ success: false, error: 'Terlalu banyak percobaan login. Coba lagi dalam 10 menit.' });
     }
+
+    const captchaRes = await recaptcha.verifyRecaptchaToken({
+      token: recaptchaToken,
+      expectedAction: 'login',
+      remoteIp: req.ip
+    });
+    if (!captchaRes.success) {
+      return res.status(400).json({ success: false, error: captchaRes.error });
+    }
+
     const result = await db.loginUser({ username, password });
     if (result.error) return res.status(400).json({ success: false, error: result.error });
     res.json({ success: true, user: withKing(result.user), token: result.token });
   }));
+
+  api.get('/auth/recaptcha/config', (req, res) => {
+    loadDotEnv(true);
+    const config = recaptcha.getRecaptchaConfig();
+    res.json({
+      success: true,
+      enabled: config.isConfigured && Boolean(config.siteKey),
+      siteKey: config.siteKey
+    });
+  });
 
   api.get('/auth/google/config', (req, res) => {
     loadDotEnv(true);
