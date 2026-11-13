@@ -895,18 +895,24 @@ test('topup diamonds dengan duitku payment gateway (config, reference, verify, n
   const notifOrderBody = await notifOrderRes.json();
   assert.equal(notifOrderBody.success, true);
 
+  const crypto = require('crypto');
+  const mCode = cfg.merchantCode || 'DS37928';
+  const mKey = process.env.DUITKU_API_KEY || '';
+  const validSig = crypto.createHash('md5').update(`${mCode}20000${notifOrderBody.orderId}${mKey}`).digest('hex');
+
   const duitkuNotifRes = await fetch(`${url}/api/topup/notification`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
+      merchantCode: mCode,
       merchantOrderId: notifOrderBody.orderId,
       amount: '20000',
       resultCode: '00',
       paymentMethod: 'VC',
       reference: 'mock_ref_123',
-      signature: 'mock_signature'
+      signature: validSig
     })
   });
   assert.equal(duitkuNotifRes.status, 200);

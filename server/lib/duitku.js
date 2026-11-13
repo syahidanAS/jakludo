@@ -96,7 +96,7 @@ function md5(string) {
 /**
  * Buat transaksi Duitku POP (Create Invoice)
  * Endpoint: /api/merchant/createInvoice
- * Signature: md5(merchantCode + merchantOrderId + paymentAmount + apiKey)
+ * Header Signature: sha256(merchantCode + timestamp + apiKey)
  */
 async function createInvoice({ orderId, pkg, user, host = '' }) {
   const config = getDuitkuConfig();
@@ -120,7 +120,11 @@ async function createInvoice({ orderId, pkg, user, host = '' }) {
   }
 
   const paymentAmount = Number(pkg.price);
-  const signature = md5(`${config.merchantCode}${orderId}${paymentAmount}${config.apiKey}`);
+  const timestamp = Date.now();
+  const signature = crypto
+    .createHash('sha256')
+    .update(`${config.merchantCode}${timestamp}${config.apiKey}`)
+    .digest('hex');
 
   // Tentukan callback & return URL
   let callbackUrl = config.callbackUrl;
@@ -135,7 +139,6 @@ async function createInvoice({ orderId, pkg, user, host = '' }) {
   }
 
   const payload = {
-    merchantCode: config.merchantCode,
     paymentAmount,
     merchantOrderId: orderId,
     productDetails: `${pkg.name} (${pkg.diamonds} Diamonds)`,
@@ -144,7 +147,6 @@ async function createInvoice({ orderId, pkg, user, host = '' }) {
     customerVaName: (user.name || user.username || 'PlayGo Player').slice(0, 30),
     callbackUrl: callbackUrl || 'https://playgo.game/api/topup/notification',
     returnUrl: returnUrl || 'https://playgo.game',
-    signature,
     expiryPeriod: 1440 // 24 jam
   };
 
@@ -152,15 +154,24 @@ async function createInvoice({ orderId, pkg, user, host = '' }) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Accept: 'application/json'
+      Accept: 'application/json',
+      'x-duitku-signature': signature,
+      'x-duitku-timestamp': String(timestamp),
+      'x-duitku-merchantcode': config.merchantCode
     },
     body: JSON.stringify(payload)
   });
 
-  const data = await res.json().catch(() => ({}));
+  const rawText = await res.text();
+  let data = {};
+  try {
+    data = JSON.parse(rawText);
+  } catch {
+    data = { statusMessage: rawText };
+  }
 
   if (!res.ok || (data.statusCode && data.statusCode !== '00')) {
-    const errorMsg = data.statusMessage || `Duitku Create Invoice Error (${res.status})`;
+    const errorMsg = data.statusMessage || rawText || `Duitku Create Invoice Error (${res.status})`;
     throw new Error(errorMsg);
   }
 
@@ -236,3 +247,4 @@ module.exports = {
   verifyDuitkuCallback,
   checkDuitkuStatus
 };
+
