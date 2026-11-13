@@ -110,7 +110,7 @@ export default function LeaderboardModal({
       subtitle={
         isQuizTab
           ? 'Peringkat Monster Quiz Battle: diurutkan dari jumlah menang, rasio kemenangan (win rate), dan jumlah pertandingan.'
-          : 'Peringkat JakLudo: diurutkan dari jumlah menang, lalu poin. Pemain peringkat 1 dengan minimal satu kemenangan bergelar Ludo King.'
+          : 'Peringkat JakLudo: diurutkan dari jumlah menang, lalu Coins. Pemain peringkat 1 dengan minimal satu kemenangan bergelar Ludo King.'
       }
       footer={
         currentUser && status === 'ready' ? (
@@ -118,7 +118,7 @@ export default function LeaderboardModal({
             {mine
               ? isQuizTab
                 ? `Posisimu di Monster Quiz: #${mine.rank} · ${mine.wins} menang, ${mine.losses} kalah dari ${mine.matchesPlayed} duel (Win Rate ${mine.winRate}%)`
-                : `Posisimu di JakLudo: #${mine.rank} · ${mine.wins} menang dari ${mine.matchesPlayed} main · ${mine.points} poin`
+                : `Posisimu di JakLudo: #${mine.rank} · ${mine.wins} menang dari ${mine.matchesPlayed} main · ${mine.points} Coins`
               : isQuizTab
               ? 'Kamu belum masuk peringkat Monster Quiz Battle. Selesaikan satu duel untuk tercatat di peringkat!'
               : 'Kamu belum masuk peringkat JakLudo. Selesaikan satu pertandingan bersama pemain lain.'}
@@ -227,7 +227,7 @@ export default function LeaderboardModal({
                   <span className="lb-row__stats">
                     <strong>{p.wins}</strong> <span className="muted">menang</span>
                     <span className="lb-row__points">
-                      {isQuizTab ? `${p.losses || 0} kalah · ${p.winRate}%` : `${p.points} poin`}
+                      {isQuizTab ? `${p.losses || 0} kalah · ${p.winRate}%` : `${p.points} Coins`}
                     </span>
                   </span>
                 </li>

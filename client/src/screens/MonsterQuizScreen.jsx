@@ -198,7 +198,7 @@ export default function MonsterQuizScreen({
                 <span>Hints Jawaban: {ownedHints} · Beli di Toko</span>
               </button>
             )}
-            <span className="badge badge--brand">Menang +10 Poin · 2–3 Pemain</span>
+            <span className="badge badge--brand">Menang +10 Coins · 2–3 Pemain</span>
           </div>
         </div>
 
@@ -216,12 +216,12 @@ export default function MonsterQuizScreen({
                 />
               </figure>
               <div>
-                <span className="mq-eyebrow">MONSTER QUIZ BATTLE · MAKS 3 PEMAIN · HADIAH +10 POIN</span>
+                <span className="mq-eyebrow">MONSTER QUIZ BATTLE · MAKS 3 PEMAIN · HADIAH +10 COINS</span>
                 <h1 className="mq-hero__title">
                   Adu cepat pengetahuan &amp; matematika, <span className="home__title-accent">serang monster lawan!</span>
                 </h1>
                 <p className="mq-hero__lead">
-                  2 hingga maksimal 3 pemain menerima soal yang sama selama 15 detik. Jika kamu benar dan lawan salah, monstermu melancarkan serangan sebesar <strong>10 HP</strong>. Menangkan pertandingan untuk meraih <strong>+10 Poin PlayGo</strong> (lawan pemain asli) dan gunakan item <strong>Hints Jawaban (50:50)</strong> dari Toko Item saat ragu!
+                  2 hingga maksimal 3 pemain menerima soal yang sama selama 15 detik. Jika kamu benar dan lawan salah, monstermu melancarkan serangan sebesar <strong>10 HP</strong>. Menangkan pertandingan untuk meraih <strong>+10 Coins PlayGo</strong> (lawan pemain asli) dan gunakan item <strong>Hints Jawaban (50:50)</strong> dari Toko Item saat ragu!
                 </p>
               </div>
             </div>
@@ -853,11 +853,11 @@ export default function MonsterQuizScreen({
 
                 {!isDraw && rewardPoints > 0 && (
                   <div className={`mq-reward-banner ${isWinner ? 'mq-reward-banner--win' : ''}`} role="status">
-                    <Icon name="diamond" size={18} />
+                    <Icon name="coin" size={18} />
                     <span>
                       {isWinner
-                        ? `Selamat! Kamu mendapatkan hadiah +${rewardPoints} Poin PlayGo!`
-                        : `${winnerPlayer?.name || 'Pemenang'} mendapatkan hadiah +${rewardPoints} Poin PlayGo.`}
+                        ? `Selamat! Kamu mendapatkan hadiah +${rewardPoints} Coins PlayGo!`
+                        : `${winnerPlayer?.name || 'Pemenang'} mendapatkan hadiah +${rewardPoints} Coins PlayGo.`}
                     </span>
                   </div>
                 )}
@@ -968,7 +968,7 @@ export default function MonsterQuizScreen({
                         onClick={onOpenShop}
                       >
                         <Icon name="shop" size={16} />
-                        <span>Beli Hint di Toko (25 Poin)</span>
+                        <span>Beli Hint di Toko (25 Coins)</span>
                       </button>
                     ) : null)}
                 </div>

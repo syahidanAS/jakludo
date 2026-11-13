@@ -579,11 +579,11 @@ export default function PlayerProfileModal({
                   <span className="profile-stat__sub muted">Win rate</span>
                 </div>
                 <div className="profile-stat card">
-                  <span className="profile-stat__label muted">Total Poin</span>
+                  <span className="profile-stat__label muted">Total Coins</span>
                   <strong className="profile-stat__value">
-                    <Icon name="diamond" size={16} /> {profile.points ?? 0}
+                    <Icon name="coin" size={16} /> {profile.points ?? 0}
                   </strong>
-                  <span className="profile-stat__sub muted">Poin PlayGo</span>
+                  <span className="profile-stat__sub muted">Coins PlayGo</span>
                 </div>
               </div>
 

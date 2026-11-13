@@ -14,51 +14,51 @@ const KIND_LABELS = {
 const DEFAULT_DIAMOND_PACKAGES = [
   {
     id: 'diamond_50',
-    name: '50 Diamond',
+    name: '50 Coins',
     diamonds: 50,
     price: 5000,
     formattedPrice: 'Rp 5.000',
     subtitle: 'Paket pemula',
     description: 'Paket pemula',
     badge: null,
-    icon: 'diamond'
+    icon: 'coin'
   },
   {
     id: 'diamond_120',
-    name: '120 Diamond',
+    name: '120 Coins',
     diamonds: 120,
     price: 10000,
     formattedPrice: 'Rp 10.000',
     subtitle: 'Paket hemat',
     description: 'Paket hemat',
     badge: 'Populer',
-    icon: 'diamond'
+    icon: 'coin'
   },
   {
     id: 'diamond_260',
-    name: '260 Diamond',
+    name: '260 Coins',
     diamonds: 260,
     price: 20000,
     formattedPrice: 'Rp 20.000',
     subtitle: 'Paket reguler',
     description: 'Paket reguler',
     badge: null,
-    icon: 'diamond'
+    icon: 'coin'
   },
   {
     id: 'diamond_700',
-    name: '700 Diamond',
+    name: '700 Coins',
     diamonds: 700,
     price: 50000,
     formattedPrice: 'Rp 50.000',
     subtitle: 'Paket premium',
     description: 'Paket premium',
     badge: 'Bonus 100',
-    icon: 'diamond'
+    icon: 'coin'
   },
   {
     id: 'diamond_1500',
-    name: '1.500 Diamond',
+    name: '1.500 Coins',
     diamonds: 1500,
     price: 100000,
     formattedPrice: 'Rp 100.000',
@@ -69,7 +69,7 @@ const DEFAULT_DIAMOND_PACKAGES = [
   },
   {
     id: 'diamond_3250',
-    name: '3.250 Diamond',
+    name: '3.250 Coins',
     diamonds: 3250,
     price: 200000,
     formattedPrice: 'Rp 200.000',
@@ -129,7 +129,7 @@ function ShopItemCard({ item, points, ownedCount, currentUser, buyingId, onBuy }
       {item.highlight && <p className="shop-item__note">{item.highlight}</p>}
       <div className="shop-item__buy">
         <span className="shop-item__price">
-          <Icon name="diamond" size={16} /> {item.price} poin
+          <Icon name="coin" size={16} /> {item.price} Coins
         </span>
         <button
           type="button"
@@ -137,7 +137,7 @@ function ShopItemCard({ item, points, ownedCount, currentUser, buyingId, onBuy }
           disabled={!currentUser || !affordable || buyingId === item.id}
           onClick={() => onBuy(item)}
         >
-          {buyingId === item.id ? 'Membeli...' : !currentUser ? 'Masuk dulu' : affordable ? `Beli ${item.name}` : 'Poin kurang'}
+          {buyingId === item.id ? 'Membeli...' : !currentUser ? 'Masuk dulu' : affordable ? `Beli ${item.name}` : 'Coins kurang'}
         </button>
       </div>
     </li>
@@ -153,8 +153,8 @@ function TopupPackageCard({ pkg, currentUser, topupLoadingId, onTopup }) {
   return (
     <li className={`shop-item card shop-item--topup ${isPopular ? 'shop-item--topup-popular' : ''}`}>
       <div className="shop-item__head">
-        <span className="shop-item__icon" aria-hidden="true" style={{ color: isSultan ? '#f59e0b' : '#8b5cf6' }}>
-          <Icon name={pkg.icon || 'diamond'} size={28} />
+        <span className="shop-item__icon" aria-hidden="true" style={{ color: isSultan ? '#f59e0b' : '#eab308' }}>
+          <Icon name={pkg.icon || 'coin'} size={28} />
         </span>
         <div>
           <div className="shop-item__title-row">
@@ -271,7 +271,7 @@ export default function ShopModal({
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) throw new Error(data.error || 'Pembelian gagal. Coba lagi.');
       sound.playShopPurchase();
-      setFeedback({ type: 'success', message: `${item.name} berhasil dibeli. Sisa poin: ${data.user?.points ?? points - item.price}.` });
+      setFeedback({ type: 'success', message: `${item.name} berhasil dibeli. Sisa Coins: ${data.user?.points ?? points - item.price}.` });
       if (data.user) onUpdateUser?.(data.user);
     } catch (err) {
       setFeedback({ type: 'error', message: err.message });
@@ -282,7 +282,7 @@ export default function ShopModal({
 
   const handleTopup = async pkg => {
     if (!currentUser) {
-      setFeedback({ type: 'error', message: 'Silakan login terlebih dahulu untuk melakukan top up diamonds.' });
+      setFeedback({ type: 'error', message: 'Silakan login terlebih dahulu untuk melakukan top up Coins.' });
       return;
     }
     setTopupLoadingId(pkg.id);
@@ -322,7 +322,7 @@ export default function ShopModal({
               sound.playShopPurchase();
               setFeedback({
                 type: 'success',
-                message: `Pembayaran berhasil! +${pkg.diamonds} Diamonds telah ditambahkan ke akunmu.`
+                message: `Pembayaran berhasil! +${pkg.diamonds || pkg.coins} Coins telah ditambahkan ke akunmu.`
               });
               if (verifyData.user) onUpdateUser?.(verifyData.user);
             } catch {
@@ -356,7 +356,7 @@ export default function ShopModal({
                 sound.playShopPurchase();
                 setFeedback({
                   type: 'success',
-                  message: `Pembayaran berhasil! +${pkg.diamonds} Diamonds telah ditambahkan ke akunmu.`
+                  message: `Pembayaran berhasil! +${pkg.diamonds || pkg.coins} Coins telah ditambahkan ke akunmu.`
                 });
                 onUpdateUser?.(checkData.user);
               }
@@ -387,7 +387,7 @@ export default function ShopModal({
       size="lg"
       icon="shop"
       title="Toko item"
-      subtitle={currentUser ? `Saldo kamu: ${points.toLocaleString('id-ID')} Diamonds (Poin)` : 'Masuk dulu untuk membeli item atau top up.'}
+      subtitle={currentUser ? `Saldo kamu: ${points.toLocaleString('id-ID')} Coins` : 'Masuk dulu untuk membeli item atau top up.'}
     >
       {feedback && (
         <p className={`alert alert--${feedback.type === 'success' ? 'success' : feedback.type === 'info' ? 'info' : 'error'} shop__feedback`} role="alert">
@@ -432,8 +432,8 @@ export default function ShopModal({
               setSelectedCategory('topup');
             }}
           >
-            <Icon name="diamond" size={16} />
-            <span>Top Up Diamonds</span>
+            <Icon name="coin" size={16} />
+            <span>Top Up Coins</span>
           </button>
           <button
             type="button"
@@ -464,17 +464,17 @@ export default function ShopModal({
         </div>
       )}
 
-      {/* Bagian Top Up Diamonds (Muncul di tab 'all' atau tab khusus 'topup') */}
+      {/* Bagian Top Up Coins (Muncul di tab 'all' atau tab khusus 'topup') */}
       {(selectedCategory === 'all' || selectedCategory === 'topup') && (
-        <section className="shop__group" aria-label="Top Up Diamonds Duitku POP">
+        <section className="shop__group" aria-label="Top Up Coins Duitku POP">
           <div className="shop__group-header shop__group-header--topup">
             <div>
               <h3 className="shop__group-title">
-                <Icon name="diamond" size={20} />
-                <span>Top Up Diamonds PlayGo</span>
+                <Icon name="coin" size={20} />
+                <span>Top Up Coins PlayGo</span>
               </h3>
               <p className="shop__group-desc">
-                Beli diamonds/points instan via Duitku (QRIS, E-Wallet &amp; Virtual Account).
+                Beli Coins instan via Duitku (QRIS, E-Wallet &amp; Virtual Account).
               </p>
             </div>
             <span className="badge badge--popular">
@@ -534,18 +534,18 @@ export default function ShopModal({
       ))}
 
       <section className="shop__earn" aria-labelledby="earn-title">
-        <h3 id="earn-title">Cara dapat poin PlayGo</h3>
+        <h3 id="earn-title">Cara dapat Coins PlayGo</h3>
         <ul>
-          <li>Top up instan: <strong>50 diamonds = Rp 5.000</strong>, <strong>120 diamonds = Rp 10.000</strong>, <strong>260 diamonds = Rp 20.000</strong>, <strong>700 diamonds = Rp 50.000</strong>, <strong>1.500 diamonds = Rp 100.000</strong>, <strong>3.250 diamonds = Rp 200.000</strong></li>
-          <li>Menang <strong>Monster Quiz Battle</strong>: <strong>+30 poin</strong></li>
-          <li>Peringkat 1 <strong>JakLudo</strong>: <strong>+30 poin</strong></li>
-          <li>Peringkat 2 <strong>JakLudo</strong>: <strong>+20 poin</strong> (main 4 orang) atau <strong>+15</strong> (main 3 orang)</li>
-          <li>Peringkat 3 <strong>JakLudo</strong> (main 4 orang): <strong>+15 poin</strong></li>
-          <li>Peringkat terakhir <strong>JakLudo</strong>: <strong>+5 poin</strong></li>
-          <li>Bonus harian: <strong>+5 poin</strong> untuk pertandingan pertama yang kamu selesaikan tiap hari</li>
-          <li>Bonus akun baru: <strong>200 poin</strong></li>
+          <li>Top up instan: <strong>50 Coins = Rp 5.000</strong>, <strong>120 Coins = Rp 10.000</strong>, <strong>260 Coins = Rp 20.000</strong>, <strong>700 Coins = Rp 50.000</strong>, <strong>1.500 Coins = Rp 100.000</strong>, <strong>3.250 Coins = Rp 200.000</strong></li>
+          <li>Menang <strong>Monster Quiz Battle</strong>: <strong>+30 Coins</strong></li>
+          <li>Peringkat 1 <strong>JakLudo</strong>: <strong>+30 Coins</strong></li>
+          <li>Peringkat 2 <strong>JakLudo</strong>: <strong>+20 Coins</strong> (main 4 orang) atau <strong>+15</strong> (main 3 orang)</li>
+          <li>Peringkat 3 <strong>JakLudo</strong> (main 4 orang): <strong>+15 Coins</strong></li>
+          <li>Peringkat terakhir <strong>JakLudo</strong>: <strong>+5 Coins</strong></li>
+          <li>Bonus harian: <strong>+5 Coins</strong> untuk pertandingan pertama yang kamu selesaikan tiap hari</li>
+          <li>Bonus akun baru: <strong>200 Coins</strong></li>
         </ul>
-        <p className="muted">Poin / Diamonds dapat digunakan untuk membeli item di JakLudo maupun Hints Jawaban di Monster Quiz Battle.</p>
+        <p className="muted">Coins dapat digunakan untuk membeli item di JakLudo maupun Hints Jawaban di Monster Quiz Battle.</p>
       </section>
     </Modal>
   );

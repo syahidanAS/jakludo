@@ -19,14 +19,14 @@ const SEO_CONFIGS = {
   quiz: {
     title: 'Monster Quiz Battle (Duel Kuis RPG 2–3 Pemain) · PlayGo Multiplayer',
     description:
-      'Adu cepat pengetahuan umum & matematika di Monster Quiz Battle PlayGo! Pilih monster andalanmu, gunakan Hints Jawaban (50:50), serang monster lawan, dan raih +10 poin setiap menang!',
+      'Adu cepat pengetahuan umum & matematika di Monster Quiz Battle PlayGo! Pilih monster andalanmu, gunakan Hints Jawaban (50:50), serang monster lawan, dan raih +10 Coins setiap menang!',
     image: '/playgo-logo.jpg',
     query: '?game=monster-quiz'
   },
   shop: {
     title: 'Toko Item & Hints Jawaban · PlayGo Multiplayer',
     description:
-      'Tukarkan poin kemenanganmu di Toko Item PlayGo! Beli Hints Jawaban (50:50) untuk Monster Quiz Battle serta Perisai dan Force Return untuk JakLudo.',
+      'Tukarkan Coins kemenanganmu di Toko Item PlayGo! Beli Hints Jawaban (50:50) untuk Monster Quiz Battle serta Perisai dan Force Return untuk JakLudo.',
     image: '/playgo-logo.jpg'
   },
   leaderboard: {

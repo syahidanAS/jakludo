@@ -8,7 +8,9 @@ const EMOJI_TO_ICON = {
   '🛒': 'shop',
   '🏆': 'trophy',
   '👑': 'crown',
-  '💎': 'diamond',
+  '💎': 'coin',
+  '🪙': 'coin',
+  '💰': 'coin',
   '🎲': 'dice',
   '🔔': 'bell',
   '🔊': 'volume-on',
@@ -138,11 +140,14 @@ export default function Icon({ name, size = 20, className = '', label }) {
         </svg>
       );
 
+    case 'coin':
+    case 'coins':
     case 'diamond':
       return (
         <svg {...common}>
-          <path d="M6 4h12l3 5-9 11L3 9l3-5Z" fill="var(--brand-soft)" />
-          <path d="M3 9h18M9 4l-2 5 5 11 5-11-2-5" />
+          <circle cx="12" cy="12" r="9" fill="var(--brand-soft)" />
+          <circle cx="12" cy="12" r="6.2" strokeWidth="1.5" />
+          <path d="M12 7.8l1.1 2.7 2.9.2-2.3 1.9.8 2.8-2.5-1.6-2.5 1.6.8-2.8-2.3-1.9 2.9-.2Z" fill="currentColor" stroke="none" />
         </svg>
       );
 

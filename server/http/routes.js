@@ -265,14 +265,14 @@ function createApiRouter() {
 
   // Buat transaksi pembayaran Duitku POP
   api.post(['/topup/create', '/topup/charge'], asyncRoute(async (req, res) => {
-    const user = requireUser(req, res, 'Silakan login terlebih dahulu untuk melakukan topup diamonds.');
+    const user = requireUser(req, res, 'Silakan login terlebih dahulu untuk melakukan topup Coins.');
     if (!user) return;
 
     const { packageId } = req.body || {};
     // Ambil detail paket resmi langsung dari database PostgreSQL
     const pkg = await db.getDiamondPackageById(packageId);
     if (!pkg) {
-      return res.status(400).json({ success: false, error: 'Paket diamond tidak valid atau sudah tidak aktif.' });
+      return res.status(400).json({ success: false, error: 'Paket Coins tidak valid atau sudah tidak aktif.' });
     }
 
     const orderId = `TOPUP-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
@@ -369,7 +369,7 @@ function createApiRouter() {
 
     if (order.status === 'success') {
       const freshUser = db.sanitizeUser(db.getUserById(user.id));
-      return res.json({ success: true, status: 'success', user: withKing(freshUser), diamonds: order.diamonds });
+      return res.json({ success: true, status: 'success', user: withKing(freshUser), diamonds: order.diamonds, coins: order.diamonds });
     }
 
     // Coba polling status ke Duitku Status API secara realtime
@@ -387,7 +387,8 @@ function createApiRouter() {
             success: true,
             status: 'success',
             user: withKing(completed.user),
-            diamonds: order.diamonds
+            diamonds: order.diamonds,
+            coins: order.diamonds
           });
         }
       }
@@ -424,9 +425,10 @@ function createApiRouter() {
 
     res.json({
       success: true,
-      message: `Topup berhasil! +${order.diamonds} Diamonds telah ditambahkan ke akunmu.`,
+      message: `Topup berhasil! +${order.diamonds} Coins telah ditambahkan ke akunmu.`,
       order: result.order,
       diamondsAwarded: order.diamonds,
+      coinsAwarded: order.diamonds,
       user: withKing(result.user)
     });
   }));

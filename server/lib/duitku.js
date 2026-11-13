@@ -1,63 +1,76 @@
-// Integrasi Duitku Payment Gateway (Duitku POP & Callback) untuk Topup Diamonds / Poin PlayGo
+// Integrasi Duitku Payment Gateway (Duitku POP & Callback) untuk Topup Coins / Poin PlayGo
 // Dokumentasi: https://docs.duitku.com/api/id/#langkah-awal & https://docs.duitku.com/pop/id/
 const crypto = require('crypto');
 
-// 6 Paket Top Up Diamond
+// 6 Paket Top Up Coins
 const DIAMOND_PACKAGES = {
   diamond_50: {
     id: 'diamond_50',
-    name: '50 Diamond',
+    name: '50 Coins',
     diamonds: 50,
+    coins: 50,
     price: 5000,
     formattedPrice: 'Rp 5.000',
-    description: 'Paket pemula untuk mencoba item & avatar baru.'
+    description: 'Paket pemula untuk mencoba item & avatar baru.',
+    icon: 'coin'
   },
   diamond_120: {
     id: 'diamond_120',
-    name: '120 Diamond',
+    name: '120 Coins',
     diamonds: 120,
+    coins: 120,
     price: 10000,
     formattedPrice: 'Rp 10.000',
     description: 'Paket hemat paling diminati pemain!',
-    badge: 'Populer'
+    badge: 'Populer',
+    icon: 'coin'
   },
   diamond_260: {
     id: 'diamond_260',
-    name: '260 Diamond',
+    name: '260 Coins',
     diamonds: 260,
+    coins: 260,
     price: 20000,
     formattedPrice: 'Rp 20.000',
-    description: 'Cukup untuk beli dice, emote, dan skin spesial.'
+    description: 'Cukup untuk beli dice, emote, dan skin spesial.',
+    icon: 'coin'
   },
   diamond_700: {
     id: 'diamond_700',
-    name: '700 Diamond',
+    name: '700 Coins',
     diamonds: 700,
-    price: 5000,
+    coins: 700,
     price: 50000,
     formattedPrice: 'Rp 50.000',
-    description: 'Dapatkan 600 + Bonus 100 Diamond.',
-    badge: 'Bonus 100'
+    description: 'Dapatkan 600 + Bonus 100 Coins.',
+    badge: 'Bonus 100',
+    icon: 'coin'
   },
   diamond_1500: {
     id: 'diamond_1500',
-    name: '1.500 Diamond',
+    name: '1.500 Coins',
     diamonds: 1500,
+    coins: 1500,
     price: 100000,
     formattedPrice: 'Rp 100.000',
-    description: 'Dapatkan 1.250 + Bonus 250 Diamond.',
-    badge: 'Bonus 250'
+    description: 'Dapatkan 1.250 + Bonus 250 Coins.',
+    badge: 'Bonus 250',
+    icon: 'coin'
   },
   diamond_3250: {
     id: 'diamond_3250',
-    name: '3.250 Diamond',
+    name: '3.250 Coins',
     diamonds: 3250,
+    coins: 3250,
     price: 200000,
     formattedPrice: 'Rp 200.000',
-    description: 'Paket Sultan! Dapatkan 2.500 + Bonus 750 Diamond.',
-    badge: 'Bonus 750'
+    description: 'Paket Sultan! Dapatkan 2.500 + Bonus 750 Coins.',
+    badge: 'Bonus 750',
+    icon: 'crown'
   }
 };
+
+const COIN_PACKAGES = DIAMOND_PACKAGES;
 
 function getDuitkuConfig() {
   const merchantCode = process.env.DUITKU_MERCHANT_CODE || '';
@@ -242,6 +255,7 @@ async function checkDuitkuStatus(orderId) {
 
 module.exports = {
   DIAMOND_PACKAGES,
+  COIN_PACKAGES,
   getDuitkuConfig,
   createInvoice,
   verifyDuitkuCallback,

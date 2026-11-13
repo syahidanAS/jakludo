@@ -67,7 +67,7 @@ function GlobalLeaderboardSection({ onOpenLeaderboard }) {
           <div>
             <h3 style={{ margin: 0, fontSize: 'var(--fs-lg)' }}>Peringkat Global PlayGo</h3>
             <p className="muted" style={{ margin: '2px 0 0', fontSize: 'var(--fs-xs)' }}>
-              Pemain terbaik dengan kemenangan dan poin terbanyak
+              Pemain terbaik dengan kemenangan dan Coins terbanyak
             </p>
           </div>
         </div>
@@ -143,7 +143,7 @@ function GlobalLeaderboardSection({ onOpenLeaderboard }) {
                   <>
                     <span><strong>{player.wins}</strong> menang</span>
                     <span className="lb-row__points">
-                      <Icon name="diamond" size={14} /> {player.points}
+                      <Icon name="coin" size={14} /> {player.points}
                     </span>
                   </>
                 )}
@@ -309,7 +309,7 @@ export default function HomeScreen({
             ) : (
               <>
                 <h2 className="play-card__title">Masuk ke PlayGo untuk bermain</h2>
-                <p className="muted">Akun dipakai untuk menyimpan poin, item toko, dan posisimu di peringkat.</p>
+                <p className="muted">Akun dipakai untuk menyimpan Coins, item toko, dan posisimu di peringkat.</p>
                 <button type="button" className="btn btn--primary btn--lg btn--block" onClick={onOpenAuth}>
                   Masuk atau daftar
                 </button>
@@ -337,7 +337,7 @@ export default function HomeScreen({
         <section className="playgo-auth-box card card--focus" aria-label="Masuk ke PlayGo">
           <h2 className="play-card__title">Masuk ke PlayGo</h2>
           <p className="muted">
-            Masuk atau daftar akun PlayGo untuk mengakses seluruh daftar game, menyimpan poin, item toko, teman, grup, dan papan peringkat.
+            Masuk atau daftar akun PlayGo untuk mengakses seluruh daftar game, menyimpan Coins, item toko, teman, grup, dan papan peringkat.
           </p>
           <button type="button" className="btn btn--primary btn--lg btn--block" onClick={onOpenAuth}>
             Masuk atau Daftar Akun

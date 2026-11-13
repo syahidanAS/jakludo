@@ -110,7 +110,7 @@ function AccountMenu({
                 </strong>
                 <span className="muted">@{user.username}</span>
                 <span className="badge badge--brand">
-                  <Icon name="diamond" size={14} /> {user.points ?? 0} poin
+                  <Icon name="coin" size={14} /> {user.points ?? 0} Coins
                 </span>
               </div>
             </div>
@@ -234,8 +234,8 @@ export default function AppHeader({
       <div className="app-header__actions">
         <NetworkIndicator {...network} />
         {user && (
-          <span className="badge badge--brand app-header__points" title="Poin kamu">
-            <Icon name="diamond" size={14} /> {user.points ?? 0}
+          <span className="badge badge--brand app-header__points" title="Coins kamu">
+            <Icon name="coin" size={14} /> {user.points ?? 0}
           </span>
         )}
         {onOpenFriends && (
