@@ -868,7 +868,7 @@ test('topup diamonds dengan doku payment gateway (config, charge, verify, notifi
   });
   const qrisBody = await qrisChargeRes.json();
   assert.equal(qrisBody.success, true);
-  assert.ok(qrisBody.payment.qrCodeUrl || qrisBody.payment.qrString);
+  assert.ok(qrisBody.payment.checkoutUrl || qrisBody.payment.qrCodeUrl || qrisBody.payment.qrString);
 
   // 7. Test paket 3.250 diamonds (Paket Sultan)
   const sultanRes = await fetch(`${url}/api/topup/create`, {

@@ -144,7 +144,8 @@ function getDokuConfig() {
   const secretKey = (process.env.DOKU_SECRET_KEY || '').trim();
   const isProduction =
     process.env.DOKU_IS_PRODUCTION === '1' ||
-    process.env.DOKU_IS_PRODUCTION === 'true';
+    process.env.DOKU_IS_PRODUCTION === 'true' ||
+    (clientId.startsWith('BRN-') && process.env.DOKU_IS_PRODUCTION !== 'false');
 
   const baseUrl = isProduction
     ? 'https://api.doku.com'
@@ -165,25 +166,24 @@ function generateDokuHeaders({ clientId, secretKey, requestTarget, body, request
   const timestamp = new Date().toISOString().slice(0, 19) + 'Z';
   const rawBody = typeof body === 'string' ? body : JSON.stringify(body || {});
   const digest = crypto.createHash('sha256').update(rawBody).digest('base64');
-  const digestHeader = `SHA-256=${digest}`;
 
   const component = [
     `Client-Id:${clientId}`,
     `Request-Id:${reqId}`,
     `Request-Timestamp:${timestamp}`,
     `Request-Target:${requestTarget}`,
-    `Digest:${digestHeader}`
+    `Digest:${digest}`
   ].join('\n');
 
   const hmac = crypto.createHmac('sha256', secretKey);
   hmac.update(component);
-  const signature = `HMAC256=${hmac.digest('base64')}`;
+  const signature = `HMACSHA256=${hmac.digest('base64')}`;
 
   return {
     'Client-Id': clientId,
     'Request-Id': reqId,
     'Request-Timestamp': timestamp,
-    'Digest': digestHeader,
+    'Digest': digest,
     'Signature': signature,
     'Content-Type': 'application/json'
   };
@@ -222,8 +222,8 @@ async function chargeTransaction({ orderId, pkg, user, methodId = 'qris' }) {
 
   const selectedMethod = PAYMENT_METHODS.find(m => m.id === methodId) || PAYMENT_METHODS[0];
 
-  // 1. DOKU CHECKOUT (Hosted Page / Modal)
-  if (selectedMethod.id === 'doku_checkout') {
+  // Helper untuk membuat sesi Doku Checkout
+  async function createDokuCheckoutSession() {
     const requestTarget = '/checkout/v1/payment';
     const payload = {
       order: {
@@ -285,142 +285,78 @@ async function chargeTransaction({ orderId, pkg, user, methodId = 'qris' }) {
     };
   }
 
-  // 2. DOKU QRIS DIRECT (Merchant Hosted)
-  if (selectedMethod.id === 'qris') {
-    const requestTarget = '/qris-merchant-hosted/v2/generate-qr-code';
+  // 1. DOKU CHECKOUT & QRIS (Melalui Checkout URL Resmi Doku)
+  if (selectedMethod.id === 'doku_checkout' || selectedMethod.id === 'qris') {
+    return await createDokuCheckoutSession();
+  }
+
+  // 2. DOKU VIRTUAL ACCOUNT DIRECT (BRI VA, Doku VA / Bank Lain)
+  const bank = selectedMethod.bank || 'doku';
+  const vaPathMap = {
+    bri: '/bri-virtual-account/v2/payment-code',
+    doku: '/doku-virtual-account/v2/payment-code'
+  };
+
+  const targetPath = vaPathMap[bank] || '/doku-virtual-account/v2/payment-code';
+  try {
     const payload = {
       order: {
         invoice_number: orderId,
         amount: pkg.price
       },
-      payment: {
-        payment_due_date: 60
+      virtual_account_info: {
+        expired_time: 60,
+        reusable_status: false,
+        info1: 'PlayGo Diamonds',
+        info2: `${pkg.diamonds} Diamonds`
+      },
+      customer: {
+        name: user.name || user.username,
+        email: user.email || `${user.username}@playgo.game`
       }
     };
 
     const headers = generateDokuHeaders({
       clientId: config.clientId,
       secretKey: config.secretKey,
-      requestTarget,
+      requestTarget: targetPath,
       body: payload
     });
 
-    const res = await fetch(`${config.baseUrl}${requestTarget}`, {
+    const res = await fetch(`${config.baseUrl}${targetPath}`, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload)
     });
 
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const errorMsg = data?.error?.message || data?.message || `Doku QRIS Error (${res.status})`;
-      throw new Error(errorMsg);
+    if (res.ok && data.virtual_account_info?.virtual_account_number) {
+      const vaInfo = data.virtual_account_info;
+      return {
+        success: true,
+        orderId,
+        transactionId: data.order?.invoice_number || orderId,
+        paymentType: 'virtual_account',
+        methodId: selectedMethod.id,
+        methodName: selectedMethod.name,
+        grossAmount: pkg.price,
+        status: 'pending',
+        gateway: 'doku',
+        vaNumber: vaInfo.virtual_account_number,
+        bank: bank === 'bri' ? 'bri' : 'doku',
+        howToPayPage: vaInfo.how_to_pay_page || null,
+        howToPayApi: vaInfo.how_to_pay_api || null,
+        expiryTime: vaInfo.expired_date || new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        qrCodeUrl: null,
+        qrString: null
+      };
     }
-
-    const qrContent =
-      data.qris_data?.qr_content ||
-      data.payment_instruction?.qr_content ||
-      data.qr_content ||
-      null;
-
-    let qrCodeUrl =
-      data.qris_data?.qr_image_url ||
-      data.payment_instruction?.qr_image_url ||
-      data.qr_image_url ||
-      null;
-
-    // Jika Doku mengembalikan string QRIS EMVCo murni, generate QR image URL yang scan-ready
-    if (!qrCodeUrl && qrContent) {
-      qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(qrContent)}`;
-    }
-
-    return {
-      success: true,
-      orderId,
-      transactionId: data.order?.invoice_number || orderId,
-      paymentType: 'qris',
-      methodId: selectedMethod.id,
-      methodName: selectedMethod.name,
-      grossAmount: pkg.price,
-      status: 'pending',
-      gateway: 'doku',
-      qrCodeUrl,
-      qrString: qrContent,
-      expiryTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      vaNumber: null,
-      bank: null
-    };
+  } catch (err) {
+    console.warn('[DOKU DIRECT VA WARN]', err.message);
   }
 
-  // 3. DOKU VIRTUAL ACCOUNT DIRECT (BCA, Mandiri, BNI, BRI, Permata, Doku VA)
-  const bank = selectedMethod.bank || 'doku';
-  const vaPathMap = {
-    bca: '/bca-virtual-account/v2/payment-code',
-    mandiri: '/mandiri-virtual-account/v2/payment-code',
-    bni: '/bni-virtual-account/v2/payment-code',
-    bri: '/bri-virtual-account/v2/payment-code',
-    permata: '/permata-virtual-account/v2/payment-code',
-    doku: '/doku-virtual-account/v2/payment-code'
-  };
-
-  const requestTarget = vaPathMap[bank] || vaPathMap.doku;
-  const payload = {
-    order: {
-      invoice_number: orderId,
-      amount: pkg.price
-    },
-    virtual_account_info: {
-      expired_time: 60,
-      reusable_status: false,
-      info1: 'PlayGo Diamonds',
-      info2: `${pkg.diamonds} Diamonds`
-    },
-    customer: {
-      name: user.name || user.username,
-      email: user.email || `${user.username}@playgo.game`
-    }
-  };
-
-  const headers = generateDokuHeaders({
-    clientId: config.clientId,
-    secretKey: config.secretKey,
-    requestTarget,
-    body: payload
-  });
-
-  const res = await fetch(`${config.baseUrl}${requestTarget}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload)
-  });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const errorMsg = data?.error?.message || data?.message || `Doku Virtual Account Error (${res.status})`;
-    throw new Error(errorMsg);
-  }
-
-  const vaInfo = data.virtual_account_info || {};
-  const vaNumber = vaInfo.virtual_account_number || null;
-
-  return {
-    success: true,
-    orderId,
-    transactionId: data.order?.invoice_number || orderId,
-    paymentType: 'virtual_account',
-    methodId: selectedMethod.id,
-    methodName: selectedMethod.name,
-    grossAmount: pkg.price,
-    status: 'pending',
-    gateway: 'doku',
-    vaNumber,
-    bank,
-    howToPayPage: vaInfo.how_to_pay_page || null,
-    howToPayApi: vaInfo.how_to_pay_api || null,
-    expiryTime: vaInfo.expired_date || new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-    qrCodeUrl: null,
-    qrString: null
-  };
+  // Fallback ke Doku Checkout session jika direct VA tidak aktif
+  return await createDokuCheckoutSession();
 }
 
 // Verifikasi signature webhook notifikasi Doku
@@ -489,3 +425,4 @@ module.exports = {
   verifyDokuSignature,
   checkDokuStatus
 };
+
