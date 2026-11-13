@@ -27,6 +27,16 @@ if (process.env.TRUST_PROXY && process.env.TRUST_PROXY !== '0') {
 // Klien dilayani dari origin yang sama (Vite dev memakai proxy). CORS hanya dibuka bila diminta.
 const corsOrigin = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(s => s.trim()) : null;
 if (corsOrigin) app.use(cors({ origin: corsOrigin }));
+
+// Security Headers (Proteksi Clickjacking, MIME-Sniffing, dan XSS)
+app.use((req, res, next) => {
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
 app.use(express.json({ limit: '10kb' }));
 
 const server = http.createServer(app);
@@ -144,7 +154,7 @@ const GAME_SSR_META = {
   'monster-quiz': {
     title: 'Monster Quiz Battle (Duel Kuis RPG 2–3 Pemain) · PlayGo Multiplayer',
     description:
-      'Adu cepat pengetahuan umum & matematika di Monster Quiz Battle PlayGo! Pilih monster andalanmu, gunakan Hints Jawaban (50:50), serang monster lawan, dan raih +10 poin setiap menang!',
+      'Adu cepat pengetahuan umum & matematika di Monster Quiz Battle PlayGo! Pilih monster andalanmu, gunakan Hints Jawaban (50:50), serang monster lawan, dan raih +10 Coins setiap menang!',
     query: '?game=monster-quiz'
   }
 };

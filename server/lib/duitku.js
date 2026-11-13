@@ -204,18 +204,25 @@ async function createInvoice({ orderId, pkg, user, host = '' }) {
 }
 
 /**
- * Verifikasi signature webhook notifikasi dari Duitku
+ * Verifikasi signature webhook notifikasi dari Duitku secara aman (constant-time)
  * Rumus signature callback: md5(merchantCode + amount + merchantOrderId + apiKey)
  */
 function verifyDuitkuCallback(payload) {
   const config = getDuitkuConfig();
-  if (!config.apiKey) return true; // jika key belum diisi, allow di mode development
+  if (!config.apiKey) {
+    // Hanya izinkan bypass pada mode pengujian internal NODE_ENV === 'test'
+    return process.env.NODE_ENV === 'test';
+  }
 
   const { merchantCode, amount, merchantOrderId, signature } = payload || {};
-  if (!merchantOrderId || !signature) return false;
+  if (!merchantOrderId || !signature || amount === undefined || amount === null) return false;
 
   const expectedSignature = md5(`${merchantCode || config.merchantCode}${amount}${merchantOrderId}${config.apiKey}`);
-  return signature.toLowerCase() === expectedSignature.toLowerCase();
+  const sigBuf = Buffer.from(String(signature).toLowerCase(), 'utf8');
+  const expBuf = Buffer.from(expectedSignature.toLowerCase(), 'utf8');
+
+  if (sigBuf.length !== expBuf.length) return false;
+  return crypto.timingSafeEqual(sigBuf, expBuf);
 }
 
 /**

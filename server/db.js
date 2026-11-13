@@ -1610,32 +1610,49 @@ async function getTopupOrder(orderId) {
 async function completeTopupOrder(orderId, paymentType = 'duitku') {
   const order = await getTopupOrder(orderId);
   if (!order) return { error: 'Order tidak ditemukan' };
-  if (order.status === 'success') {
-    const user = findUserById(order.userId);
-    return { success: true, alreadyCompleted: true, order, user: sanitizeUser(user) };
-  }
 
   const now = new Date().toISOString();
+  const chosenPayment = paymentType || order.paymentType || 'duitku';
+
+  // Atomic update di database PostgreSQL untuk mencegah race condition (double credit)
+  if (pool && !closed) {
+    try {
+      const res = await pool.query(
+        `UPDATE topup_orders
+         SET status = 'success', payment_type = $1, updated_at = $2
+         WHERE order_id = $3 AND status != 'success'
+         RETURNING *`,
+        [chosenPayment, now, orderId]
+      );
+      if (res.rowCount === 0) {
+        // Order sudah diselesaikan sebelumnya oleh request lain (idempotent)
+        const existing = await getTopupOrder(orderId);
+        const user = findUserById(existing ? existing.userId : order.userId);
+        return { success: true, alreadyCompleted: true, order: existing || order, user: sanitizeUser(user) };
+      }
+    } catch (err) {
+      console.error('[DB COMPLETE ORDER ERROR]', err.message);
+      return { error: 'Gagal menyelesaikan order di database.' };
+    }
+  } else {
+    if (order.status === 'success') {
+      const user = findUserById(order.userId);
+      return { success: true, alreadyCompleted: true, order, user: sanitizeUser(user) };
+    }
+  }
+
   order.status = 'success';
-  order.paymentType = paymentType || order.paymentType || 'duitku';
+  order.paymentType = chosenPayment;
   order.updatedAt = now;
   state.topupOrders.set(orderId, order);
   persistLocalFallback();
-
-  if (pool && !closed) {
-    await execPg(
-      `UPDATE topup_orders
-       SET status = 'success', payment_type = $1, updated_at = $2
-       WHERE order_id = $3`,
-      [order.paymentType, now, orderId]
-    );
-  }
 
   const awardResult = awardUserPoints(order.userId, order.diamonds);
   return {
     success: true,
     order,
     diamondsAwarded: order.diamonds,
+    coinsAwarded: order.diamonds,
     user: awardResult ? awardResult.user : sanitizeUser(findUserById(order.userId))
   };
 }

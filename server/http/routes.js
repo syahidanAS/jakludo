@@ -335,6 +335,12 @@ function createApiRouter() {
       return res.status(400).send('Bad Parameter: missing merchantOrderId');
     }
 
+    const order = await db.getTopupOrder(orderId);
+    if (!order) {
+      console.warn('[DUITKU NOTIFICATION] Order not found:', orderId);
+      return res.status(404).send('Bad Parameter: order not found');
+    }
+
     const isValid = duitku.verifyDuitkuCallback(notif);
     if (!isValid) {
       console.warn('[DUITKU NOTIFICATION] Invalid signature for order', orderId);
@@ -343,6 +349,11 @@ function createApiRouter() {
 
     const resultCode = String(notif.resultCode || '');
     if (resultCode === '00') {
+      const paidAmount = Number(notif.amount);
+      if (!isNaN(paidAmount) && paidAmount > 0 && paidAmount !== Number(order.grossAmount)) {
+        console.warn('[DUITKU NOTIFICATION] Amount mismatch for order', orderId, 'expected', order.grossAmount, 'got', paidAmount);
+        return res.status(400).send('Bad Parameter: amount mismatch');
+      }
       const paymentMethod = notif.paymentMethod || notif.payment_method || 'duitku';
       await db.completeTopupOrder(orderId, paymentMethod);
       console.log('[DUITKU NOTIFICATION] Order completed successfully:', orderId);
