@@ -11,14 +11,8 @@ const { registerSocialRoutes } = require('../social/routes');
 const { registerQuizRoutes } = require('../quiz/routes');
 const quizEngine = require('../quiz/engine');
 const social = require('../social/store');
-const {
-  DIAMOND_PACKAGES,
-  PAYMENT_METHODS,
-  getMidtransConfig,
-  chargeTransaction,
-  verifySignature,
-  checkMidtransStatus
-} = require('../lib/midtrans');
+const doku = require('../lib/doku');
+const midtrans = require('../lib/midtrans');
 
 const loginLimiter = createLimiter({ windowMs: 10 * 60 * 1000, max: 20 });
 const registerLimiter = createLimiter({ windowMs: 60 * 60 * 1000, max: Number(process.env.REGISTER_RATE_LIMIT || 30) });
@@ -220,21 +214,25 @@ function createApiRouter() {
   });
 
   // ==========================================
-  // TOPUP DIAMONDS (MIDTRANS CORE API)
+  // TOPUP DIAMONDS (DOKU PAYMENT GATEWAY & MIDTRANS FALLBACK)
   // ==========================================
 
   api.get('/topup/config', (req, res) => {
-    const config = getMidtransConfig();
+    const dokuConfig = doku.getDokuConfig();
+    const midtransConfig = midtrans.getMidtransConfig();
+    const useDoku = dokuConfig.isConfigured || !midtransConfig.isConfigured;
+
     res.json({
       success: true,
-      packages: Object.values(DIAMOND_PACKAGES),
-      paymentMethods: PAYMENT_METHODS,
-      isProduction: config.isProduction,
-      isConfigured: config.isConfigured
+      gateway: useDoku ? 'doku' : 'midtrans',
+      packages: Object.values(useDoku ? doku.DIAMOND_PACKAGES : midtrans.DIAMOND_PACKAGES),
+      paymentMethods: useDoku ? doku.PAYMENT_METHODS : midtrans.PAYMENT_METHODS,
+      isProduction: useDoku ? dokuConfig.isProduction : midtransConfig.isProduction,
+      isConfigured: useDoku ? dokuConfig.isConfigured : midtransConfig.isConfigured
     });
   });
 
-  // Buat transaksi pembayaran langsung menggunakan Midtrans Core API (Charge API)
+  // Buat transaksi pembayaran langsung menggunakan Doku / Payment Gateway
   api.post(['/topup/charge', '/topup/create'], asyncRoute(async (req, res) => {
     const user = requireUser(req, res, 'Silakan login terlebih dahulu untuk melakukan topup diamonds.');
     if (!user) return;
@@ -245,7 +243,7 @@ function createApiRouter() {
       diamond_300: { id: 'diamond_300', name: '300 Diamond', diamonds: 300, price: 150000, formattedPrice: 'Rp 150.000', subtitle: 'Paket lama', description: 'Paket lama', badge: null, icon: 'diamond' },
       diamond_550: { id: 'diamond_550', name: '550 Diamond', diamonds: 550, price: 500000, formattedPrice: 'Rp 500.000', subtitle: 'Paket lama', description: 'Paket lama', badge: null, icon: 'crown' }
     };
-    const pkg = DIAMOND_PACKAGES[packageId] || LEGACY_PACKAGES[packageId];
+    const pkg = doku.DIAMOND_PACKAGES[packageId] || LEGACY_PACKAGES[packageId] || midtrans.DIAMOND_PACKAGES[packageId];
     if (!pkg) {
       return res.status(400).json({ success: false, error: 'Paket diamond tidak valid.' });
     }
@@ -253,12 +251,26 @@ function createApiRouter() {
     const orderId = `TOPUP-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
     try {
-      const chargeRes = await chargeTransaction({
-        orderId,
-        pkg,
-        user,
-        methodId: methodId || 'qris'
-      });
+      const dokuConfig = doku.getDokuConfig();
+      const midtransConfig = midtrans.getMidtransConfig();
+      const useDoku = dokuConfig.isConfigured || !midtransConfig.isConfigured;
+
+      let chargeRes;
+      if (useDoku) {
+        chargeRes = await doku.chargeTransaction({
+          orderId,
+          pkg,
+          user,
+          methodId: methodId || 'qris'
+        });
+      } else {
+        chargeRes = await midtrans.chargeTransaction({
+          orderId,
+          pkg,
+          user,
+          methodId: methodId || 'qris'
+        });
+      }
 
       await db.createTopupOrder({
         orderId,
@@ -266,7 +278,7 @@ function createApiRouter() {
         packageId: pkg.id,
         diamonds: pkg.diamonds,
         grossAmount: pkg.price,
-        paymentType: chargeRes.paymentType,
+        paymentType: chargeRes.paymentType || (useDoku ? 'doku' : 'midtrans'),
         paymentDetails: chargeRes
       });
 
@@ -275,13 +287,13 @@ function createApiRouter() {
         orderId,
         package: pkg,
         payment: chargeRes,
-        // Backward-compat aliases
+        gateway: useDoku ? 'doku' : 'midtrans',
         snapToken: chargeRes.transactionId,
         isSimulation: chargeRes.isSimulation || false
       });
     } catch (err) {
       console.error('[TOPUP CHARGE ERROR]', err.message);
-      res.status(500).json({ success: false, error: err.message || 'Gagal memproses pembayaran Midtrans Core API.' });
+      res.status(500).json({ success: false, error: err.message || 'Gagal memproses pembayaran Doku.' });
     }
   }));
 
@@ -297,10 +309,45 @@ function createApiRouter() {
     res.json({ success: true, order });
   }));
 
-  // Webhook notifikasi Midtrans
+  // Webhook notifikasi Doku & Midtrans
   api.post('/topup/notification', asyncRoute(async (req, res) => {
     const notif = req.body || {};
-    const orderId = notif.order_id;
+    const orderId = notif.order?.invoice_number || notif.invoice_number || notif.order_id;
+
+    if (!orderId) {
+      return res.status(400).json({ status: 'ERROR', message: 'order_id or invoice_number missing' });
+    }
+
+    // 1. Cek apakah notifikasi berasal dari Doku (Jokul)
+    const isDoku = Boolean(notif.service || notif.channel || notif.order?.invoice_number || req.headers['client-id']);
+    if (isDoku) {
+      const dokuConfig = doku.getDokuConfig();
+      if (dokuConfig.secretKey) {
+        const isValid = doku.verifyDokuSignature({
+          headers: req.headers,
+          body: notif,
+          rawBody: JSON.stringify(notif)
+        });
+        if (!isValid && req.headers['signature']) {
+          console.warn('[DOKU NOTIFICATION] Invalid signature for order', orderId);
+          return res.status(403).json({ status: 'ERROR', message: 'Invalid Doku signature' });
+        }
+      }
+
+      const isDokuSuccess =
+        notif.transaction?.status === 'SUCCESS' ||
+        notif.transaction_status === 'SUCCESS' ||
+        notif.status === 'SUCCESS';
+
+      if (isDokuSuccess) {
+        const paymentType = notif.channel?.id || notif.payment_type || 'doku';
+        await db.completeTopupOrder(orderId, paymentType);
+      }
+
+      return res.json({ status: 'OK' });
+    }
+
+    // 2. Fallback untuk Midtrans notification
     const statusCode = notif.status_code;
     const grossAmount = notif.gross_amount;
     const signatureKey = notif.signature_key;
@@ -308,13 +355,8 @@ function createApiRouter() {
     const fraudStatus = notif.fraud_status;
     const paymentType = notif.payment_type;
 
-    if (!orderId) {
-      return res.status(400).json({ status: 'ERROR', message: 'order_id missing' });
-    }
-
-    // Verifikasi tanda tangan jika server key diset
-    const config = getMidtransConfig();
-    if (config.serverKey && !verifySignature({ orderId, statusCode, grossAmount, signatureKey })) {
+    const midtransConfig = midtrans.getMidtransConfig();
+    if (midtransConfig.serverKey && !midtrans.verifySignature({ orderId, statusCode, grossAmount, signatureKey })) {
       console.warn('[MIDTRANS NOTIFICATION] Invalid signature for order', orderId);
       return res.status(403).json({ status: 'ERROR', message: 'Invalid signature' });
     }
@@ -350,9 +392,27 @@ function createApiRouter() {
       return res.json({ success: true, status: 'success', user: withKing(freshUser), diamonds: order.diamonds });
     }
 
-    // Coba polling status ke Midtrans API secara realtime
+    // Coba polling status ke Doku Status API / Midtrans Status API secara realtime
     try {
-      const midtransStatus = await checkMidtransStatus(orderId);
+      const dokuStatus = await doku.checkDokuStatus(orderId);
+      if (dokuStatus) {
+        const isDokuSuccess =
+          dokuStatus.transaction?.status === 'SUCCESS' ||
+          dokuStatus.order?.status === 'SUCCESS' ||
+          dokuStatus.status === 'SUCCESS';
+
+        if (isDokuSuccess) {
+          const completed = await db.completeTopupOrder(orderId, 'doku');
+          return res.json({
+            success: true,
+            status: 'success',
+            user: withKing(completed.user),
+            diamonds: order.diamonds
+          });
+        }
+      }
+
+      const midtransStatus = await midtrans.checkMidtransStatus(orderId);
       if (midtransStatus) {
         const isSuccess =
           midtransStatus.transaction_status === 'settlement' ||

@@ -68,7 +68,11 @@ services:
       # Google OAuth 2.0 (Sign-In with Google)
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
-      # Midtrans Payment Gateway
+      # Doku Payment Gateway
+      - DOKU_CLIENT_ID=${DOKU_CLIENT_ID:-}
+      - DOKU_SECRET_KEY=${DOKU_SECRET_KEY:-}
+      - DOKU_IS_PRODUCTION=${DOKU_IS_PRODUCTION:-0}
+      # Midtrans Payment Gateway (Legacy Fallback)
       - MIDTRANS_SERVER_KEY=${MIDTRANS_SERVER_KEY:-}
       - MIDTRANS_CLIENT_KEY=${MIDTRANS_CLIENT_KEY:-}
       - MIDTRANS_IS_PRODUCTION=${MIDTRANS_IS_PRODUCTION:-0}

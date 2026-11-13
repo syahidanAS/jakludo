@@ -771,7 +771,7 @@ test('Update profil: nama, username, email, dan password', async () => {
   assert.equal(loginBody.user.id, user.id);
 });
 
-test('topup diamonds dengan midtrans core api (config, charge, verify, simulate, points award)', async () => {
+test('topup diamonds dengan doku payment gateway (config, charge, verify, notification, simulate, points award)', async () => {
   // 1. GET /api/topup/config
   const cfgRes = await fetch(`${url}/api/topup/config`);
   assert.equal(cfgRes.status, 200);
@@ -811,7 +811,7 @@ test('topup diamonds dengan midtrans core api (config, charge, verify, simulate,
   const token = reg.token;
   const initialPoints = reg.user.points; // default starter points (200)
 
-  // 3. Charge topup order untuk paket 120 diamonds via BCA Virtual Account (Core API)
+  // 3. Charge topup order untuk paket 120 diamonds via BCA Virtual Account (Doku)
   const chargeRes = await fetch(`${url}/api/topup/charge`, {
     method: 'POST',
     headers: {
@@ -893,4 +893,37 @@ test('topup diamonds dengan midtrans core api (config, charge, verify, simulate,
   const simSultanBody = await simSultanRes.json();
   assert.equal(simSultanBody.diamondsAwarded, 3250);
   assert.equal(simSultanBody.user.points, initialPoints + 120 + 3250);
+
+  // 8. Test Webhook Notifikasi Doku untuk paket 260 diamonds
+  const notifOrderRes = await fetch(`${url}/api/topup/charge`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ packageId: 'diamond_260', methodId: 'bca_va' })
+  });
+  const notifOrderBody = await notifOrderRes.json();
+  assert.equal(notifOrderBody.success, true);
+
+  const dokuNotifRes = await fetch(`${url}/api/topup/notification`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Client-Id': 'MOCK-DOKU-CLIENT'
+    },
+    body: JSON.stringify({
+      service: { id: 'ONLINE_PAYMENT' },
+      order: { invoice_number: notifOrderBody.orderId, amount: 20000 },
+      transaction: { status: 'SUCCESS' },
+      channel: { id: 'VIRTUAL_ACCOUNT_BCA' }
+    })
+  });
+  assert.equal(dokuNotifRes.status, 200);
+
+  const finalUserRes = await fetch(`${url}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  const finalUserData = await finalUserRes.json();
+  assert.equal(finalUserData.user.points, initialPoints + 120 + 3250 + 260);
 });

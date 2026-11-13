@@ -84,40 +84,52 @@ const DEFAULT_PAYMENT_METHODS = [
   {
     id: 'qris',
     name: 'QRIS (Semua E-Wallet & M-Banking)',
-    description: 'Scan langsung via GoPay, OVO, DANA, ShopeePay, BCA Mobile, dll.',
+    description: 'Scan langsung via GoPay, OVO, DANA, ShopeePay, BCA Mobile, Livin, dll.',
     icon: 'qr',
     badge: 'Instan'
   },
   {
     id: 'bca_va',
     name: 'BCA Virtual Account',
-    description: 'BCA Mobile, myBCA, KlikBCA, atau ATM BCA',
+    description: 'Transfer 24 jam via BCA Mobile, myBCA, KlikBCA, atau ATM BCA.',
     icon: 'bank',
     badge: 'Populer'
   },
   {
+    id: 'mandiri_va',
+    name: 'Mandiri Virtual Account',
+    description: 'Transfer via Livin by Mandiri atau ATM Mandiri.',
+    icon: 'bank'
+  },
+  {
     id: 'bni_va',
     name: 'BNI Virtual Account',
-    description: 'BNI Mobile Banking, Internet Banking, atau ATM BNI',
+    description: 'Transfer via BNI Mobile Banking, Internet Banking, atau ATM BNI.',
     icon: 'bank'
   },
   {
     id: 'bri_va',
     name: 'BRI Virtual Account (BRIVA)',
-    description: 'BRImo, Internet Banking BRI, atau ATM BRI',
-    icon: 'bank'
-  },
-  {
-    id: 'mandiri_bill',
-    name: 'Mandiri Bill',
-    description: 'Livin by Mandiri (Kode Perusahaan + Kode Bayar)',
+    description: 'Transfer via BRImo, Internet Banking BRI, atau ATM BRI.',
     icon: 'bank'
   },
   {
     id: 'permata_va',
     name: 'Permata Virtual Account',
-    description: 'PermataMobile X atau ATM Bersama / ALTO / Prima',
+    description: 'Transfer via PermataMobile X atau ATM Bersama / ALTO / Prima.',
     icon: 'bank'
+  },
+  {
+    id: 'doku_va',
+    name: 'Doku Virtual Account (Bank Lain)',
+    description: 'Transfer dari bank lain via ATM Bersama, Prima, atau ALTO.',
+    icon: 'bank'
+  },
+  {
+    id: 'doku_checkout',
+    name: 'Doku Checkout (Semua Metode)',
+    description: 'Buka halaman resmi Doku lengkap dengan Kartu Kredit & E-Wallet.',
+    icon: 'card'
   }
 ];
 
@@ -178,7 +190,7 @@ function TopupPackageCard({ pkg, currentUser, onSelectPackage }) {
             <h3>{pkg.name}</h3>
             {pkg.badge && <span className={`badge ${badgeClass}`}>{pkg.badge}</span>}
           </div>
-          <p className="muted">{pkg.subtitle || pkg.description || 'Midtrans Core API'}</p>
+          <p className="muted">{pkg.subtitle || pkg.description || 'Doku Payment'}</p>
         </div>
       </div>
       <div className="shop-item__buy">
@@ -470,18 +482,37 @@ export default function ShopModal({
           </div>
 
           <div className="topup-pay-screen">
-            {/* TAMPILAN 1A: QRIS */}
+            {/* TAMPILAN 1A: DOKU CHECKOUT URL */}
+            {activePayment.checkoutUrl && (
+              <div className="topup-checkout-box" style={{ textAlign: 'center', padding: 'var(--space-4)', background: 'var(--surface-2)', borderRadius: 'var(--radius-sm)' }}>
+                <h4 style={{ margin: '0 0 var(--space-2)' }}>Halaman Pembayaran Doku Checkout Siap</h4>
+                <p className="muted" style={{ margin: '0 0 var(--space-3)', maxWidth: 440, fontSize: 'var(--fs-sm)' }}>
+                  Klik tombol di bawah untuk membuka halaman pembayaran Doku resmi yang aman. Anda dapat membayar dengan Kartu Kredit, E-Wallet, atau Bank.
+                </p>
+                <a
+                  href={activePayment.checkoutUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn--primary"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '12px 24px', fontSize: 'var(--fs-md)', textDecoration: 'none' }}
+                >
+                  <span>Buka Halaman Pembayaran Doku ↗</span>
+                </a>
+              </div>
+            )}
+
+            {/* TAMPILAN 1B: QRIS */}
             {activePayment.qrCodeUrl && (
               <>
                 <h4 style={{ margin: 0 }}>Scan QRIS untuk Menyelesaikan Pembayaran</h4>
                 <div className="topup-qr-container">
                   <img
                     src={activePayment.qrCodeUrl}
-                    alt="QRIS Midtrans PlayGo"
+                    alt="QRIS Doku PlayGo"
                     className="topup-qr-image"
                   />
                   <div style={{ fontWeight: 700, fontSize: 'var(--fs-sm)', color: '#333' }}>
-                    NMID: PlayGo Indonesia
+                    NMID: PlayGo Indonesia (Doku)
                   </div>
                 </div>
                 <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: 0, maxWidth: 440 }}>
@@ -490,7 +521,7 @@ export default function ShopModal({
               </>
             )}
 
-            {/* TAMPILAN 1B: VIRTUAL ACCOUNT (BCA, BNI, BRI, PERMATA) */}
+            {/* TAMPILAN 1C: VIRTUAL ACCOUNT (BCA, MANDIRI, BNI, BRI, PERMATA, DOKU) */}
             {activePayment.vaNumber && (
               <>
                 <h4 style={{ margin: 0 }}>
@@ -591,7 +622,7 @@ export default function ShopModal({
           </div>
 
           <div>
-            <h4 style={{ margin: '0 0 var(--space-2)' }}>Pilih Metode Pembayaran (Midtrans Core API):</h4>
+            <h4 style={{ margin: '0 0 var(--space-2)' }}>Pilih Metode Pembayaran (Doku Payment Gateway):</h4>
             <div className="topup-methods-grid">
               {paymentMethods.map(m => {
                 const isSelected = selectedMethodId === m.id;
@@ -606,7 +637,7 @@ export default function ShopModal({
                     }}
                   >
                     <span style={{ fontSize: '1.4rem' }}>
-                      {m.id === 'qris' ? '📱' : '🏦'}
+                      {m.id === 'qris' ? '📱' : m.id === 'doku_checkout' ? '💳' : '🏦'}
                     </span>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -726,7 +757,7 @@ export default function ShopModal({
 
           {/* Bagian Top Up Diamonds (Muncul di tab 'all' atau tab khusus 'topup') */}
           {(selectedCategory === 'all' || selectedCategory === 'topup') && (
-            <section className="shop__group" aria-label="Top Up Diamonds Midtrans">
+            <section className="shop__group" aria-label="Top Up Diamonds Doku">
               <div className="shop__group-header shop__group-header--topup">
                 <div>
                   <h3 className="shop__group-title">
@@ -734,11 +765,11 @@ export default function ShopModal({
                     <span>Top Up Diamonds PlayGo</span>
                   </h3>
                   <p className="shop__group-desc">
-                    Beli diamonds/points instan via Midtrans Core API (QRIS &amp; Virtual Account).
+                    Beli diamonds/points instan via Doku Payment Gateway (QRIS, Virtual Account &amp; Checkout).
                   </p>
                 </div>
                 <span className="badge badge--popular">
-                  Midtrans Core API
+                  Doku Payment
                 </span>
               </div>
 
@@ -754,8 +785,8 @@ export default function ShopModal({
               </ul>
 
               <div className="shop__midtrans-banner">
-                <span>🛡️ Pembayaran otomatis terverifikasi via <strong>Midtrans Core API</strong></span>
-                <span>QRIS · BCA VA · BNI VA · BRI VA · Mandiri Bill · Permata</span>
+                <span>🛡️ Pembayaran otomatis terverifikasi via <strong>Doku Payment Gateway</strong></span>
+                <span>QRIS · BCA VA · Mandiri VA · BNI VA · BRI VA · Permata · Doku VA · Checkout</span>
               </div>
             </section>
           )}
