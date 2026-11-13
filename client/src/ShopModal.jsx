@@ -80,27 +80,26 @@ const DEFAULT_DIAMOND_PACKAGES = [
   }
 ];
 
-function loadMidtransSnap(snapJsUrl, clientKey) {
+function loadDuitkuPop(popJsUrl) {
   return new Promise((resolve, reject) => {
-    if (window.snap) return resolve(window.snap);
-    const scriptId = 'midtrans-snap-script';
+    if (window.checkout && window.checkout.process) return resolve(window.checkout);
+    const scriptId = 'duitku-pop-script';
     let script = document.getElementById(scriptId);
     if (script) {
-      if (window.snap) return resolve(window.snap);
-      script.addEventListener('load', () => resolve(window.snap));
-      script.addEventListener('error', () => reject(new Error('Gagal memuat Snap Midtrans')));
+      if (window.checkout && window.checkout.process) return resolve(window.checkout);
+      script.addEventListener('load', () => resolve(window.checkout));
+      script.addEventListener('error', () => reject(new Error('Gagal memuat Duitku POP')));
       return;
     }
     script = document.createElement('script');
     script.id = scriptId;
-    script.src = snapJsUrl || 'https://app.sandbox.midtrans.com/snap/snap.js';
-    if (clientKey) script.setAttribute('data-client-key', clientKey);
+    script.src = popJsUrl || 'https://app-sandbox.duitku.com/lib/js/duitku.js';
     script.async = true;
     script.onload = () => {
-      if (window.snap) resolve(window.snap);
-      else reject(new Error('Midtrans Snap tidak tersedia'));
+      if (window.checkout && window.checkout.process) resolve(window.checkout);
+      else reject(new Error('Duitku POP tidak tersedia'));
     };
-    script.onerror = () => reject(new Error('Koneksi Midtrans Snap gagal'));
+    script.onerror = () => reject(new Error('Koneksi Duitku POP gagal'));
     document.head.appendChild(script);
   });
 }
@@ -162,7 +161,7 @@ function TopupPackageCard({ pkg, currentUser, topupLoadingId, onTopup }) {
             <h3>{pkg.name}</h3>
             {pkg.badge && <span className={`badge ${badgeClass}`}>{pkg.badge}</span>}
           </div>
-          <p className="muted">{pkg.subtitle || pkg.description || 'Midtrans Snap'}</p>
+          <p className="muted">{pkg.subtitle || pkg.description || 'Duitku Payment'}</p>
         </div>
       </div>
       <div className="shop-item__buy">
@@ -196,7 +195,7 @@ export default function ShopModal({
   const [feedback, setFeedback] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(initialGame || 'all');
   const [diamondPackages, setDiamondPackages] = useState(DEFAULT_DIAMOND_PACKAGES);
-  const [snapConfig, setSnapConfig] = useState(null);
+  const [popConfig, setPopConfig] = useState(null);
 
   const catalog = useItemCatalogState();
 
@@ -219,9 +218,9 @@ export default function ShopModal({
         if (Array.isArray(data.packages) && data.packages.length > 0) {
           setDiamondPackages(data.packages);
         }
-        setSnapConfig(data);
-        if (data.snapJsUrl && data.clientKey) {
-          loadMidtransSnap(data.snapJsUrl, data.clientKey).catch(() => {});
+        setPopConfig(data);
+        if (data.popJsUrl) {
+          loadDuitkuPop(data.popJsUrl).catch(() => {});
         }
       })
       .catch(() => {});
@@ -302,67 +301,77 @@ export default function ShopModal({
         throw new Error(data.error || 'Gagal memulai transaksi top up.');
       }
 
-      const snapJsUrl = data.snapJsUrl || snapConfig?.snapJsUrl;
-      const clientKey = data.clientKey || snapConfig?.clientKey;
-      await loadMidtransSnap(snapJsUrl, clientKey);
-
-      if (!window.snap) {
-        throw new Error('Midtrans Snap tidak dapat dimuat di browser.');
+      const popJsUrl = data.popJsUrl || popConfig?.popJsUrl;
+      try {
+        await loadDuitkuPop(popJsUrl);
+      } catch (err) {
+        console.warn('Gagal memuat Duitku POP script:', err.message);
       }
 
-      window.snap.pay(data.snapToken || data.token, {
-        onSuccess: async () => {
-          try {
-            const verifyRes = await fetch('/api/topup/verify', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-              body: JSON.stringify({ orderId: data.orderId })
-            });
-            const verifyData = await verifyRes.json().catch(() => ({}));
-            sound.playShopPurchase();
-            setFeedback({
-              type: 'success',
-              message: `Pembayaran berhasil! +${pkg.diamonds} Diamonds telah ditambahkan ke akunmu.`
-            });
-            if (verifyData.user) onUpdateUser?.(verifyData.user);
-          } catch {
-            setFeedback({
-              type: 'success',
-              message: `Pembayaran berhasil diterima oleh Midtrans!`
-            });
-          }
-        },
-        onPending: () => {
-          setFeedback({
-            type: 'info',
-            message: `Pesanan ${data.orderId} sedang menunggu pembayaran. Selesaikan pembayaran sesuai instruksi Midtrans.`
-          });
-        },
-        onError: () => {
-          setFeedback({
-            type: 'error',
-            message: 'Pembayaran Midtrans gagal atau dibatalkan.'
-          });
-        },
-        onClose: async () => {
-          try {
-            const checkRes = await fetch('/api/topup/verify', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-              body: JSON.stringify({ orderId: data.orderId })
-            });
-            const checkData = await checkRes.json().catch(() => ({}));
-            if (checkData?.status === 'success' && checkData.user) {
+      if (window.checkout && window.checkout.process && data.reference) {
+        window.checkout.process(data.reference, {
+          defaultLanguage: 'id',
+          successEvent: async function () {
+            try {
+              const verifyRes = await fetch('/api/topup/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ orderId: data.orderId })
+              });
+              const verifyData = await verifyRes.json().catch(() => ({}));
               sound.playShopPurchase();
               setFeedback({
                 type: 'success',
                 message: `Pembayaran berhasil! +${pkg.diamonds} Diamonds telah ditambahkan ke akunmu.`
               });
-              onUpdateUser?.(checkData.user);
+              if (verifyData.user) onUpdateUser?.(verifyData.user);
+            } catch {
+              setFeedback({
+                type: 'success',
+                message: 'Pembayaran berhasil diterima oleh Duitku!'
+              });
             }
-          } catch {}
-        }
-      });
+          },
+          pendingEvent: function () {
+            setFeedback({
+              type: 'info',
+              message: `Pesanan ${data.orderId} sedang menunggu pembayaran. Selesaikan pembayaran sesuai instruksi Duitku.`
+            });
+          },
+          errorEvent: function () {
+            setFeedback({
+              type: 'error',
+              message: 'Pembayaran Duitku gagal atau dibatalkan.'
+            });
+          },
+          closeEvent: async function () {
+            try {
+              const checkRes = await fetch('/api/topup/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ orderId: data.orderId })
+              });
+              const checkData = await checkRes.json().catch(() => ({}));
+              if (checkData?.status === 'success' && checkData.user) {
+                sound.playShopPurchase();
+                setFeedback({
+                  type: 'success',
+                  message: `Pembayaran berhasil! +${pkg.diamonds} Diamonds telah ditambahkan ke akunmu.`
+                });
+                onUpdateUser?.(checkData.user);
+              }
+            } catch {}
+          }
+        });
+      } else if (data.paymentUrl) {
+        window.open(data.paymentUrl, '_blank');
+        setFeedback({
+          type: 'info',
+          message: 'Halaman pembayaran Duitku telah dibuka di tab baru. Silakan selesaikan pembayaran.'
+        });
+      } else {
+        throw new Error('Duitku checkout tidak tersedia.');
+      }
     } catch (err) {
       setFeedback({ type: 'error', message: err.message });
     } finally {
@@ -457,7 +466,7 @@ export default function ShopModal({
 
       {/* Bagian Top Up Diamonds (Muncul di tab 'all' atau tab khusus 'topup') */}
       {(selectedCategory === 'all' || selectedCategory === 'topup') && (
-        <section className="shop__group" aria-label="Top Up Diamonds Midtrans Snap">
+        <section className="shop__group" aria-label="Top Up Diamonds Duitku POP">
           <div className="shop__group-header shop__group-header--topup">
             <div>
               <h3 className="shop__group-title">
@@ -465,11 +474,11 @@ export default function ShopModal({
                 <span>Top Up Diamonds PlayGo</span>
               </h3>
               <p className="shop__group-desc">
-                Beli diamonds/points instan via Midtrans Snap (QRIS, GoPay, ShopeePay &amp; Virtual Account).
+                Beli diamonds/points instan via Duitku (QRIS, E-Wallet &amp; Virtual Account).
               </p>
             </div>
             <span className="badge badge--popular">
-              Midtrans Snap
+              Duitku POP
             </span>
           </div>
 
@@ -485,9 +494,9 @@ export default function ShopModal({
             ))}
           </ul>
 
-          <div className="shop__midtrans-banner">
-            <span>🛡️ Pembayaran resmi &amp; otomatis terverifikasi via <strong>Midtrans Snap</strong></span>
-            <span>QRIS · GoPay · ShopeePay · BCA VA · BRI VA · BNI VA · Mandiri · Kartu Kredit</span>
+          <div className="shop__duitku-banner">
+            <span>🛡️ Pembayaran resmi &amp; otomatis terverifikasi via <strong>Duitku</strong></span>
+            <span>QRIS · GoPay · OVO · DANA · ShopeePay · BCA VA · BRI VA · BNI VA · Mandiri · Gerai Retail</span>
           </div>
         </section>
       )}

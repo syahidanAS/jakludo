@@ -1169,7 +1169,7 @@ function awardUserPoints(userId, deltaPoints = 0) {
 }
 
 // ==========================================
-// TOPUP DIAMONDS / MIDTRANS ORDERS
+// TOPUP DIAMONDS / DUITKU ORDERS
 // ==========================================
 
 async function createTopupOrder({ orderId, userId, packageId, diamonds, grossAmount, snapToken = null, paymentType = null, paymentDetails = null }) {
@@ -1241,7 +1241,7 @@ async function getTopupOrder(orderId) {
   return null;
 }
 
-async function completeTopupOrder(orderId, paymentType = 'midtrans') {
+async function completeTopupOrder(orderId, paymentType = 'duitku') {
   const order = await getTopupOrder(orderId);
   if (!order) return { error: 'Order tidak ditemukan' };
   if (order.status === 'success') {
@@ -1251,7 +1251,7 @@ async function completeTopupOrder(orderId, paymentType = 'midtrans') {
 
   const now = new Date().toISOString();
   order.status = 'success';
-  order.paymentType = paymentType || order.paymentType || 'midtrans';
+  order.paymentType = paymentType || order.paymentType || 'duitku';
   order.updatedAt = now;
   state.topupOrders.set(orderId, order);
   persistLocalFallback();

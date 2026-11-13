@@ -11,8 +11,7 @@ const { registerSocialRoutes } = require('../social/routes');
 const { registerQuizRoutes } = require('../quiz/routes');
 const quizEngine = require('../quiz/engine');
 const social = require('../social/store');
-const doku = require('../lib/doku');
-const midtrans = require('../lib/midtrans');
+const duitku = require('../lib/duitku');
 
 const loginLimiter = createLimiter({ windowMs: 10 * 60 * 1000, max: 20 });
 const registerLimiter = createLimiter({ windowMs: 60 * 60 * 1000, max: Number(process.env.REGISTER_RATE_LIMIT || 30) });
@@ -214,29 +213,29 @@ function createApiRouter() {
   });
 
   // ==========================================
-  // TOPUP DIAMONDS (MIDTRANS SNAP POPUP)
+  // TOPUP DIAMONDS (DUITKU POP PAYMENT GATEWAY)
   // ==========================================
 
   api.get('/topup/config', (req, res) => {
-    const config = midtrans.getMidtransConfig();
+    const config = duitku.getDuitkuConfig();
     res.json({
       success: true,
-      gateway: 'midtrans_snap',
-      packages: Object.values(midtrans.DIAMOND_PACKAGES),
-      snapJsUrl: config.snapJsUrl,
-      clientKey: config.clientKey,
+      gateway: 'duitku',
+      packages: Object.values(duitku.DIAMOND_PACKAGES),
+      popJsUrl: config.popJsUrl,
+      merchantCode: config.merchantCode,
       isProduction: config.isProduction,
       isConfigured: config.isConfigured
     });
   });
 
-  // Buat transaksi pembayaran Midtrans Snap
+  // Buat transaksi pembayaran Duitku POP
   api.post(['/topup/create', '/topup/charge'], asyncRoute(async (req, res) => {
     const user = requireUser(req, res, 'Silakan login terlebih dahulu untuk melakukan topup diamonds.');
     if (!user) return;
 
     const { packageId } = req.body || {};
-    const pkg = midtrans.DIAMOND_PACKAGES[packageId];
+    const pkg = duitku.DIAMOND_PACKAGES[packageId];
     if (!pkg) {
       return res.status(400).json({ success: false, error: 'Paket diamond tidak valid.' });
     }
@@ -244,10 +243,12 @@ function createApiRouter() {
     const orderId = `TOPUP-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
     try {
-      const snapRes = await midtrans.createSnapTransaction({
+      const host = req.get('host') || '';
+      const duitkuRes = await duitku.createInvoice({
         orderId,
         pkg,
-        user
+        user,
+        host
       });
 
       await db.createTopupOrder({
@@ -256,25 +257,25 @@ function createApiRouter() {
         packageId: pkg.id,
         diamonds: pkg.diamonds,
         grossAmount: pkg.price,
-        paymentType: 'midtrans_snap',
-        paymentDetails: snapRes
+        snapToken: duitkuRes.reference,
+        paymentType: 'duitku',
+        paymentDetails: duitkuRes
       });
 
       res.json({
         success: true,
         orderId,
         package: pkg,
-        snapToken: snapRes.token || snapRes.snapToken,
-        token: snapRes.token || snapRes.snapToken,
-        redirectUrl: snapRes.redirectUrl,
-        clientKey: snapRes.clientKey,
-        snapJsUrl: snapRes.snapJsUrl,
-        payment: snapRes,
-        isSimulation: snapRes.isSimulation || false
+        reference: duitkuRes.reference,
+        token: duitkuRes.reference,
+        paymentUrl: duitkuRes.paymentUrl,
+        popJsUrl: duitkuRes.popJsUrl,
+        payment: duitkuRes,
+        isSimulation: duitkuRes.isSimulation || false
       });
     } catch (err) {
-      console.error('[TOPUP SNAP ERROR]', err.message);
-      res.status(500).json({ success: false, error: err.message || 'Gagal memproses pembayaran Midtrans Snap.' });
+      console.error('[TOPUP DUITKU ERROR]', err.message);
+      res.status(500).json({ success: false, error: err.message || 'Gagal memproses pembayaran Duitku.' });
     }
   }));
 
@@ -290,67 +291,30 @@ function createApiRouter() {
     res.json({ success: true, order });
   }));
 
-  // Webhook notifikasi Doku & Midtrans
+  // Webhook notifikasi Duitku (Callback URL)
   api.post('/topup/notification', asyncRoute(async (req, res) => {
     const notif = req.body || {};
-    const orderId = notif.order?.invoice_number || notif.invoice_number || notif.order_id;
+    const orderId = notif.merchantOrderId || notif.merchant_order_id || notif.order_id;
 
     if (!orderId) {
-      return res.status(400).json({ status: 'ERROR', message: 'order_id or invoice_number missing' });
+      return res.status(400).send('Bad Parameter: missing merchantOrderId');
     }
 
-    // 1. Cek apakah notifikasi berasal dari Doku (Jokul)
-    const isDoku = Boolean(notif.service || notif.channel || notif.order?.invoice_number || req.headers['client-id']);
-    if (isDoku) {
-      const dokuConfig = doku.getDokuConfig();
-      if (dokuConfig.secretKey) {
-        const isValid = doku.verifyDokuSignature({
-          headers: req.headers,
-          body: notif,
-          rawBody: JSON.stringify(notif)
-        });
-        if (!isValid && req.headers['signature']) {
-          console.warn('[DOKU NOTIFICATION] Invalid signature for order', orderId);
-          return res.status(403).json({ status: 'ERROR', message: 'Invalid Doku signature' });
-        }
-      }
-
-      const isDokuSuccess =
-        notif.transaction?.status === 'SUCCESS' ||
-        notif.transaction_status === 'SUCCESS' ||
-        notif.status === 'SUCCESS';
-
-      if (isDokuSuccess) {
-        const paymentType = notif.channel?.id || notif.payment_type || 'doku';
-        await db.completeTopupOrder(orderId, paymentType);
-      }
-
-      return res.json({ status: 'OK' });
+    const isValid = duitku.verifyDuitkuCallback(notif);
+    if (!isValid) {
+      console.warn('[DUITKU NOTIFICATION] Invalid signature for order', orderId);
+      return res.status(400).send('Bad Signature');
     }
 
-    // 2. Fallback untuk Midtrans notification
-    const statusCode = notif.status_code;
-    const grossAmount = notif.gross_amount;
-    const signatureKey = notif.signature_key;
-    const transactionStatus = notif.transaction_status;
-    const fraudStatus = notif.fraud_status;
-    const paymentType = notif.payment_type;
-
-    const midtransConfig = midtrans.getMidtransConfig();
-    if (midtransConfig.serverKey && !midtrans.verifySignature({ orderId, statusCode, grossAmount, signatureKey })) {
-      console.warn('[MIDTRANS NOTIFICATION] Invalid signature for order', orderId);
-      return res.status(403).json({ status: 'ERROR', message: 'Invalid signature' });
+    const resultCode = String(notif.resultCode || '');
+    if (resultCode === '00') {
+      const paymentMethod = notif.paymentMethod || notif.payment_method || 'duitku';
+      await db.completeTopupOrder(orderId, paymentMethod);
+      console.log('[DUITKU NOTIFICATION] Order completed successfully:', orderId);
     }
 
-    const isSuccess =
-      transactionStatus === 'settlement' ||
-      (transactionStatus === 'capture' && fraudStatus === 'accept');
-
-    if (isSuccess) {
-      await db.completeTopupOrder(orderId, paymentType || 'midtrans');
-    }
-
-    res.json({ status: 'OK' });
+    // Duitku callback standar mengharapkan balasan HTTP 200 dengan text "OK"
+    res.status(200).send('OK');
   }));
 
   // Verifikasi status order oleh client (polling berkala selama pembayaran aktif)
@@ -373,34 +337,17 @@ function createApiRouter() {
       return res.json({ success: true, status: 'success', user: withKing(freshUser), diamonds: order.diamonds });
     }
 
-    // Coba polling status ke Doku Status API / Midtrans Status API secara realtime
+    // Coba polling status ke Duitku Status API secara realtime
     try {
-      const dokuStatus = await doku.checkDokuStatus(orderId);
-      if (dokuStatus) {
-        const isDokuSuccess =
-          dokuStatus.transaction?.status === 'SUCCESS' ||
-          dokuStatus.order?.status === 'SUCCESS' ||
-          dokuStatus.status === 'SUCCESS';
+      const duitkuStatus = await duitku.checkDuitkuStatus(orderId);
+      if (duitkuStatus) {
+        const isDuitkuSuccess =
+          duitkuStatus.statusCode === '00' ||
+          duitkuStatus.status === '00' ||
+          duitkuStatus.resultCode === '00';
 
-        if (isDokuSuccess) {
-          const completed = await db.completeTopupOrder(orderId, 'doku');
-          return res.json({
-            success: true,
-            status: 'success',
-            user: withKing(completed.user),
-            diamonds: order.diamonds
-          });
-        }
-      }
-
-      const midtransStatus = await midtrans.checkMidtransStatus(orderId);
-      if (midtransStatus) {
-        const isSuccess =
-          midtransStatus.transaction_status === 'settlement' ||
-          (midtransStatus.transaction_status === 'capture' && midtransStatus.fraud_status === 'accept');
-
-        if (isSuccess) {
-          const completed = await db.completeTopupOrder(orderId, midtransStatus.payment_type || 'midtrans');
+        if (isDuitkuSuccess) {
+          const completed = await db.completeTopupOrder(orderId, 'duitku');
           return res.json({
             success: true,
             status: 'success',
@@ -410,7 +357,7 @@ function createApiRouter() {
         }
       }
     } catch (err) {
-      console.warn('[TOPUP VERIFY STATUS CHECK ERROR]', err.message);
+      console.warn('[TOPUP VERIFY DUITKU STATUS ERROR]', err.message);
     }
 
     res.json({ success: true, status: order.status, message: 'Transaksi masih menunggu pembayaran.' });
