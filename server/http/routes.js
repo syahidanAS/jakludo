@@ -210,19 +210,21 @@ function createApiRouter() {
     res.json({ success: true, leaderboard, ludoKing });
   }));
 
-  // Katalog toko dibaca dari registry item (server/items)
-  api.get('/shop/items', (req, res) => {
-    res.json({ success: true, items: items.catalog() });
-  });
+  // Katalog toko dibaca dari database (shop_items)
+  api.get('/shop/items', asyncRoute(async (req, res) => {
+    const catalog = await db.queryShopItems();
+    res.json({ success: true, items: catalog });
+  }));
 
-  api.post('/shop/buy', (req, res) => {
+  api.post('/shop/buy', asyncRoute(async (req, res) => {
     const user = requireUser(req, res, 'Silakan login terlebih dahulu untuk berbelanja.');
     if (!user) return;
 
-    const item = items.get(req.body?.itemId || req.body?.itemType);
-    if (!item) return res.status(400).json({ success: false, error: 'Item toko tidak valid.' });
+    const itemId = req.body?.itemId || req.body?.itemType;
+    if (!itemId) return res.status(400).json({ success: false, error: 'ID item toko wajib disertakan.' });
 
-    const result = db.purchaseItem({ userId: user.id, itemId: item.id, price: item.price });
+    // Harga dan validasi item diproses langsung di database
+    const result = await db.purchaseItem({ userId: user.id, itemId });
     if (result.error) return res.status(400).json({ success: false, error: result.error });
 
     // Sinkronkan stok jika user sedang berada di room aktif
@@ -237,28 +239,29 @@ function createApiRouter() {
 
     res.json({
       success: true,
-      message: `Berhasil membeli ${item.name}!`,
-      item: items.catalog().find(i => i.id === item.id),
+      message: `Berhasil membeli ${result.item.name}!`,
+      item: result.item,
       user: withKing(result.user)
     });
-  });
+  }));
 
   // ==========================================
   // TOPUP DIAMONDS (DUITKU POP PAYMENT GATEWAY)
   // ==========================================
 
-  api.get('/topup/config', (req, res) => {
+  api.get('/topup/config', asyncRoute(async (req, res) => {
     const config = duitku.getDuitkuConfig();
+    const packages = await db.queryDiamondPackages();
     res.json({
       success: true,
       gateway: 'duitku',
-      packages: Object.values(duitku.DIAMOND_PACKAGES),
+      packages,
       popJsUrl: config.popJsUrl,
       merchantCode: config.merchantCode,
       isProduction: config.isProduction,
       isConfigured: config.isConfigured
     });
-  });
+  }));
 
   // Buat transaksi pembayaran Duitku POP
   api.post(['/topup/create', '/topup/charge'], asyncRoute(async (req, res) => {
@@ -266,9 +269,10 @@ function createApiRouter() {
     if (!user) return;
 
     const { packageId } = req.body || {};
-    const pkg = duitku.DIAMOND_PACKAGES[packageId];
+    // Ambil detail paket resmi langsung dari database PostgreSQL
+    const pkg = await db.getDiamondPackageById(packageId);
     if (!pkg) {
-      return res.status(400).json({ success: false, error: 'Paket diamond tidak valid.' });
+      return res.status(400).json({ success: false, error: 'Paket diamond tidak valid atau sudah tidak aktif.' });
     }
 
     const orderId = `TOPUP-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;

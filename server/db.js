@@ -51,6 +51,159 @@ if (!fs.existsSync(DATA_DIR)) {
 // STATE WRITE-THROUGH & KONEKSI POSTGRESQL
 // ==========================================
 
+// Default price list & items (seed awal & fallback offline/test)
+const DEFAULT_DIAMOND_PACKAGES = [
+  {
+    id: 'diamond_50',
+    name: '50 Diamond',
+    diamonds: 50,
+    price: 5000,
+    formattedPrice: 'Rp 5.000',
+    description: 'Paket pemula untuk mencoba item & avatar baru.',
+    subtitle: 'Paket pemula',
+    badge: null,
+    icon: 'diamond',
+    sortOrder: 1,
+    isActive: true
+  },
+  {
+    id: 'diamond_120',
+    name: '120 Diamond',
+    diamonds: 120,
+    price: 10000,
+    formattedPrice: 'Rp 10.000',
+    description: 'Paket hemat paling diminati pemain!',
+    subtitle: 'Paket hemat',
+    badge: 'Populer',
+    icon: 'diamond',
+    sortOrder: 2,
+    isActive: true
+  },
+  {
+    id: 'diamond_260',
+    name: '260 Diamond',
+    diamonds: 260,
+    price: 20000,
+    formattedPrice: 'Rp 20.000',
+    description: 'Cukup untuk beli dice, emote, dan skin spesial.',
+    subtitle: 'Paket reguler',
+    badge: null,
+    icon: 'diamond',
+    sortOrder: 3,
+    isActive: true
+  },
+  {
+    id: 'diamond_700',
+    name: '700 Diamond',
+    diamonds: 700,
+    price: 50000,
+    formattedPrice: 'Rp 50.000',
+    description: 'Dapatkan 600 + Bonus 100 Diamond.',
+    subtitle: 'Paket premium',
+    badge: 'Bonus 100',
+    icon: 'diamond',
+    sortOrder: 4,
+    isActive: true
+  },
+  {
+    id: 'diamond_1500',
+    name: '1.500 Diamond',
+    diamonds: 1500,
+    price: 100000,
+    formattedPrice: 'Rp 100.000',
+    description: 'Dapatkan 1.250 + Bonus 250 Diamond.',
+    subtitle: 'Paket besar',
+    badge: 'Bonus 250',
+    icon: 'diamond',
+    sortOrder: 5,
+    isActive: true
+  },
+  {
+    id: 'diamond_3250',
+    name: '3.250 Diamond',
+    diamonds: 3250,
+    price: 200000,
+    formattedPrice: 'Rp 200.000',
+    description: 'Paket Sultan! Dapatkan 2.500 + Bonus 750 Diamond.',
+    subtitle: 'Paket sultan',
+    badge: 'Bonus 750',
+    icon: 'crown',
+    sortOrder: 6,
+    isActive: true
+  }
+];
+
+const DEFAULT_SHOP_ITEMS = [
+  {
+    id: 'blackholeShield',
+    name: 'Blackhole Shield',
+    price: 50,
+    game: 'ludo',
+    icon: '🛡️',
+    description: 'Melindungi bidakmu dari sedotan Black Hole. Saat bidakmu mendarat di petak Black Hole, perisai otomatis aktif sehingga bidakmu tidak kembali ke markas.',
+    kind: 'passive',
+    badge: 'Perisai Pasif Otomatis',
+    badgeColor: '#3b82f6',
+    highlight: 'Otomatis aktif saat terkena Black Hole',
+    target: null,
+    sound: 'chime',
+    protects: ['blackHole'],
+    sortOrder: 1,
+    isActive: true
+  },
+  {
+    id: 'universalShield',
+    name: 'Universal Shield',
+    price: 100,
+    game: 'ludo',
+    icon: '🔰',
+    description: 'Menahan Force Return dari lawan dan sedotan Black Hole. Saat bidakmu jadi target Force Return atau mendarat di Black Hole, muncul pilihan untuk memakai perisai ini atau menyimpannya.',
+    kind: 'reactive',
+    badge: 'Perisai Pilihan',
+    badgeColor: '#7c3aed',
+    highlight: 'Menahan Force Return & Black Hole, kamu yang memilih',
+    target: null,
+    sound: 'chime',
+    protects: ['forceReturn', 'blackHole'],
+    sortOrder: 2,
+    isActive: true
+  },
+  {
+    id: 'forceReturn',
+    name: 'Force Return',
+    price: 100,
+    game: 'ludo',
+    icon: '⚡',
+    description: 'Pulangkan 1 bidak lawan di lintasan langsung ke markas. Dipakai di giliranmu sebelum melempar dadu, dan hanya jika minimal 1 bidakmu sudah keluar dari markas. Lawan yang punya Universal Shield bisa memilih menahannya.',
+    kind: 'active',
+    badge: 'Eliminasi Instan',
+    badgeColor: '#f59e0b',
+    highlight: 'Dipakai di giliranmu sebelum melempar dadu',
+    target: 'opponentPawn',
+    sound: 'thunder',
+    protects: [],
+    sortOrder: 3,
+    isActive: true
+  },
+  {
+    id: 'quizHint',
+    name: 'Hints Jawaban',
+    price: 25,
+    game: 'quiz',
+    icon: '💡',
+    description: 'Bantuan pintar saat ragu menjawab soal di Monster Quiz Battle! Menghilangkan 2 pilihan jawaban yang salah (50:50) pada ronde yang sedang berlangsung sehingga peluang benar meningkat tajam. Maksimal 1 Hint per ronde.',
+    kind: 'active',
+    badge: 'Monster Quiz',
+    badgeColor: '#3b82f6',
+    highlight: 'Eliminasi 2 opsi jawaban salah (50:50) saat duel Monster Quiz Battle',
+    target: null,
+    sound: 'chime',
+    protects: [],
+    sortOrder: 4,
+    isActive: true
+  }
+];
+
 const state = {
   usersById: new Map(),       // id -> { id, username, name, passwordHash, authType, avatar, email, googleId, createdAt }
   usersByUsername: new Map(), // lower(username) -> id
@@ -60,7 +213,9 @@ const state = {
   sessions: new Map(),        // tokenHash -> { tokenHash, userId, createdAt, expiresAt }
   leaderboard: new Map(),     // userId -> { userId, username, name, avatar, wins, matchesPlayed, points, authType }
   rooms: new Map(),           // code -> { code, state, updatedAt }
-  topupOrders: new Map()      // orderId -> { orderId, userId, packageId, diamonds, grossAmount, status, snapToken, paymentType, createdAt, updatedAt }
+  topupOrders: new Map(),     // orderId -> { orderId, userId, packageId, diamonds, grossAmount, status, snapToken, paymentType, createdAt, updatedAt }
+  shopItems: new Map(),       // id -> shop item record dari database
+  diamondPackages: new Map()  // id -> diamond package record dari database
 };
 
 let pool = null;
@@ -153,6 +308,13 @@ function setItemInState(userId, itemId, quantity) {
 
 // Impor dari JSON lama atau SQLite lokal untuk kebutuhan offline/test
 function bootstrapLocalState() {
+  for (const pkg of DEFAULT_DIAMOND_PACKAGES) {
+    state.diamondPackages.set(pkg.id, { ...pkg });
+  }
+  for (const it of DEFAULT_SHOP_ITEMS) {
+    state.shopItems.set(it.id, { ...it });
+  }
+
   if (fs.existsSync(LOCAL_STATE_FILE)) {
     try {
       const dump = JSON.parse(fs.readFileSync(LOCAL_STATE_FILE, 'utf8'));
@@ -332,6 +494,60 @@ async function hydrateFromPostgres(activePool) {
       createdAt: r.created_at,
       updatedAt: r.updated_at
     });
+  }
+
+  // Muat price list diamond & katalog item toko dari PostgreSQL
+  try {
+    const [pkgRes, shopRes] = await Promise.all([
+      activePool.query('SELECT * FROM diamond_packages WHERE is_active = TRUE ORDER BY sort_order ASC, price ASC').catch(() => ({ rows: [] })),
+      activePool.query('SELECT * FROM shop_items WHERE is_active = TRUE ORDER BY sort_order ASC, name ASC').catch(() => ({ rows: [] }))
+    ]);
+    if (pkgRes.rows && pkgRes.rows.length > 0) {
+      state.diamondPackages.clear();
+      for (const r of pkgRes.rows) {
+        state.diamondPackages.set(r.id, {
+          id: r.id,
+          name: r.name,
+          diamonds: Number(r.diamonds),
+          price: Number(r.price),
+          formattedPrice: r.formatted_price,
+          description: r.description,
+          subtitle: r.subtitle,
+          badge: r.badge,
+          icon: r.icon,
+          sortOrder: Number(r.sort_order),
+          isActive: Boolean(r.is_active)
+        });
+      }
+    }
+    if (shopRes.rows && shopRes.rows.length > 0) {
+      state.shopItems.clear();
+      for (const r of shopRes.rows) {
+        let protects = r.protects;
+        if (typeof protects === 'string') {
+          try { protects = JSON.parse(protects); } catch { protects = []; }
+        }
+        state.shopItems.set(r.id, {
+          id: r.id,
+          name: r.name,
+          price: Number(r.price),
+          game: r.game,
+          icon: r.icon,
+          description: r.description,
+          kind: r.kind,
+          badge: r.badge,
+          badgeColor: r.badge_color,
+          highlight: r.highlight,
+          target: r.target,
+          sound: r.sound,
+          protects: Array.isArray(protects) ? protects : [],
+          sortOrder: Number(r.sort_order),
+          isActive: Boolean(r.is_active)
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('[PG HYDRATE SHOP/DIAMONDS]', err.message);
   }
 }
 
@@ -1094,13 +1310,91 @@ function checkIsLudoKing(userId) {
 }
 
 // ==========================================
-// TOKO & INVENTARIS ITEM
+// TOKO & INVENTARIS ITEM (DATABASE-DRIVEN)
 // ==========================================
 
-function purchaseItem({ userId, itemId, price }) {
+async function queryShopItems() {
+  if (pool && !closed) {
+    try {
+      const res = await pool.query('SELECT * FROM shop_items WHERE is_active = TRUE ORDER BY sort_order ASC, name ASC');
+      if (res.rows && res.rows.length > 0) {
+        return res.rows.map(r => {
+          let protects = r.protects;
+          if (typeof protects === 'string') {
+            try { protects = JSON.parse(protects); } catch { protects = []; }
+          }
+          return {
+            id: r.id,
+            name: r.name,
+            price: Number(r.price),
+            game: r.game,
+            icon: r.icon,
+            description: r.description,
+            kind: r.kind,
+            badge: r.badge,
+            badgeColor: r.badge_color,
+            highlight: r.highlight,
+            target: r.target,
+            sound: r.sound,
+            protects: Array.isArray(protects) ? protects : [],
+            sortOrder: Number(r.sort_order),
+            isActive: Boolean(r.is_active)
+          };
+        });
+      }
+    } catch (err) {
+      console.warn('[PG QUERY SHOP ITEMS]', err.message);
+    }
+  }
+  return Array.from(state.shopItems.values()).filter(i => i.isActive);
+}
+
+async function getShopItemById(id) {
+  if (!id) return null;
+  if (pool && !closed) {
+    try {
+      const res = await pool.query('SELECT * FROM shop_items WHERE id = $1 AND is_active = TRUE', [id]);
+      if (res.rows && res.rows.length > 0) {
+        const r = res.rows[0];
+        let protects = r.protects;
+        if (typeof protects === 'string') {
+          try { protects = JSON.parse(protects); } catch { protects = []; }
+        }
+        return {
+          id: r.id,
+          name: r.name,
+          price: Number(r.price),
+          game: r.game,
+          icon: r.icon,
+          description: r.description,
+          kind: r.kind,
+          badge: r.badge,
+          badgeColor: r.badge_color,
+          highlight: r.highlight,
+          target: r.target,
+          sound: r.sound,
+          protects: Array.isArray(protects) ? protects : [],
+          sortOrder: Number(r.sort_order),
+          isActive: Boolean(r.is_active)
+        };
+      }
+    } catch {}
+  }
+  const item = state.shopItems.get(id);
+  return item && item.isActive ? item : null;
+}
+
+// Beli item toko: harga item diverifikasi langsung dari database untuk mencegah manipulasi
+async function purchaseItem({ userId, itemId }) {
   const user = findUserById(userId);
   if (!user) return { error: 'Pengguna tidak ditemukan.' };
 
+  const item = await getShopItemById(itemId);
+  if (!item || !item.isActive) {
+    return { error: 'Item toko tidak valid atau sudah tidak dijual.' };
+  }
+
+  const price = Number(item.price);
   const entry = ensureLeaderboardEntry(user);
   if (entry.points < price) {
     return { error: `Poin tidak mencukupi. Diperlukan ${price} poin, kamu memiliki ${entry.points} poin.` };
@@ -1111,20 +1405,25 @@ function purchaseItem({ userId, itemId, price }) {
   setItemInState(user.id, itemId, currentQty + 1);
   persistLocalFallback();
 
-  execPgTransaction(async client => {
-    await ensureGlobalLeaderboardRow(client, user);
-    await client.query(
-      'UPDATE leaderboard SET points = points - $1 WHERE user_id = $2 AND points >= $1',
-      [price, user.id]
-    );
-    await client.query(
-      `INSERT INTO user_items (user_id, item_id, quantity) VALUES ($1, $2, 1)
-       ON CONFLICT (user_id, item_id) DO UPDATE SET quantity = user_items.quantity + 1`,
-      [user.id, itemId]
-    );
-  });
+  if (pool && !closed) {
+    await execPgTransaction(async client => {
+      await ensureGlobalLeaderboardRow(client, user);
+      const updateRes = await client.query(
+        'UPDATE leaderboard SET points = points - $1 WHERE user_id = $2 AND points >= $1',
+        [price, user.id]
+      );
+      if (updateRes.rowCount === 0) {
+        throw new Error('Poin tidak mencukupi saat proses transaksi database.');
+      }
+      await client.query(
+        `INSERT INTO user_items (user_id, item_id, quantity) VALUES ($1, $2, 1)
+         ON CONFLICT (user_id, item_id) DO UPDATE SET quantity = user_items.quantity + 1`,
+        [user.id, itemId]
+      );
+    });
+  }
 
-  return { success: true, user: sanitizeUser(findUserById(user.id)) };
+  return { success: true, item, user: sanitizeUser(findUserById(user.id)) };
 }
 
 function consumeUserItem({ userId, itemId }) {
@@ -1169,17 +1468,75 @@ function awardUserPoints(userId, deltaPoints = 0) {
 }
 
 // ==========================================
-// TOPUP DIAMONDS / DUITKU ORDERS
+// TOPUP DIAMONDS / DUITKU ORDERS & PRICE LIST
 // ==========================================
 
-async function createTopupOrder({ orderId, userId, packageId, diamonds, grossAmount, snapToken = null, paymentType = null, paymentDetails = null }) {
+async function queryDiamondPackages() {
+  if (pool && !closed) {
+    try {
+      const res = await pool.query('SELECT * FROM diamond_packages WHERE is_active = TRUE ORDER BY sort_order ASC, price ASC');
+      if (res.rows && res.rows.length > 0) {
+        return res.rows.map(r => ({
+          id: r.id,
+          name: r.name,
+          diamonds: Number(r.diamonds),
+          price: Number(r.price),
+          formattedPrice: r.formatted_price,
+          description: r.description,
+          subtitle: r.subtitle,
+          badge: r.badge,
+          icon: r.icon,
+          sortOrder: Number(r.sort_order),
+          isActive: Boolean(r.is_active)
+        }));
+      }
+    } catch (err) {
+      console.warn('[PG QUERY PACKAGES]', err.message);
+    }
+  }
+  return Array.from(state.diamondPackages.values()).filter(p => p.isActive);
+}
+
+async function getDiamondPackageById(id) {
+  if (!id) return null;
+  if (pool && !closed) {
+    try {
+      const res = await pool.query('SELECT * FROM diamond_packages WHERE id = $1 AND is_active = TRUE', [id]);
+      if (res.rows && res.rows.length > 0) {
+        const r = res.rows[0];
+        return {
+          id: r.id,
+          name: r.name,
+          diamonds: Number(r.diamonds),
+          price: Number(r.price),
+          formattedPrice: r.formatted_price,
+          description: r.description,
+          subtitle: r.subtitle,
+          badge: r.badge,
+          icon: r.icon,
+          sortOrder: Number(r.sort_order),
+          isActive: Boolean(r.is_active)
+        };
+      }
+    } catch {}
+  }
+  const pkg = state.diamondPackages.get(id);
+  return pkg && pkg.isActive ? pkg : null;
+}
+
+async function createTopupOrder({ orderId, userId, packageId, diamonds = null, grossAmount = null, snapToken = null, paymentType = null, paymentDetails = null }) {
+  // Ambil paket diamond langsung dari database untuk validasi jumlah diamond & harga resmi
+  const pkg = await getDiamondPackageById(packageId);
+  const finalDiamonds = pkg ? pkg.diamonds : Number(diamonds || 0);
+  const finalGrossAmount = pkg ? pkg.price : Number(grossAmount || 0);
+
   const now = new Date().toISOString();
   const order = {
     orderId,
     userId,
     packageId,
-    diamonds: Number(diamonds),
-    grossAmount: Number(grossAmount),
+    diamonds: finalDiamonds,
+    grossAmount: finalGrossAmount,
     status: 'pending',
     snapToken,
     paymentType,
@@ -1201,7 +1558,7 @@ async function createTopupOrder({ orderId, userId, packageId, diamonds, grossAmo
          payment_type = EXCLUDED.payment_type,
          payment_details = EXCLUDED.payment_details,
          updated_at = EXCLUDED.updated_at`,
-      [orderId, userId, packageId, diamonds, grossAmount, 'pending', snapToken, paymentType, detailsJson, now, now]
+      [orderId, userId, packageId, finalDiamonds, finalGrossAmount, 'pending', snapToken, paymentType, detailsJson, now, now]
     );
   }
   return order;
@@ -1363,6 +1720,10 @@ module.exports = {
   updateUserEmail,
   updateUserProfile,
   getUserItems,
+  queryShopItems,
+  getShopItemById,
+  queryDiamondPackages,
+  getDiamondPackageById,
   purchaseItem,
   consumeUserItem,
   awardUserPoints,
