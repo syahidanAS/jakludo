@@ -214,36 +214,29 @@ function createApiRouter() {
   });
 
   // ==========================================
-  // TOPUP DIAMONDS (DOKU PAYMENT GATEWAY & MIDTRANS FALLBACK)
+  // TOPUP DIAMONDS (MIDTRANS SNAP POPUP)
   // ==========================================
 
   api.get('/topup/config', (req, res) => {
-    const dokuConfig = doku.getDokuConfig();
-    const midtransConfig = midtrans.getMidtransConfig();
-    const useDoku = dokuConfig.isConfigured || !midtransConfig.isConfigured;
-
+    const config = midtrans.getMidtransConfig();
     res.json({
       success: true,
-      gateway: useDoku ? 'doku' : 'midtrans',
-      packages: Object.values(useDoku ? doku.DIAMOND_PACKAGES : midtrans.DIAMOND_PACKAGES),
-      paymentMethods: useDoku ? doku.PAYMENT_METHODS : midtrans.PAYMENT_METHODS,
-      isProduction: useDoku ? dokuConfig.isProduction : midtransConfig.isProduction,
-      isConfigured: useDoku ? dokuConfig.isConfigured : midtransConfig.isConfigured
+      gateway: 'midtrans_snap',
+      packages: Object.values(midtrans.DIAMOND_PACKAGES),
+      snapJsUrl: config.snapJsUrl,
+      clientKey: config.clientKey,
+      isProduction: config.isProduction,
+      isConfigured: config.isConfigured
     });
   });
 
-  // Buat transaksi pembayaran langsung menggunakan Doku / Payment Gateway
-  api.post(['/topup/charge', '/topup/create'], asyncRoute(async (req, res) => {
+  // Buat transaksi pembayaran Midtrans Snap
+  api.post(['/topup/create', '/topup/charge'], asyncRoute(async (req, res) => {
     const user = requireUser(req, res, 'Silakan login terlebih dahulu untuk melakukan topup diamonds.');
     if (!user) return;
 
-    const { packageId, methodId } = req.body || {};
-    const LEGACY_PACKAGES = {
-      diamond_100: { id: 'diamond_100', name: '100 Diamond', diamonds: 100, price: 50000, formattedPrice: 'Rp 50.000', subtitle: 'Paket lama', description: 'Paket lama', badge: null, icon: 'diamond' },
-      diamond_300: { id: 'diamond_300', name: '300 Diamond', diamonds: 300, price: 150000, formattedPrice: 'Rp 150.000', subtitle: 'Paket lama', description: 'Paket lama', badge: null, icon: 'diamond' },
-      diamond_550: { id: 'diamond_550', name: '550 Diamond', diamonds: 550, price: 500000, formattedPrice: 'Rp 500.000', subtitle: 'Paket lama', description: 'Paket lama', badge: null, icon: 'crown' }
-    };
-    const pkg = doku.DIAMOND_PACKAGES[packageId] || LEGACY_PACKAGES[packageId] || midtrans.DIAMOND_PACKAGES[packageId];
+    const { packageId } = req.body || {};
+    const pkg = midtrans.DIAMOND_PACKAGES[packageId];
     if (!pkg) {
       return res.status(400).json({ success: false, error: 'Paket diamond tidak valid.' });
     }
@@ -251,26 +244,11 @@ function createApiRouter() {
     const orderId = `TOPUP-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
     try {
-      const dokuConfig = doku.getDokuConfig();
-      const midtransConfig = midtrans.getMidtransConfig();
-      const useDoku = dokuConfig.isConfigured || !midtransConfig.isConfigured;
-
-      let chargeRes;
-      if (useDoku) {
-        chargeRes = await doku.chargeTransaction({
-          orderId,
-          pkg,
-          user,
-          methodId: methodId || 'qris'
-        });
-      } else {
-        chargeRes = await midtrans.chargeTransaction({
-          orderId,
-          pkg,
-          user,
-          methodId: methodId || 'qris'
-        });
-      }
+      const snapRes = await midtrans.createSnapTransaction({
+        orderId,
+        pkg,
+        user
+      });
 
       await db.createTopupOrder({
         orderId,
@@ -278,22 +256,25 @@ function createApiRouter() {
         packageId: pkg.id,
         diamonds: pkg.diamonds,
         grossAmount: pkg.price,
-        paymentType: chargeRes.paymentType || (useDoku ? 'doku' : 'midtrans'),
-        paymentDetails: chargeRes
+        paymentType: 'midtrans_snap',
+        paymentDetails: snapRes
       });
 
       res.json({
         success: true,
         orderId,
         package: pkg,
-        payment: chargeRes,
-        gateway: useDoku ? 'doku' : 'midtrans',
-        snapToken: chargeRes.transactionId,
-        isSimulation: chargeRes.isSimulation || false
+        snapToken: snapRes.token || snapRes.snapToken,
+        token: snapRes.token || snapRes.snapToken,
+        redirectUrl: snapRes.redirectUrl,
+        clientKey: snapRes.clientKey,
+        snapJsUrl: snapRes.snapJsUrl,
+        payment: snapRes,
+        isSimulation: snapRes.isSimulation || false
       });
     } catch (err) {
-      console.error('[TOPUP CHARGE ERROR]', err.message);
-      res.status(500).json({ success: false, error: err.message || 'Gagal memproses pembayaran Doku.' });
+      console.error('[TOPUP SNAP ERROR]', err.message);
+      res.status(500).json({ success: false, error: err.message || 'Gagal memproses pembayaran Midtrans Snap.' });
     }
   }));
 

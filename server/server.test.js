@@ -771,15 +771,15 @@ test('Update profil: nama, username, email, dan password', async () => {
   assert.equal(loginBody.user.id, user.id);
 });
 
-test('topup diamonds dengan doku payment gateway (config, charge, verify, notification, simulate, points award)', async () => {
+test('topup diamonds dengan midtrans snap popup (config, snapToken, verify, notification, simulate, points award)', async () => {
   // 1. GET /api/topup/config
   const cfgRes = await fetch(`${url}/api/topup/config`);
   assert.equal(cfgRes.status, 200);
   const cfg = await cfgRes.json();
   assert.equal(cfg.success, true);
+  assert.equal(cfg.gateway, 'midtrans_snap');
   assert.equal(cfg.packages.length, 6);
-  assert.ok(Array.isArray(cfg.paymentMethods));
-  assert.ok(cfg.paymentMethods.length >= 5);
+  assert.ok(cfg.snapJsUrl);
 
   const p50 = cfg.packages.find(p => p.diamonds === 50);
   const p120 = cfg.packages.find(p => p.diamonds === 120);
@@ -811,21 +811,21 @@ test('topup diamonds dengan doku payment gateway (config, charge, verify, notifi
   const token = reg.token;
   const initialPoints = reg.user.points; // default starter points (200)
 
-  // 3. Charge topup order untuk paket 120 diamonds via BCA Virtual Account (Doku)
-  const chargeRes = await fetch(`${url}/api/topup/charge`, {
+  // 3. Create Snap transaction untuk paket 120 diamonds
+  const snapRes = await fetch(`${url}/api/topup/create`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`
     },
-    body: JSON.stringify({ packageId: 'diamond_120', methodId: 'bca_va' })
+    body: JSON.stringify({ packageId: 'diamond_120' })
   });
-  assert.equal(chargeRes.status, 200);
-  const chargeBody = await chargeRes.json();
-  assert.equal(chargeBody.success, true);
-  assert.ok(chargeBody.orderId);
-  assert.ok(chargeBody.payment);
-  assert.equal(chargeBody.package.diamonds, 120);
+  assert.equal(snapRes.status, 200);
+  const snapBody = await snapRes.json();
+  assert.equal(snapBody.success, true);
+  assert.ok(snapBody.orderId);
+  assert.ok(snapBody.snapToken || snapBody.token);
+  assert.equal(snapBody.package.diamonds, 120);
 
   // 4. Simulasi pembayaran topup (simulate)
   const simRes = await fetch(`${url}/api/topup/simulate`, {
@@ -834,7 +834,7 @@ test('topup diamonds dengan doku payment gateway (config, charge, verify, notifi
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`
     },
-    body: JSON.stringify({ orderId: chargeBody.orderId })
+    body: JSON.stringify({ orderId: snapBody.orderId })
   });
   assert.equal(simRes.status, 200);
   const simBody = await simRes.json();
@@ -849,7 +849,7 @@ test('topup diamonds dengan doku payment gateway (config, charge, verify, notifi
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`
     },
-    body: JSON.stringify({ orderId: chargeBody.orderId })
+    body: JSON.stringify({ orderId: snapBody.orderId })
   });
   assert.equal(verifyRes.status, 200);
   const verifyBody = await verifyRes.json();
@@ -857,21 +857,8 @@ test('topup diamonds dengan doku payment gateway (config, charge, verify, notifi
   assert.equal(verifyBody.status, 'success');
   assert.equal(verifyBody.user.points, initialPoints + 120);
 
-  // 6. Test Charge QRIS untuk paket 50 diamonds
-  const qrisChargeRes = await fetch(`${url}/api/topup/charge`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`
-    },
-    body: JSON.stringify({ packageId: 'diamond_50', methodId: 'qris' })
-  });
-  const qrisBody = await qrisChargeRes.json();
-  assert.equal(qrisBody.success, true);
-  assert.ok(qrisBody.payment.checkoutUrl || qrisBody.payment.qrCodeUrl || qrisBody.payment.qrString);
-
-  // 7. Test paket 3.250 diamonds (Paket Sultan)
-  const sultanRes = await fetch(`${url}/api/topup/create`, {
+  // 6. Test paket 3.250 diamonds (Paket Sultan)
+  const sultanRes = await fetch(`${url}/api/topup/charge`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -881,6 +868,7 @@ test('topup diamonds dengan doku payment gateway (config, charge, verify, notifi
   });
   const sultanBody = await sultanRes.json();
   assert.equal(sultanBody.success, true);
+  assert.ok(sultanBody.snapToken || sultanBody.token);
 
   const simSultanRes = await fetch(`${url}/api/topup/simulate`, {
     method: 'POST',
@@ -894,32 +882,32 @@ test('topup diamonds dengan doku payment gateway (config, charge, verify, notifi
   assert.equal(simSultanBody.diamondsAwarded, 3250);
   assert.equal(simSultanBody.user.points, initialPoints + 120 + 3250);
 
-  // 8. Test Webhook Notifikasi Doku untuk paket 260 diamonds
-  const notifOrderRes = await fetch(`${url}/api/topup/charge`, {
+  // 7. Test Webhook Notifikasi Midtrans untuk paket 260 diamonds
+  const notifOrderRes = await fetch(`${url}/api/topup/create`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`
     },
-    body: JSON.stringify({ packageId: 'diamond_260', methodId: 'bca_va' })
+    body: JSON.stringify({ packageId: 'diamond_260' })
   });
   const notifOrderBody = await notifOrderRes.json();
   assert.equal(notifOrderBody.success, true);
 
-  const dokuNotifRes = await fetch(`${url}/api/topup/notification`, {
+  const midtransNotifRes = await fetch(`${url}/api/topup/notification`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'Client-Id': 'MOCK-DOKU-CLIENT'
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      service: { id: 'ONLINE_PAYMENT' },
-      order: { invoice_number: notifOrderBody.orderId, amount: 20000 },
-      transaction: { status: 'SUCCESS' },
-      channel: { id: 'VIRTUAL_ACCOUNT_BCA' }
+      order_id: notifOrderBody.orderId,
+      gross_amount: '20000.00',
+      status_code: '200',
+      transaction_status: 'settlement',
+      payment_type: 'gopay'
     })
   });
-  assert.equal(dokuNotifRes.status, 200);
+  assert.equal(midtransNotifRes.status, 200);
 
   const finalUserRes = await fetch(`${url}/api/auth/me`, {
     headers: { Authorization: `Bearer ${token}` }

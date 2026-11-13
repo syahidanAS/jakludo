@@ -131,6 +131,14 @@ function getMidtransConfig() {
     process.env.MIDTRANS_IS_PRODUCTION === '1' ||
     process.env.MIDTRANS_IS_PRODUCTION === 'true';
 
+  const snapApiUrl = isProduction
+    ? 'https://app.midtrans.com/snap/v1/transactions'
+    : 'https://app.sandbox.midtrans.com/snap/v1/transactions';
+
+  const snapJsUrl = isProduction
+    ? 'https://app.midtrans.com/snap/snap.js'
+    : 'https://app.sandbox.midtrans.com/snap/snap.js';
+
   const chargeUrl = isProduction
     ? 'https://api.midtrans.com/v2/charge'
     : 'https://api.sandbox.midtrans.com/v2/charge';
@@ -143,9 +151,82 @@ function getMidtransConfig() {
     serverKey,
     clientKey,
     isProduction,
-    isConfigured: Boolean(serverKey),
+    isConfigured: Boolean(serverKey && clientKey),
+    snapApiUrl,
+    snapJsUrl,
     chargeUrl,
     statusApiBase
+  };
+}
+
+// Buat transaksi Midtrans SNAP (Pop up / Iframe checkout resmi Midtrans)
+async function createSnapTransaction({ orderId, pkg, user }) {
+  const config = getMidtransConfig();
+
+  // Mode mock HANYA diizinkan pada unit test otomatis (NODE_ENV=test)
+  if (!config.serverKey) {
+    if (process.env.NODE_ENV === 'test') {
+      return {
+        success: true,
+        orderId,
+        token: `snap_mock_token_${orderId}`,
+        snapToken: `snap_mock_token_${orderId}`,
+        redirectUrl: `https://app.sandbox.midtrans.com/snap/v2/vtweb/mock_${orderId}`,
+        isSimulation: true,
+        clientKey: config.clientKey || 'SB-Mid-client-mock',
+        snapJsUrl: config.snapJsUrl
+      };
+    }
+    throw new Error('Sistem pembayaran Midtrans belum dikonfigurasi di server. Pastikan MIDTRANS_SERVER_KEY dan MIDTRANS_CLIENT_KEY telah diisi di file .env.');
+  }
+
+  const authHeader = 'Basic ' + Buffer.from(config.serverKey + ':').toString('base64');
+  const payload = {
+    transaction_details: {
+      order_id: orderId,
+      gross_amount: pkg.price
+    },
+    item_details: [
+      {
+        id: pkg.id,
+        price: pkg.price,
+        quantity: 1,
+        name: `${pkg.name} (${pkg.diamonds} Diamonds)`
+      }
+    ],
+    customer_details: {
+      first_name: user.name || user.username,
+      email: user.email || `${user.username}@playgo.game`
+    }
+  };
+
+  const res = await fetch(config.snapApiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Authorization: authHeader
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.token) {
+    const errorMsg = data?.error_messages?.join(', ') || data?.message || `Midtrans Snap Error (${res.status})`;
+    throw new Error(errorMsg);
+  }
+
+  return {
+    success: true,
+    orderId,
+    token: data.token,
+    snapToken: data.token,
+    redirectUrl: data.redirect_url,
+    clientKey: config.clientKey,
+    snapJsUrl: config.snapJsUrl,
+    grossAmount: pkg.price,
+    diamonds: pkg.diamonds,
+    status: 'pending'
   };
 }
 
@@ -300,8 +381,8 @@ module.exports = {
   DIAMOND_PACKAGES,
   PAYMENT_METHODS,
   getMidtransConfig,
+  createSnapTransaction,
   chargeTransaction,
-  createSnapTransaction: chargeTransaction, // Alias untuk backward compatibility
   verifySignature,
   checkMidtransStatus
 };
