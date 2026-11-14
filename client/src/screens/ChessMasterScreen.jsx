@@ -93,8 +93,6 @@ export default function ChessMasterScreen({
     setTimeControl,
     preferredSide,
     setPreferredSide,
-    botDifficulty,
-    setBotDifficulty,
     searching,
     error,
     notice,
@@ -277,7 +275,6 @@ export default function ChessMasterScreen({
                 <div className="cm-player-bar__meta">
                   <div className="cm-player-bar__name-row">
                     <strong className="cm-player-bar__name">{topPlayer?.name || 'Lawan'}</strong>
-                    {topPlayer?.isBot && <span className="cm-tc-pill">🤖 AI BOT</span>}
                     <span className="cm-player-bar__rating">({topPlayer?.rating || 1200})</span>
                     <span className={`cm-color-badge cm-color-badge--${topColor}`}>
                       {topColor === 'w' ? 'Putih' : 'Hitam'}
@@ -895,16 +892,13 @@ export default function ChessMasterScreen({
 
         {/* Grid Mode Permainan: Quick Match & Private Room */}
         <section className="cm-modes-grid">
-          {/* Card 1: Quick Match + Play vs Bot + Time Control */}
+          {/* Card 1: Quick Match + Time Control */}
           <div className="cm-mode-card cm-mode-card--primary">
             <div className="cm-mode-card__head">
               <div>
-                <span className="cm-mode-badge">ONLINE MULTIPLAYER &amp; AI BOT</span>
-                <h2>Quick Match &amp; AI Bot</h2>
-                <p>
-                  Prioritas mencarikan <strong>akun pemain sungguhan</strong> yang sedang online. Jika belum ada dalam 5 detik,
-                  otomatis bertanding melawan Bot Catur seimbang!
-                </p>
+                <span className="cm-mode-badge">ONLINE MULTIPLAYER</span>
+                <h2>Quick Match</h2>
+                <p>Cari lawan seimbang secara otomatis berdasarkan rating Elo.</p>
               </div>
             </div>
 
@@ -943,21 +937,12 @@ export default function ChessMasterScreen({
               <div className="cm-searching-box">
                 <div className="cm-spinner" />
                 <div>
-                  <strong>Mencari pemain sungguhan ({timeControl})...</strong>
-                  <span>Menyesuaikan rating ~{myRating} Elo (otomatis lawan Bot jika tidak ada pemain dalam 5 detik)</span>
+                  <strong>Mencari lawan ({timeControl})...</strong>
+                  <span>Menyesuaikan pemain dengan rating di sekitar {myRating} Elo</span>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    className="btn btn--secondary btn--sm"
-                    onClick={() => actions.playVsBot({ timeControl, fromQueue: true })}
-                  >
-                    🤖 Lawan Bot Sekarang
-                  </button>
-                  <button type="button" className="btn btn--danger btn--sm" onClick={actions.cancelMatchmaking}>
-                    Batal
-                  </button>
-                </div>
+                <button type="button" className="btn btn--danger btn--sm" onClick={actions.cancelMatchmaking}>
+                  Batal
+                </button>
               </div>
             ) : (
               <button
@@ -966,51 +951,9 @@ export default function ChessMasterScreen({
                 onClick={() => actions.startMatchmaking(timeControl)}
               >
                 <Icon name="chess" size={20} />
-                <span>Play Now — Cari Lawan ({timeControl})</span>
+                <span>Play Now ({timeControl})</span>
               </button>
             )}
-
-            <div className="cm-divider">
-              <span>ATAU LANGSUNG LAWAN AI BOT</span>
-            </div>
-
-            <div className="cm-side-picker-wrap">
-              <span className="cm-field-label">Tingkat Kesulitan AI Bot</span>
-              <div className="cm-side-picker">
-                {[
-                  { id: 'easy', label: '🌱 Pemula (950)' },
-                  { id: 'medium', label: '⚔️ Menengah (1200)' },
-                  { id: 'hard', label: '👑 Master (1550)' }
-                ].map(lvl => (
-                  <button
-                    key={lvl.id}
-                    type="button"
-                    className={`cm-side-btn ${(botDifficulty || 'medium') === lvl.id ? 'is-selected' : ''}`}
-                    onClick={() => {
-                      sound.playClick();
-                      setBotDifficulty?.(lvl.id);
-                    }}
-                  >
-                    {lvl.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              className="btn btn--secondary btn--block"
-              onClick={() =>
-                actions.playVsBot({
-                  timeControl,
-                  preferredSide,
-                  difficulty: botDifficulty || 'medium',
-                  fromQueue: false
-                })
-              }
-            >
-              🤖 Main Lawan Bot ({timeControl})
-            </button>
           </div>
 
           {/* Card 2: Private Room (Create & Join) */}
