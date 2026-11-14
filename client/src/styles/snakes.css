@@ -1043,11 +1043,16 @@
 
 .snk-dice-console__cube {
   flex-shrink: 0;
-  width: 88px;
-  height: 88px;
+  width: 72px;
+  height: 72px;
   display: grid;
   place-items: center;
   overflow: visible;
+}
+
+.snk-dice-console__cube .dice-wrapper {
+  transform: scale(0.8);
+  transform-origin: center;
 }
 
 /* Percepat putaran visual Dice3D khusus di Ular Tangga agar terasa instan & responsif */
