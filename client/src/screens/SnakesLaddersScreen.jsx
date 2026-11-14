@@ -1265,42 +1265,54 @@ export default function SnakesLaddersScreen({
 
       {/* RIWAYAT PERTANDINGAN & LEADERBOARD KOMPETITIF */}
       <div className="snk-bottom-grid">
-        <section className="card" aria-label="Riwayat Pertandingan Terakhir">
-          <h3 className="panel-section__title">🕓 Riwayat Pertandingan Kamu</h3>
+        <section className="card snk-bottom-card" aria-label="Riwayat Pertandingan Terakhir">
+          <div className="snk-card-head-inline">
+            <h3 className="panel-section__title" style={{ margin: 0 }}>🕓 Riwayat Pertandingan Kamu</h3>
+            {history.length > 0 && (
+              <span className="badge">{history.length} terakhir</span>
+            )}
+          </div>
           {!currentUser ? (
-            <p className="muted">Masuk untuk melihat riwayat pertandinganmu.</p>
+            <p className="muted" style={{ margin: 0 }}>Masuk untuk melihat riwayat pertandinganmu.</p>
           ) : loadingMeta && history.length === 0 ? (
-            <p className="muted"><span className="spinner" aria-hidden="true" /> Memuat riwayat...</p>
+            <p className="muted" style={{ margin: 0 }}><span className="spinner" aria-hidden="true" /> Memuat riwayat...</p>
           ) : history.length === 0 ? (
-            <p className="muted">Belum ada riwayat pertandingan Ular Tangga.</p>
+            <p className="muted" style={{ margin: 0 }}>Belum ada riwayat pertandingan Ular Tangga.</p>
           ) : (
-            <ol className="lb-list">
-              {history.slice(0, 8).map(item => (
-                <li key={item.id} className="lb-row">
-                  <span className="lb-row__rank">{item.result === 'win' ? '🏆' : '🎲'}</span>
-                  <div className="lb-row__who">
-                    <strong>
-                      {item.result === 'win' ? 'Menang' : 'Kalah'} vs {item.opponentName}
-                    </strong>
-                    <span className="muted">
-                      {item.opponentType === 'bot' ? '🤖 Pemain Komputer (Bot)' : '👥 Pemain Manusia'} · {item.duration} dtk · {item.totalTurns} giliran
+            <ol className="snk-history-list">
+              {history.slice(0, 8).map(item => {
+                const isWin = item.result === 'win';
+                return (
+                  <li key={item.id} className={`snk-history-row ${isWin ? 'is-win' : 'is-loss'}`}>
+                    <span className="snk-history-row__icon" aria-hidden="true">
+                      {isWin ? '🏆' : '🎲'}
                     </span>
-                  </div>
-                  <div className="lb-row__stats">
-                    {item.rewardCoins > 0 ? (
-                      <span className="badge badge--success">+{item.rewardCoins} Coins</span>
-                    ) : (
-                      <span className="badge">{item.opponentType === 'bot' ? 'Latihan Bot' : 'Kompetitif'}</span>
-                    )}
-                  </div>
-                </li>
-              ))}
+                    <div className="snk-history-row__info">
+                      <strong className="snk-history-row__title">
+                        {isWin ? 'Menang' : 'Kalah'} vs {item.opponentName}
+                      </strong>
+                      <span className="snk-history-row__meta muted">
+                        {item.opponentType === 'bot' ? '🤖 Pemain Komputer' : '👥 Pemain Manusia'} · {item.duration} dtk · {item.totalTurns} giliran
+                      </span>
+                    </div>
+                    <div className="snk-history-row__badge">
+                      {item.rewardCoins > 0 ? (
+                        <span className="badge badge--success">+{item.rewardCoins} Coins</span>
+                      ) : (
+                        <span className={`badge ${isWin ? 'badge--brand' : ''}`}>
+                          {item.opponentType === 'bot' ? 'Latihan Bot' : isWin ? 'Menang' : 'Kalah'}
+                        </span>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ol>
           )}
         </section>
 
-        <section className="card" aria-label="Leaderboard Ular Tangga">
-          <div className="snk-card-head-inline" style={{ marginBottom: 'var(--space-2)' }}>
+        <section className="card snk-bottom-card" aria-label="Leaderboard Ular Tangga">
+          <div className="snk-card-head-inline">
             <h3 className="panel-section__title" style={{ margin: 0 }}>🏆 Leaderboard Kompetitif</h3>
             {onOpenLeaderboard && (
               <button type="button" className="btn btn--secondary btn--sm" onClick={onOpenLeaderboard}>
@@ -1308,11 +1320,11 @@ export default function SnakesLaddersScreen({
               </button>
             )}
           </div>
-          <p className="muted" style={{ fontSize: 'var(--fs-xs)', marginTop: 0 }}>
+          <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: 0 }}>
             Hanya mencatat kemenangan melawan sesama pemain manusia. Pemain Komputer tidak masuk ke Leaderboard.
           </p>
           {leaderboard.length === 0 ? (
-            <p className="muted">Belum ada pemain di peringkat kompetitif. Jadilah pemenang pertama!</p>
+            <p className="muted" style={{ margin: 0 }}>Belum ada pemain di peringkat kompetitif. Jadilah pemenang pertama!</p>
           ) : (
             <ol className="lb-list">
               {leaderboard.slice(0, 8).map(p => (
