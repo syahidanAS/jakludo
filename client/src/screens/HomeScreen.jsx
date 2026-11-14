@@ -3,6 +3,7 @@ import Icon from '../components/Icon';
 import jakludoLogo from '../assets/jakludo-logo.webp';
 import monsterQuizLogo from '../assets/monster-quiz-logo.webp';
 import chessMasterLogo from '../assets/chess-master-logo.webp';
+import snakesLaddersLogo from '../assets/snakes-ladders-logo.webp';
 import { isAvatarUrl } from '../social/media';
 
 const COLORS = ['red', 'green', 'yellow', 'blue'];
@@ -35,6 +36,7 @@ function GlobalLeaderboardSection({ onOpenLeaderboard }) {
   const [ludoList, setLudoList] = React.useState([]);
   const [quizList, setQuizList] = React.useState([]);
   const [chessList, setChessList] = React.useState([]);
+  const [snakesList, setSnakesList] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
@@ -42,12 +44,14 @@ function GlobalLeaderboardSection({ onOpenLeaderboard }) {
     Promise.all([
       fetch('/api/leaderboard').then(r => r.json()).catch(() => ({})),
       fetch('/api/quiz/leaderboard').then(r => r.json()).catch(() => ({})),
-      fetch('/api/chess/leaderboard?page=1&limit=10').then(r => r.json()).catch(() => ({}))
-    ]).then(([ludoData, quizData, chessData]) => {
+      fetch('/api/chess/leaderboard?page=1&limit=10').then(r => r.json()).catch(() => ({})),
+      fetch('/api/games/snakes-and-ladders/leaderboard?page=1&limit=10').then(r => r.json()).catch(() => ({}))
+    ]).then(([ludoData, quizData, chessData, snakesData]) => {
       if (!active) return;
       if (ludoData?.success) setLudoList(ludoData.leaderboard || []);
       if (quizData?.success) setQuizList(quizData.leaderboard || []);
       if (chessData?.success) setChessList(chessData.entries || chessData.leaderboard || []);
+      if (snakesData?.success) setSnakesList(snakesData.entries || snakesData.leaderboard || []);
       setLoading(false);
     });
     return () => { active = false; };
@@ -55,7 +59,8 @@ function GlobalLeaderboardSection({ onOpenLeaderboard }) {
 
   const isQuiz = tab === 'quiz';
   const isChess = tab === 'chess';
-  const list = isChess ? chessList : isQuiz ? quizList : ludoList;
+  const isSnakes = tab === 'snakes';
+  const list = isSnakes ? snakesList : isChess ? chessList : isQuiz ? quizList : ludoList;
   const topList = list.slice(0, 5);
 
   return (
@@ -109,6 +114,16 @@ function GlobalLeaderboardSection({ onOpenLeaderboard }) {
               <Icon name="chess" size={14} />
               <span>Chess Master</span>
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isSnakes}
+              className="tabs__tab"
+              onClick={() => setTab('snakes')}
+            >
+              <Icon name="snakes" size={14} />
+              <span>Ular Tangga</span>
+            </button>
           </div>
           {onOpenLeaderboard && (
             <button
@@ -154,7 +169,7 @@ function GlobalLeaderboardSection({ onOpenLeaderboard }) {
                     <span><strong>{player.rating}</strong> Elo</span>
                     <span className="muted">({player.winRate || 0}% menang)</span>
                   </>
-                ) : isQuiz ? (
+                ) : isQuiz || isSnakes ? (
                   <>
                     <span><strong>{player.wins}</strong> menang</span>
                     <span className="muted">({player.winRate || 0}%)</span>
@@ -232,6 +247,7 @@ export default function HomeScreen({
   activeRooms = [],
   activeQuizRoom,
   activeChessRoom,
+  activeSnakesRoom,
   isInstalled,
   actions,
   friendBadgeCount = 0,
@@ -254,6 +270,9 @@ export default function HomeScreen({
   };
   const selectChess = () => {
     if (onSelectGame) onSelectGame('chess');
+  };
+  const selectSnakes = () => {
+    if (onSelectGame) onSelectGame('snakes');
   };
 
   // ==========================================
@@ -370,7 +389,7 @@ export default function HomeScreen({
       )}
 
       {/* Sesi Permainan yang Masih Aktif */}
-      {user && (activeRooms.length > 0 || activeQuizRoom?.code || activeChessRoom?.code) && (
+      {user && (activeRooms.length > 0 || activeQuizRoom?.code || activeChessRoom?.code || activeSnakesRoom?.code) && (
         <section className="active-rooms" aria-label="Permainan yang sedang berlangsung">
           {activeRooms.map(r => (
             <ActiveRoomCard key={r.code} room={r} onJoin={actions.joinRoom} />
@@ -404,6 +423,22 @@ export default function HomeScreen({
               </div>
               <button type="button" className="btn btn--primary" onClick={selectChess}>
                 Lanjutkan Catur
+              </button>
+            </article>
+          )}
+          {activeSnakesRoom?.code && (
+            <article className="active-room card">
+              <div className="active-room__info">
+                <span className="dot" style={{ background: '#10b981' }} aria-hidden="true" />
+                <div>
+                  <strong>Ular Tangga · Pertandingan aktif</strong>
+                  <p className="muted">
+                    Room <span className="code-text">{activeSnakesRoom.code}</span> · Papan 100 Kotak
+                  </p>
+                </div>
+              </div>
+              <button type="button" className="btn btn--primary" onClick={selectSnakes}>
+                Lanjutkan Main
               </button>
             </article>
           )}
@@ -569,6 +604,58 @@ export default function HomeScreen({
                     onClick={selectChess}
                   >
                     Create / Join Private Room
+                  </button>
+                )}
+              </div>
+            </div>
+          </article>
+
+          {/* GAME 4: SNAKES AND LADDERS (ULAR TANGGA) */}
+          <article className="playgo-game-card card card--focus">
+            <div className="playgo-game-card__visual playgo-game-card__visual--snakes">
+              <img
+                src={snakesLaddersLogo}
+                alt="Logo Ular Tangga (Snakes and Ladders) PlayGo"
+                width="360"
+                height="240"
+                className="playgo-game-card__img"
+              />
+            </div>
+
+            <div className="playgo-game-card__body">
+              <div className="playgo-game-card__tags">
+                <span className="badge badge--brand">Board Game</span>
+                <span className="badge">2 Pemain · 100 Kotak</span>
+                <span className="badge badge--success">Game PlayGo</span>
+              </div>
+
+              <h3 className="playgo-game-card__name">Ular Tangga (Snakes and Ladders)</h3>
+              <p className="playgo-game-card__desc muted">
+                Balapan dadu klasik mencapai kotak nomor 100 terlebih dahulu! Panjat 8 tangga emas, hindari 8 kepala ular, dengan fitur Smart Matchmaking &amp; Private Room.
+              </p>
+
+              <div className="playgo-game-card__actions">
+                <button
+                  type="button"
+                  className="btn btn--primary btn--lg btn--block"
+                  onClick={user ? selectSnakes : onOpenAuth}
+                >
+                  <Icon name="snakes" size={18} />
+                  <span>
+                    {activeSnakesRoom?.code
+                      ? `Lanjutkan Main (${activeSnakesRoom.code})`
+                      : user
+                      ? 'Mainkan Ular Tangga'
+                      : 'Masuk untuk Main Ular Tangga'}
+                  </span>
+                </button>
+                {user && (
+                  <button
+                    type="button"
+                    className="btn btn--secondary btn--block"
+                    onClick={selectSnakes}
+                  >
+                    Quick Match / Private Room
                   </button>
                 )}
               </div>

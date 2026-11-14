@@ -311,12 +311,6 @@
   }
 }
 
-@media (min-width: 1040px) {
-  .playgo-games-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
 .playgo-game-card {
   display: flex;
   flex-direction: column;
@@ -358,6 +352,13 @@
 .playgo-game-card__visual--chess {
   background:
     radial-gradient(circle at 50% 45%, rgba(245, 158, 11, 0.16) 0%, transparent 65%),
+    linear-gradient(180deg, var(--surface-2) 0%, var(--surface-3) 100%);
+}
+
+.playgo-game-card__visual--snakes {
+  background:
+    radial-gradient(circle at 30% 40%, rgba(16, 185, 129, 0.18) 0%, transparent 60%),
+    radial-gradient(circle at 75% 65%, rgba(250, 204, 21, 0.16) 0%, transparent 55%),
     linear-gradient(180deg, var(--surface-2) 0%, var(--surface-3) 100%);
 }
 

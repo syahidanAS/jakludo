@@ -10,7 +10,7 @@
     "start": "node server/index.js",
     "db:migrate": "node server/migrate.js",
     "db:status": "node server/migrate.js --status",
-    "test": "node --test --test-concurrency=1 server/game/rules.test.js server/items/items.test.js server/server.test.js server/migrate.test.js server/social/social.test.js server/quiz/quiz.test.js server/chess/chess.test.js",
+    "test": "node --test --test-concurrency=1 server/game/rules.test.js server/items/items.test.js server/server.test.js server/migrate.test.js server/social/social.test.js server/quiz/quiz.test.js server/chess/chess.test.js server/snakes/snakes.test.js",
     "backup": "node server/backup.js"
   },
   "dependencies": {

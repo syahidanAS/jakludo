@@ -25,15 +25,16 @@ export default function LeaderboardModal({
   initialTab = 'ludo'
 }) {
   const [tab, setTab] = useState(
-    initialTab === 'quiz' ? 'quiz' : initialTab === 'chess' ? 'chess' : 'ludo'
-  ); // 'ludo' | 'quiz' | 'chess'
+    initialTab === 'quiz' ? 'quiz' : initialTab === 'chess' ? 'chess' : initialTab === 'snakes' ? 'snakes' : 'ludo'
+  ); // 'ludo' | 'quiz' | 'chess' | 'snakes'
   const [ludoState, setLudoState] = useState({ status: 'idle', list: [] });
   const [quizState, setQuizState] = useState({ status: 'idle', list: [] });
   const [chessState, setChessState] = useState({ status: 'idle', list: [] });
+  const [snakesState, setSnakesState] = useState({ status: 'idle', list: [] });
 
   useEffect(() => {
     if (isOpen) {
-      setTab(initialTab === 'quiz' ? 'quiz' : initialTab === 'chess' ? 'chess' : 'ludo');
+      setTab(initialTab === 'quiz' ? 'quiz' : initialTab === 'chess' ? 'chess' : initialTab === 'snakes' ? 'snakes' : 'ludo');
     }
   }, [isOpen, initialTab]);
 
@@ -73,15 +74,28 @@ export default function LeaderboardModal({
     }
   }, []);
 
+  const loadSnakes = useCallback(async () => {
+    setSnakesState(s => ({ ...s, status: 'loading' }));
+    try {
+      const res = await fetch('/api/games/snakes-and-ladders/leaderboard?page=1&limit=50');
+      const data = res.ok ? await res.json() : null;
+      if (!data?.success) throw new Error('bad response');
+      setSnakesState({ status: 'ready', list: data.entries || data.leaderboard || [] });
+    } catch {
+      setSnakesState(s => ({ ...s, status: 'error' }));
+    }
+  }, []);
+
   useEffect(() => {
     if (isOpen) {
       loadLudo();
       loadQuiz();
       loadChess();
+      loadSnakes();
     }
-  }, [isOpen, loadLudo, loadQuiz, loadChess]);
+  }, [isOpen, loadLudo, loadQuiz, loadChess, loadSnakes]);
 
-  // Peringkat diperbarui realtime setiap ada pertandingan selesai (Ludo, Monster Quiz, maupun Chess Master)
+  // Peringkat diperbarui realtime setiap ada pertandingan selesai
   useEffect(() => {
     if (!socket) return undefined;
     const onLudoUpdate = list => setLudoState({ status: 'ready', list: list || [] });
@@ -91,23 +105,35 @@ export default function LeaderboardModal({
         setChessState({ status: 'ready', list: data.entries });
       }
     };
+    const onSnakesUpdate = data => {
+      if (data && Array.isArray(data.entries)) {
+        setSnakesState({ status: 'ready', list: data.entries });
+      }
+    };
     socket.on('leaderboard:update', onLudoUpdate);
     socket.on('quiz:leaderboard:update', onQuizUpdate);
     socket.on('chess:leaderboard:update', onChessUpdate);
+    socket.on('snakes:leaderboard:update', onSnakesUpdate);
     return () => {
       socket.off('leaderboard:update', onLudoUpdate);
       socket.off('quiz:leaderboard:update', onQuizUpdate);
       socket.off('chess:leaderboard:update', onChessUpdate);
+      socket.off('snakes:leaderboard:update', onSnakesUpdate);
     };
   }, [socket]);
 
   const isQuizTab = tab === 'quiz';
   const isChessTab = tab === 'chess';
-  const activeState = isChessTab ? chessState : isQuizTab ? quizState : ludoState;
+  const isSnakesTab = tab === 'snakes';
+  const activeState = isSnakesTab ? snakesState : isChessTab ? chessState : isQuizTab ? quizState : ludoState;
   const { status, list } = activeState;
-  const retryLoad = isChessTab ? loadChess : isQuizTab ? loadQuiz : loadLudo;
+  const retryLoad = isSnakesTab ? loadSnakes : isChessTab ? loadChess : isQuizTab ? loadQuiz : loadLudo;
 
-  const topChampion = isChessTab
+  const topChampion = isSnakesTab
+    ? list[0]?.wins > 0
+      ? list[0]
+      : null
+    : isChessTab
     ? list[0] || null
     : isQuizTab
     ? list[0]?.wins > 0
@@ -134,7 +160,9 @@ export default function LeaderboardModal({
       icon="🏆"
       title="Peringkat Global PlayGo"
       subtitle={
-        isChessTab
+        isSnakesTab
+          ? 'Peringkat Ular Tangga (Snakes and Ladders): diurutkan dari jumlah menang dan rasio kemenangan (win rate) melawan pemain manusia.'
+          : isChessTab
           ? 'Peringkat Chess Master: diurutkan berdasarkan Rating Elo resmi, kemenangan, dan rasio kemenangan.'
           : isQuizTab
           ? 'Peringkat Monster Quiz Battle: diurutkan dari jumlah menang, rasio kemenangan (win rate), dan jumlah pertandingan.'
@@ -144,17 +172,23 @@ export default function LeaderboardModal({
         currentUser && status === 'ready' ? (
           <p className="lb-mine">
             {mine
-              ? isChessTab
+              ? isSnakesTab
+                ? `Posisimu di Ular Tangga: #${mine.rank} · ${mine.wins} menang dari ${mine.matchesPlayed} match (Win Rate ${mine.winRate}%)`
+                : isChessTab
                 ? `Posisimu di Chess Master: #${mine.rank} · Rating ${mine.rating} Elo · ${mine.wins} menang dari ${mine.totalGames || mine.matchesPlayed || 0} match (Win Rate ${mine.winRate}%)`
                 : isQuizTab
                 ? `Posisimu di Monster Quiz: #${mine.rank} · ${mine.wins} menang, ${mine.losses} kalah dari ${mine.matchesPlayed} duel (Win Rate ${mine.winRate}%)`
                 : `Posisimu di JakLudo: #${mine.rank} · ${mine.wins} menang dari ${mine.matchesPlayed} main · ${mine.points} Coins`
+              : isSnakesTab
+              ? 'Kamu belum masuk peringkat Ular Tangga. Menangkan pertandingan melawan pemain manusia untuk tercatat di peringkat!'
               : isChessTab
               ? 'Kamu belum masuk peringkat Chess Master. Selesaikan satu pertandingan catur untuk tercatat di peringkat!'
               : isQuizTab
               ? 'Kamu belum masuk peringkat Monster Quiz Battle. Selesaikan satu duel untuk tercatat di peringkat!'
               : 'Kamu belum masuk peringkat JakLudo. Selesaikan satu pertandingan bersama pemain lain.'}
-            {!isQuizTab && !isChessTab && mine?.isLudoKing && <strong> Kamu Ludo King saat ini 👑</strong>}
+            {!isQuizTab && !isChessTab && !isSnakesTab && mine?.isLudoKing && (
+              <strong> Kamu Ludo King saat ini 👑</strong>
+            )}
           </p>
         ) : null
       }
@@ -191,11 +225,29 @@ export default function LeaderboardModal({
           <Icon name="chess" size={16} />
           <span>Chess Master</span>
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={isSnakesTab}
+          className="tabs__tab"
+          onClick={() => switchTab('snakes')}
+        >
+          <Icon name="snakes" size={16} />
+          <span>Ular Tangga</span>
+        </button>
       </div>
 
       {status === 'loading' && list.length === 0 && (
         <p className="state-msg" role="status">
-          <span className="spinner" aria-hidden="true" /> Memuat peringkat {isQuizTab ? 'Monster Quiz Battle' : 'JakLudo'}...
+          <span className="spinner" aria-hidden="true" /> Memuat peringkat{' '}
+          {isSnakesTab
+            ? 'Ular Tangga'
+            : isChessTab
+            ? 'Chess Master'
+            : isQuizTab
+            ? 'Monster Quiz Battle'
+            : 'JakLudo'}
+          ...
         </p>
       )}
 
@@ -210,7 +262,11 @@ export default function LeaderboardModal({
 
       {status === 'ready' && list.length === 0 && (
         <p className="state-msg">
-          {isQuizTab
+          {isSnakesTab
+            ? 'Belum ada pemain di peringkat Ular Tangga. Menangkan pertandingan pertamamu melawan pemain manusia!'
+            : isChessTab
+            ? 'Belum ada pemain di peringkat Chess Master. Jadilah juara catur pertama!'
+            : isQuizTab
             ? 'Belum ada pemain di peringkat Monster Quiz Battle. Jadilah juara duel pertama!'
             : 'Belum ada pemain di peringkat JakLudo. Jadilah yang pertama menang!'}
         </p>
@@ -221,11 +277,17 @@ export default function LeaderboardModal({
           {topChampion && (
             <div className="lb-king">
               <span className="lb-king__crown" aria-hidden="true">
-                <Icon name={isQuizTab ? 'trophy' : 'crown'} size={28} />
+                <Icon name={isQuizTab || isSnakesTab || isChessTab ? 'trophy' : 'crown'} size={28} />
               </span>
               <div>
                 <p className="muted">
-                  {isQuizTab ? 'Juara Monster Quiz Battle saat ini' : 'Ludo King saat ini'}
+                  {isSnakesTab
+                    ? 'Juara Ular Tangga saat ini'
+                    : isChessTab
+                    ? 'Grandmaster Chess Master saat ini'
+                    : isQuizTab
+                    ? 'Juara Monster Quiz Battle saat ini'
+                    : 'Ludo King saat ini'}
                 </p>
                 {onViewProfile ? (
                   <button
@@ -272,7 +334,7 @@ export default function LeaderboardModal({
                     <span className="lb-row__points">
                       {isChessTab
                         ? `${p.wins}M/${p.losses || 0}K · ${p.winRate}%`
-                        : isQuizTab
+                        : isQuizTab || isSnakesTab
                         ? `${p.losses || 0} kalah · ${p.winRate}%`
                         : `${p.points} Coins`}
                     </span>

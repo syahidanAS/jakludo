@@ -30,6 +30,13 @@ const SEO_CONFIGS = {
     image: '/playgo-logo.jpg',
     query: '?game=chess-master'
   },
+  snakes: {
+    title: 'Ular Tangga (Snakes and Ladders Online Multiplayer) · PlayGo Board Game',
+    description:
+      'Mainkan Ular Tangga (Snakes and Ladders) multiplayer realtime di PlayGo! Lempar dadu menuju kotak 100, panjat tangga, hindari ular, dengan Smart Matchmaking & Private Room!',
+    image: '/playgo-logo.jpg',
+    query: '?game=snakes-and-ladders'
+  },
   shop: {
     title: 'Toko Item & Hints Jawaban · PlayGo Multiplayer',
     description:
@@ -69,6 +76,7 @@ export function getInitialGameModeFromUrl() {
   if (game === 'jakludo' || game === 'ludo') return 'ludo';
   if (game === 'monster-quiz' || game === 'quiz') return 'quiz';
   if (game === 'chess-master' || game === 'chess') return 'chess';
+  if (game === 'snakes-and-ladders' || game === 'snakes' || game === 'ular-tangga') return 'snakes';
   return 'hub';
 }
 
@@ -85,12 +93,14 @@ export function applySeo({ gameMode = 'hub', modal = null, roomCode = null }) {
   const cfg = SEO_CONFIGS[key] || SEO_CONFIGS.hub;
 
   let title = cfg.title;
-  if (roomCode && (gameMode === 'ludo' || gameMode === 'quiz' || gameMode === 'chess')) {
+  if (roomCode && (gameMode === 'ludo' || gameMode === 'quiz' || gameMode === 'chess' || gameMode === 'snakes')) {
     const gameLabel =
       gameMode === 'quiz'
         ? 'Monster Quiz Battle'
         : gameMode === 'chess'
         ? 'Chess Master'
+        : gameMode === 'snakes'
+        ? 'Ular Tangga'
         : 'JakLudo';
     title = `Room ${roomCode} · ${gameLabel} — PlayGo`;
   }

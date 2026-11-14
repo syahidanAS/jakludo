@@ -1,0 +1,694 @@
+/* ==========================================================================
+   SNAKES AND LADDERS (ULAR TANGGA) — PLAYGO STYLES
+   ========================================================================== */
+
+.snk-screen {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-3) calc(var(--space-6) + 64px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.snk-lobby-hero {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(59, 130, 246, 0.12));
+}
+
+.snk-lobby-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+
+@media (min-width: 900px) {
+  .snk-lobby-grid {
+    grid-template-columns: 1.15fr 0.85fr;
+    align-items: start;
+  }
+}
+
+.snk-action-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.snk-mode-block__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.snk-mode-block__head h3 {
+  margin: 0;
+}
+
+.snk-info-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.snk-stats-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.snk-rules-card h3 {
+  margin-top: 0;
+  margin-bottom: var(--space-2);
+}
+
+.snk-rules-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+
+.snk-bottom-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+
+@media (min-width: 900px) {
+  .snk-bottom-grid {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+
+/* Matchmaking Box */
+.snk-matchmaking-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--space-4) var(--space-2);
+  gap: var(--space-2);
+}
+
+.snk-matchmaking-radar {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--brand-soft);
+  margin-bottom: var(--space-1);
+}
+
+.snk-matchmaking-spinner {
+  width: 64px;
+  height: 64px;
+  border-width: 4px;
+}
+
+.snk-matchmaking-icon {
+  position: absolute;
+  font-size: 1.65rem;
+}
+
+.snk-matchmaking-title {
+  margin: 0;
+  font-size: var(--fs-xl);
+}
+
+.snk-matchmaking-priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.14);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.snk-matchmaking-timer {
+  font-size: var(--fs-base);
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+/* Waiting Lobby */
+.snk-waiting-card {
+  max-width: 680px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.snk-waiting-card__head {
+  text-align: center;
+}
+
+.snk-waiting-card__code-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.snk-waiting-players__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+@media (min-width: 600px) {
+  .snk-waiting-players__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.snk-waiting-slot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+
+.snk-waiting-slot--empty {
+  border-style: dashed;
+  opacity: 0.85;
+}
+
+/* ==========================================================================
+   GAME SCREEN & 10x10 BOARD
+   ========================================================================== */
+
+.snk-game-layout {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-2) var(--space-3) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.snk-game-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+
+.snk-game-topbar__left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.snk-game-topbar__title {
+  display: block;
+  font-size: var(--fs-base);
+}
+
+.snk-game-topbar__sub {
+  display: block;
+  font-size: var(--fs-xs);
+}
+
+.snk-match-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-left: 4px solid var(--brand);
+}
+
+.snk-match-banner--bot {
+  border-left-color: #3b82f6;
+}
+
+.snk-match-banner--human {
+  border-left-color: #22c55e;
+}
+
+.snk-game-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+  align-items: start;
+}
+
+@media (min-width: 960px) {
+  .snk-game-grid {
+    grid-template-columns: minmax(420px, 640px) minmax(320px, 1fr);
+    gap: var(--space-4);
+  }
+}
+
+.snk-board-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.snk-side-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.snk-mobile-players,
+.snk-desktop-players {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+@media (min-width: 960px) {
+  .snk-desktop-players {
+    grid-template-columns: 1fr;
+  }
+}
+
+.snk-player-card {
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.snk-player-card.is-active-turn {
+  border-color: var(--brand);
+}
+
+.snk-player-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.snk-player-card__avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.snk-bot-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  background: rgba(59, 130, 246, 0.16);
+  color: #2563eb;
+  border: 2px solid rgba(59, 130, 246, 0.35);
+}
+
+.snk-bot-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(59, 130, 246, 0.16);
+  color: #2563eb;
+}
+
+.snk-color-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 2px solid #ffffff;
+  background: var(--pc, #ef4444);
+}
+
+.snk-player-card__avatar-wrap .snk-color-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+}
+
+.snk-player-card__identity {
+  flex: 1;
+  min-width: 0;
+}
+
+.snk-player-card__name-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: var(--fs-sm);
+}
+
+.snk-player-card__sub {
+  display: block;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.snk-player-card__pos {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.snk-player-card__pos-label {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.snk-player-card__pos-value {
+  font-size: var(--fs-sm);
+  color: var(--brand);
+}
+
+.snk-player-card__turn-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--ink-line);
+}
+
+.snk-turn-pill {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--brand);
+}
+
+/* Papan 10x10 */
+.snk-board-frame {
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.snakes-board {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 3px solid var(--ink-line);
+  background: #f8fafc;
+  display: grid;
+  grid-template-rows: repeat(10, 1fr);
+  user-select: none;
+}
+
+.snakes-board__row {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+}
+
+.snakes-cell {
+  position: relative;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: #fffbeb;
+  padding: 2px 3px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+}
+
+.snakes-cell--alt {
+  background: #e0f2fe;
+}
+
+.snakes-cell--ladder {
+  background: #fef9c3;
+}
+
+.snakes-cell--snake {
+  background: #ffe4e6;
+}
+
+.snakes-cell--start {
+  background: #dcfce7;
+}
+
+.snakes-cell--finish {
+  background: linear-gradient(135deg, #fef08a, #f59e0b);
+}
+
+.snakes-cell__num {
+  font-size: clamp(9px, 1.8vw, 13px);
+  font-weight: 800;
+  line-height: 1;
+  color: #1e293b;
+  z-index: 1;
+}
+
+.snakes-cell__tag {
+  font-size: clamp(7px, 1.25vw, 10px);
+  font-weight: 800;
+  line-height: 1;
+  align-self: flex-end;
+  padding: 1px 3px;
+  border-radius: 4px;
+  z-index: 1;
+}
+
+.snakes-cell__tag--ladder {
+  background: rgba(234, 179, 8, 0.25);
+  color: #854d0e;
+}
+
+.snakes-cell__tag--snake {
+  background: rgba(239, 68, 68, 0.22);
+  color: #991b1b;
+}
+
+.snakes-cell__tag--start {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.snakes-cell__tag--finish {
+  font-size: clamp(11px, 2vw, 16px);
+  background: transparent;
+}
+
+/* SVG Ular & Tangga */
+.snakes-board__svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Bidak / Token Pemain di Atas Papan */
+.snakes-board__tokens {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.snk-token {
+  position: absolute;
+  width: 7.4%;
+  height: 7.4%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--pc, #ef4444);
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.45);
+  display: grid;
+  place-items: center;
+  transition: left 0.14s cubic-bezier(0.22, 1, 0.36, 1), top 0.14s cubic-bezier(0.22, 1, 0.36, 1), transform 0.2s ease;
+}
+
+.snk-token.is-turn {
+  transform: translate(-50%, -50%) scale(1.16);
+  box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.85), 0 4px 10px rgba(15, 23, 42, 0.5);
+  z-index: 5;
+}
+
+.snk-token__inner {
+  font-size: clamp(9px, 1.6vw, 13px);
+  font-weight: 900;
+  color: #ffffff;
+  line-height: 1;
+}
+
+/* Efek Banner di Papan (Tangga / Ular / Pantulan) */
+.snk-board-effect {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  background: rgba(15, 23, 42, 0.92);
+  color: #ffffff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  width: max-content;
+  max-width: 92%;
+  animation: snk-pop-in 0.25s ease-out;
+}
+
+.snk-board-effect p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: #e2e8f0;
+}
+
+.snk-board-effect--ladder {
+  border: 2px solid #facc15;
+}
+
+.snk-board-effect--snake {
+  border: 2px solid #f87171;
+}
+
+.snk-board-effect--overshoot {
+  border: 2px solid #38bdf8;
+}
+
+.snk-board-effect__icon {
+  font-size: 1.5rem;
+}
+
+@keyframes snk-pop-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+/* Area Start Dock (Kotak 0) */
+.snk-start-dock {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.snk-start-dock__label {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.snk-start-dock__tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.snk-dock-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1.5px solid var(--ink-line);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.snk-dock-chip__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--pc, #ef4444);
+}
+
+/* Log Riwayat Langkah */
+.snk-log-list {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+.snk-log-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-xs);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+/* Modal Hasil Pertandingan */
+.snk-result-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.snk-result-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-base);
+}
+
+.snk-result-banner.is-win {
+  background: rgba(34, 197, 94, 0.16);
+  color: #15803d;
+}
+
+.snk-result-banner.is-loss {
+  background: rgba(239, 68, 68, 0.14);
+  color: #b91c1c;
+}
+
+.snk-result-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.snk-result-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--fs-sm);
+}
+
+.snk-result-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+

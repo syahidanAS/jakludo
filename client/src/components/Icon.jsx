@@ -45,7 +45,9 @@ const EMOJI_TO_ICON = {
   '♟️': 'chess',
   '♞': 'chess',
   '🏳️': 'flag',
-  '⏱️': 'clock'
+  '⏱️': 'clock',
+  '🐍': 'snakes',
+  '🪜': 'snakes'
 };
 
 export function resolveIconName(nameOrEmoji) {
@@ -552,6 +554,16 @@ export default function Icon({ name, size = 20, className = '', label }) {
         <svg {...common}>
           <path d="M12 3v12m0 0-4-4m4 4 4-4" />
           <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+        </svg>
+      );
+
+    case 'snakes':
+    case 'ladder':
+      return (
+        <svg {...common}>
+          <path d="M6 3v18M13 3v18M6 7h7M6 12h7M6 17h7" />
+          <path d="M17 4c2.5 1.5 2.5 4.5 0 6s-2.5 4.5 0 6 2.5 3.5 0 5" />
+          <circle cx="17" cy="4" r="1.2" fill="currentColor" stroke="none" />
         </svg>
       );
 

@@ -72,6 +72,128 @@ function groupMovePairs(moves = []) {
   return pairs;
 }
 
+const PIECE_NAMES_ID = {
+  p: 'Pion',
+  n: 'Kuda',
+  b: 'Gajah',
+  r: 'Benteng',
+  q: 'Menteri',
+  k: 'Raja'
+};
+
+function describeChessMove(mv, totalMoves = 0) {
+  if (!mv) {
+    return {
+      title: 'Posisi Awal Permainan',
+      detail: 'Kedua pemain siap di posisi standar. Putih memegang giliran pertama.',
+      tag: 'Pembukaan',
+      tagType: 'neutral'
+    };
+  }
+
+  const san = String(mv.san || '');
+  const sideLabel = mv.color === 'w' ? 'Putih' : 'Hitam';
+  const moveNum = Math.floor(((mv.ply || 1) - 1) / 2) + 1;
+  const prefix = mv.color === 'w' ? `${moveNum}. ${san}` : `${moveNum}... ${san}`;
+
+  const isCheckmate = san.includes('#');
+  const isCheck = !isCheckmate && san.includes('+');
+  const isCapture = Boolean(mv.captured) || san.includes('x');
+  const isCastleKingside = san.startsWith('O-O') && !san.startsWith('O-O-O');
+  const isCastleQueenside = san.startsWith('O-O-O');
+  const isPromotion = Boolean(mv.promotion) || san.includes('=');
+
+  const pieceKey = String(mv.piece || '').toLowerCase();
+  const pieceName = PIECE_NAMES_ID[pieceKey] || (
+    san[0] === 'N' ? 'Kuda' :
+    san[0] === 'B' ? 'Gajah' :
+    san[0] === 'R' ? 'Benteng' :
+    san[0] === 'Q' ? 'Menteri' :
+    san[0] === 'K' ? 'Raja' : 'Pion'
+  );
+  const capturedName = mv.captured ? PIECE_NAMES_ID[String(mv.captured).toLowerCase()] || 'bidak lawan' : 'bidak lawan';
+  const promoName = mv.promotion ? PIECE_NAMES_ID[String(mv.promotion).toLowerCase()] || 'Menteri' : 'Menteri';
+
+  let actionDesc = '';
+  if (isCastleKingside) {
+    actionDesc = `${sideLabel} melakukan Rokade Pendek (O-O) untuk mengamankan Raja dan mengaktifkan Benteng.`;
+  } else if (isCastleQueenside) {
+    actionDesc = `${sideLabel} melakukan Rokade Panjang (O-O-O) ke sisi Menteri.`;
+  } else if (isCapture) {
+    actionDesc = `${sideLabel} menggerakkan ${pieceName} dari ${mv.from || '-'} ke ${mv.to || '-'} dan memakan ${capturedName}.`;
+  } else {
+    actionDesc = `${sideLabel} menggerakkan ${pieceName} dari petak ${mv.from || '-'} ke ${mv.to || '-'}.`;
+  }
+
+  if (isPromotion) {
+    actionDesc += ` Pion dipromosikan menjadi ${promoName}!`;
+  }
+  if (isCheckmate) {
+    actionDesc += ' Langkah ini menghasilkan SKAKMAT dan mengakhiri permainan!';
+  } else if (isCheck) {
+    actionDesc += ' Raja lawan kini dalam ancaman SKAK!';
+  }
+
+  let tag = 'Langkah Taktis';
+  let tagType = 'neutral';
+  if (isCheckmate) {
+    tag = '👑 Langkah Penentu (Skakmat)';
+    tagType = 'win';
+  } else if (isCheck) {
+    tag = '⚠️ Serangan Skak';
+    tagType = 'warn';
+  } else if (isPromotion) {
+    tag = '⭐ Promosi Pion';
+    tagType = 'win';
+  } else if (isCastleKingside || isCastleQueenside) {
+    tag = '🛡️ Rokade Raja';
+    tagType = 'info';
+  } else if (isCapture) {
+    tag = '⚔️ Pertukaran Bidak';
+    tagType = 'capture';
+  } else if ((mv.ply || 0) <= 10) {
+    tag = '📖 Fase Pembukaan';
+    tagType = 'info';
+  } else if (totalMoves > 0 && mv.ply === totalMoves) {
+    tag = '🏁 Langkah Terakhir';
+    tagType = 'warn';
+  }
+
+  return {
+    title: `Langkah ${mv.ply}/${totalMoves || mv.ply}: ${prefix}`,
+    detail: actionDesc,
+    tag,
+    tagType
+  };
+}
+
+function computeMatchReviewStats(moves = []) {
+  const stats = {
+    totalPlies: moves.length,
+    totalTurns: Math.ceil(moves.length / 2),
+    whiteCaptures: 0,
+    blackCaptures: 0,
+    whiteChecks: 0,
+    blackChecks: 0,
+    promotions: 0
+  };
+  for (const m of moves) {
+    const san = String(m.san || '');
+    const isCap = Boolean(m.captured) || san.includes('x');
+    const isChk = san.includes('+') || san.includes('#');
+    const isPromo = Boolean(m.promotion) || san.includes('=');
+    if (m.color === 'w') {
+      if (isCap) stats.whiteCaptures += 1;
+      if (isChk) stats.whiteChecks += 1;
+    } else {
+      if (isCap) stats.blackCaptures += 1;
+      if (isChk) stats.blackChecks += 1;
+    }
+    if (isPromo) stats.promotions += 1;
+  }
+  return stats;
+}
+
 export default function ChessMasterScreen({
   chess,
   currentUser,
@@ -88,6 +210,10 @@ export default function ChessMasterScreen({
   const [manualFlip, setManualFlip] = useState(false);
   const [viewingPly, setViewingPly] = useState(null); // null = live
   const [mobileMovesOpen, setMobileMovesOpen] = useState(false);
+  const [showResultModal, setShowResultModal] = useState(false);
+  const [reviewMode, setReviewMode] = useState(false);
+  const [autoPlayReview, setAutoPlayReview] = useState(false);
+  const [autoPlayReplay, setAutoPlayReplay] = useState(false);
 
   const {
     room,
@@ -122,6 +248,19 @@ export default function ChessMasterScreen({
     setConfirmResign(false);
   }, [room?.match?.moveVersion, room?.phase]);
 
+  // Saat permainan selesai, otomatis tutup gameplay dengan Modal Pemenang
+  useEffect(() => {
+    if (room?.phase === 'completed') {
+      setShowResultModal(true);
+      setReviewMode(false);
+      setAutoPlayReview(false);
+    } else {
+      setShowResultModal(false);
+      setReviewMode(false);
+      setAutoPlayReview(false);
+    }
+  }, [room?.phase, room?.match?.id]);
+
   const handleCopyCode = () => {
     if (!room?.code) return;
     navigator.clipboard?.writeText(room.code);
@@ -155,6 +294,34 @@ export default function ChessMasterScreen({
 
   const moves = match?.moves || [];
   const movePairs = useMemo(() => groupMovePairs(moves), [moves]);
+  const activeReviewPly = viewingPly === null ? moves.length : Math.max(0, Math.min(moves.length, viewingPly));
+  const currentReviewMove = activeReviewPly > 0 ? moves[activeReviewPly - 1] || null : null;
+  const currentReviewMoveInfo = useMemo(
+    () => describeChessMove(currentReviewMove, moves.length),
+    [currentReviewMove, moves.length]
+  );
+  const reviewStats = useMemo(() => computeMatchReviewStats(moves), [moves]);
+
+  // Auto-play untuk Review Permainan di layar match
+  useEffect(() => {
+    if (!autoPlayReview) return undefined;
+    if (moves.length === 0) {
+      setAutoPlayReview(false);
+      return undefined;
+    }
+    const timer = setInterval(() => {
+      setViewingPly(prev => {
+        const cur = prev === null ? moves.length : prev;
+        if (cur >= moves.length) {
+          setAutoPlayReview(false);
+          return moves.length;
+        }
+        sound.playHop();
+        return cur + 1;
+      });
+    }, 850);
+    return () => clearInterval(timer);
+  }, [autoPlayReview, moves.length]);
 
   // FEN yang ditampilkan di papan (bisa live atau saat menavigasi langkah sebelumnya)
   const displayedFen = useMemo(() => {
@@ -181,6 +348,39 @@ export default function ChessMasterScreen({
   // Replay modal state
   const replayMoves = replayMatch?.moves || [];
   const replayPairs = useMemo(() => groupMovePairs(replayMoves), [replayMoves]);
+  const replayCurrentMove =
+    replayPly > 0 && replayMoves.length > 0
+      ? replayMoves[Math.min(replayPly, replayMoves.length) - 1] || null
+      : null;
+  const replayMoveInfo = useMemo(
+    () => describeChessMove(replayCurrentMove, replayMoves.length),
+    [replayCurrentMove, replayMoves.length]
+  );
+  const replayStats = useMemo(() => computeMatchReviewStats(replayMoves), [replayMoves]);
+
+  useEffect(() => {
+    if (!replayMatch) setAutoPlayReplay(false);
+  }, [replayMatch]);
+
+  useEffect(() => {
+    if (!autoPlayReplay || !replayMatch) return undefined;
+    if (replayMoves.length === 0) {
+      setAutoPlayReplay(false);
+      return undefined;
+    }
+    const timer = setInterval(() => {
+      setReplayPly(prev => {
+        if (prev >= replayMoves.length) {
+          setAutoPlayReplay(false);
+          return replayMoves.length;
+        }
+        sound.playHop();
+        return prev + 1;
+      });
+    }, 850);
+    return () => clearInterval(timer);
+  }, [autoPlayReplay, replayMatch, replayMoves.length, setReplayPly]);
+
   const replayFen = useMemo(() => {
     if (!replayMatch) return INITIAL_FEN;
     if (replayPly <= 0) return INITIAL_FEN;
@@ -215,9 +415,48 @@ export default function ChessMasterScreen({
     const rematchRequestedByOpponent = (room.rematchRequests || []).some(id => id !== myUserId);
 
     const endSummary = matchResult || match.completedPayload || null;
-    const iWon = endSummary && endSummary.winnerId === myUserId;
-    const isDraw = endSummary && (!endSummary.winnerId || endSummary.result === '1/2-1/2');
-    const myDelta = myColor === 'w' ? endSummary?.whiteRatingChange : endSummary?.blackRatingChange;
+    const resultCode = endSummary?.result || match.result || '';
+    const resultReasonCode = endSummary?.resultReason || match.resultReason || '';
+    const winnerId = endSummary?.winnerId || match.winnerId || null;
+    const isDraw = Boolean(
+      room.phase === 'completed' && (!winnerId || resultCode === '1/2-1/2' || resultReasonCode === 'draw')
+    );
+    const winnerSide =
+      resultCode === '1-0'
+        ? 'w'
+        : resultCode === '0-1'
+        ? 'b'
+        : winnerId && match.whitePlayer?.userId === winnerId
+        ? 'w'
+        : winnerId && match.blackPlayer?.userId === winnerId
+        ? 'b'
+        : null;
+    const winnerPlayer =
+      winnerSide === 'w'
+        ? match.whitePlayer
+        : winnerSide === 'b'
+        ? match.blackPlayer
+        : null;
+    const loserPlayer =
+      winnerSide === 'w'
+        ? match.blackPlayer
+        : winnerSide === 'b'
+        ? match.whitePlayer
+        : null;
+    const iWon = Boolean(
+      (winnerId && winnerId === myUserId) || (winnerSide && winnerSide === myColor && !isDraw)
+    );
+    const whiteDelta = endSummary?.whiteRatingChange ?? match.whiteRatingChange ?? 0;
+    const blackDelta = endSummary?.blackRatingChange ?? match.blackRatingChange ?? 0;
+    const myDelta = myColor === 'w' ? whiteDelta : blackDelta;
+
+    const startGameReview = (startFromPly = 0) => {
+      sound.playClick();
+      setShowResultModal(false);
+      setReviewMode(true);
+      setAutoPlayReview(false);
+      setViewingPly(startFromPly);
+    };
 
     return (
       <div className="cm-screen cm-screen--match">
@@ -379,6 +618,153 @@ export default function ChessMasterScreen({
               </div>
             </div>
 
+            {/* Panel Review Permainan Interaktif (Muncul saat game selesai atau mode review aktif) */}
+            {(room.phase === 'completed' || reviewMode) && (
+              <div className="cm-review-panel" role="region" aria-label="Review Permainan Catur">
+                <div className="cm-review-panel__head">
+                  <div className="cm-review-panel__title-group">
+                    <span className="cm-review-badge">🔍 REVIEW PERMAINAN</span>
+                    <span className={`cm-review-tag cm-review-tag--${currentReviewMoveInfo.tagType}`}>
+                      {currentReviewMoveInfo.tag}
+                    </span>
+                  </div>
+                  {room.phase === 'completed' && (
+                    <button
+                      type="button"
+                      className="btn btn--primary btn--sm"
+                      onClick={() => {
+                        sound.playClick();
+                        setAutoPlayReview(false);
+                        setShowResultModal(true);
+                      }}
+                    >
+                      🏆 Lihat Pemenang
+                    </button>
+                  )}
+                </div>
+
+                <div className="cm-review-commentary">
+                  <strong>{currentReviewMoveInfo.title}</strong>
+                  <p>{currentReviewMoveInfo.detail}</p>
+                </div>
+
+                {moves.length > 0 && (
+                  <>
+                    <div className="cm-review-slider-row">
+                      <span>Awal</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={moves.length}
+                        value={activeReviewPly}
+                        onChange={e => {
+                          setAutoPlayReview(false);
+                          setViewingPly(Number(e.target.value));
+                        }}
+                        className="cm-review-slider"
+                        aria-label="Timeline langkah permainan"
+                      />
+                      <span>Akhir ({moves.length})</span>
+                    </div>
+
+                    <div className="cm-review-controls">
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={activeReviewPly <= 0}
+                        onClick={() => {
+                          setAutoPlayReview(false);
+                          setViewingPly(0);
+                        }}
+                        title="Ke Posisi Awal"
+                      >
+                        |&lt; Awal
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={activeReviewPly <= 0}
+                        onClick={() => {
+                          setAutoPlayReview(false);
+                          setViewingPly(Math.max(0, activeReviewPly - 1));
+                        }}
+                        title="Langkah Sebelumnya"
+                      >
+                        &lt; Mundur
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn btn--sm ${autoPlayReview ? 'btn--danger' : 'btn--primary'}`}
+                        onClick={() => {
+                          sound.playClick();
+                          if (!autoPlayReview && activeReviewPly >= moves.length) {
+                            setViewingPly(0);
+                          }
+                          setAutoPlayReview(v => !v);
+                        }}
+                      >
+                        {autoPlayReview ? '⏸️ Jeda' : '▶️ Putar Otomatis'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={activeReviewPly >= moves.length}
+                        onClick={() => {
+                          setAutoPlayReview(false);
+                          setViewingPly(Math.min(moves.length, activeReviewPly + 1));
+                        }}
+                        title="Langkah Berikutnya"
+                      >
+                        Maju &gt;
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        disabled={activeReviewPly >= moves.length}
+                        onClick={() => {
+                          setAutoPlayReview(false);
+                          setViewingPly(moves.length);
+                        }}
+                        title="Ke Langkah Terakhir"
+                      >
+                        Akhir &gt;|
+                      </button>
+                    </div>
+
+                    <div className="cm-review-chips" role="list" aria-label="Daftar langkah cepat">
+                      <button
+                        type="button"
+                        className={`cm-review-chip ${activeReviewPly === 0 ? 'is-active' : ''}`}
+                        onClick={() => {
+                          setAutoPlayReview(false);
+                          setViewingPly(0);
+                        }}
+                      >
+                        Mulai
+                      </button>
+                      {moves.map(m => {
+                        const moveNo = Math.floor(((m.ply || 1) - 1) / 2) + 1;
+                        const label = m.color === 'w' ? `${moveNo}. ${m.san}` : `${moveNo}... ${m.san}`;
+                        return (
+                          <button
+                            key={m.ply}
+                            type="button"
+                            className={`cm-review-chip ${activeReviewPly === m.ply ? 'is-active' : ''}`}
+                            onClick={() => {
+                              setAutoPlayReview(false);
+                              setViewingPly(m.ply);
+                            }}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* Bar Tombol Aksi Mobile & Desktop Cepat */}
             <div className="cm-action-strip">
               <button
@@ -401,6 +787,29 @@ export default function ChessMasterScreen({
                 <Icon name="rotate" size={15} />
                 <span>Putar Papan</span>
               </button>
+
+              {room.phase === 'completed' && (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn--secondary btn--sm"
+                    onClick={() => startGameReview(0)}
+                  >
+                    <span>🔍 Review dari Awal</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--primary btn--sm"
+                    onClick={() => {
+                      sound.playClick();
+                      setAutoPlayReview(false);
+                      setShowResultModal(true);
+                    }}
+                  >
+                    <span>🏆 Hasil &amp; Pemenang</span>
+                  </button>
+                </>
+              )}
 
               {room.phase === 'playing' && (
                 <>
@@ -589,8 +998,13 @@ export default function ChessMasterScreen({
                   {iWon ? '🏆 KEMENANGAN!' : isDraw ? '🤝 REMIS (DRAW)' : '⚔️ PERTANDINGAN SELESAI'}
                 </div>
                 <h3 className="cm-result-card__title">
-                  {endSummary?.result || match.result} · {formatResultReason(endSummary?.resultReason || match.resultReason)}
+                  {winnerPlayer
+                    ? `Pemenang: ${winnerPlayer.name} (${winnerSide === 'w' ? 'Putih' : 'Hitam'})`
+                    : 'Pertandingan Berakhir Remis'}
                 </h3>
+                <p className="cm-result-card__sub">
+                  {resultCode} · {formatResultReason(resultReasonCode)}
+                </p>
 
                 <div className="cm-result-card__elo">
                   <div>
@@ -608,6 +1022,13 @@ export default function ChessMasterScreen({
                 </div>
 
                 <div className="cm-result-card__actions">
+                  <button
+                    type="button"
+                    className="btn btn--secondary btn--block"
+                    onClick={() => startGameReview(0)}
+                  >
+                    🔍 Review Permainan ({moves.length} Langkah)
+                  </button>
                   <button
                     type="button"
                     className="btn btn--primary btn--block"
@@ -652,6 +1073,189 @@ export default function ChessMasterScreen({
             </div>
           </aside>
         </div>
+
+        {/* MODAL UTAMA HASIL PERTANDINGAN & SIAPA PEMENANG (Otomatis menutup gameplay saat selesai) */}
+        {room.phase === 'completed' && showResultModal && (
+          <div
+            className="modal-backdrop cm-gameover-backdrop"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cm-gameover-title"
+          >
+            <div
+              className={`modal-sheet cm-gameover-modal ${
+                iWon ? 'is-win' : isDraw ? 'is-draw' : 'is-loss'
+              }`}
+              onClick={e => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="cm-gameover-close"
+                aria-label="Tutup modal dan masuk ke Review Permainan"
+                onClick={() => startGameReview(moves.length)}
+              >
+                <Icon name="close" size={18} />
+              </button>
+
+              <div className="cm-gameover-hero">
+                <div className="cm-gameover-emblem" aria-hidden="true">
+                  {isDraw ? '🤝' : iWon ? '🏆' : '👑'}
+                </div>
+                <span className="cm-gameover-kicker">
+                  {isDraw
+                    ? 'PERTANDINGAN REMIS (DRAW)'
+                    : iWon
+                    ? 'SELAMAT! KAMU MENANG!'
+                    : 'PERTANDINGAN SELESAI'}
+                </span>
+                <h2 id="cm-gameover-title" className="cm-gameover-title">
+                  {isDraw
+                    ? 'Tidak Ada Pemenang (Remis)'
+                    : `Pemenang: ${winnerPlayer?.name || 'Pemain'}`}
+                </h2>
+                <p className="cm-gameover-reason">
+                  {resultCode ? `${resultCode} · ` : ''}
+                  {formatResultReason(resultReasonCode)}
+                </p>
+              </div>
+
+              {/* Kartu Highlight Pemenang */}
+              {!isDraw && winnerPlayer && (
+                <div className="cm-winner-spotlight">
+                  <div className="cm-winner-spotlight__avatar-wrap">
+                    <PlayerAvatar player={winnerPlayer} size={56} />
+                    <span className="cm-winner-crown" aria-hidden="true">👑</span>
+                  </div>
+                  <div className="cm-winner-spotlight__info">
+                    <span className="cm-winner-spotlight__label">PEMENANG PERTANDINGAN</span>
+                    <strong className="cm-winner-spotlight__name">
+                      {winnerPlayer.name}
+                      {winnerPlayer.userId === myUserId ? ' (Kamu)' : ''}
+                    </strong>
+                    <div className="cm-winner-spotlight__tags">
+                      <span className={`cm-color-badge cm-color-badge--${winnerSide}`}>
+                        Bidak {winnerSide === 'w' ? 'Putih ♔' : 'Hitam ♚'}
+                      </span>
+                      <span className="cm-winner-spotlight__elo">
+                        Rating {winnerSide === 'w'
+                          ? endSummary?.whiteRatingAfter || winnerPlayer.rating || 1200
+                          : endSummary?.blackRatingAfter || winnerPlayer.rating || 1200}{' '}
+                        Elo
+                      </span>
+                    </div>
+                  </div>
+                  {iWon && endSummary?.rewardCoins > 0 && (
+                    <div className="cm-winner-spotlight__reward">
+                      <Icon name="coin" size={18} />
+                      <span>+{endSummary.rewardCoins} Coins</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Perbandingan Kedua Pemain (Putih vs Hitam) */}
+              <div className="cm-gameover-versus">
+                <div className={`cm-gameover-player ${winnerSide === 'w' ? 'is-winner' : ''}`}>
+                  <PlayerAvatar player={match.whitePlayer || { name: 'Putih' }} size={40} />
+                  <div className="cm-gameover-player__meta">
+                    <strong>
+                      {match.whitePlayer?.name || 'Putih'}
+                      {winnerSide === 'w' && ' 🏆'}
+                    </strong>
+                    <span>
+                      ♔ Putih · {endSummary?.whiteRatingAfter || match.whitePlayer?.rating || 1200} Elo{' '}
+                      <em className={whiteDelta > 0 ? 'is-pos' : whiteDelta < 0 ? 'is-neg' : ''}>
+                        ({whiteDelta > 0 ? `+${whiteDelta}` : whiteDelta})
+                      </em>
+                    </span>
+                  </div>
+                </div>
+
+                <span className="cm-gameover-vs-badge">VS</span>
+
+                <div className={`cm-gameover-player ${winnerSide === 'b' ? 'is-winner' : ''}`}>
+                  <PlayerAvatar player={match.blackPlayer || { name: 'Hitam' }} size={40} />
+                  <div className="cm-gameover-player__meta">
+                    <strong>
+                      {match.blackPlayer?.name || 'Hitam'}
+                      {winnerSide === 'b' && ' 🏆'}
+                    </strong>
+                    <span>
+                      ♚ Hitam · {endSummary?.blackRatingAfter || match.blackPlayer?.rating || 1200} Elo{' '}
+                      <em className={blackDelta > 0 ? 'is-pos' : blackDelta < 0 ? 'is-neg' : ''}>
+                        ({blackDelta > 0 ? `+${blackDelta}` : blackDelta})
+                      </em>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Ringkasan Statistik Pertandingan untuk Review */}
+              <div className="cm-gameover-stats">
+                <div className="cm-gameover-stat">
+                  <span>Total Langkah</span>
+                  <strong>{reviewStats.totalTurns} langkah ({reviewStats.totalPlies} ply)</strong>
+                </div>
+                <div className="cm-gameover-stat">
+                  <span>Makan Bidak (P/H)</span>
+                  <strong>{reviewStats.whiteCaptures} / {reviewStats.blackCaptures}</strong>
+                </div>
+                <div className="cm-gameover-stat">
+                  <span>Serangan Skak</span>
+                  <strong>{reviewStats.whiteChecks + reviewStats.blackChecks}x</strong>
+                </div>
+                <div className="cm-gameover-stat">
+                  <span>Mode Waktu</span>
+                  <strong>{match.timeControl}</strong>
+                </div>
+              </div>
+
+              {/* Tombol Aksi Utama: Review Permainan, Rematch, PGN, & Lobby */}
+              <div className="cm-gameover-actions">
+                <button
+                  type="button"
+                  className="btn btn--secondary btn--lg btn--block cm-btn-review"
+                  onClick={() => startGameReview(0)}
+                >
+                  🔍 Review Permainan (Analisis Langkah demi Langkah)
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn--primary btn--lg btn--block"
+                  onClick={() => {
+                    sound.playClick();
+                    actions.requestRematch();
+                  }}
+                >
+                  {rematchRequestedByMe
+                    ? '⏳ Menunggu Lawan Menerima Rematch...'
+                    : rematchRequestedByOpponent
+                    ? '⚡ Terima Tantangan Rematch Sekarang!'
+                    : '🔄 Main Lagi (Tantang Rematch)'}
+                </button>
+
+                <div className="cm-gameover-actions__row">
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--block"
+                    onClick={() => actions.downloadPgn(match.id)}
+                  >
+                    <Icon name="download" size={16} />
+                    <span>Unduh PGN</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--block"
+                    onClick={actions.leaveRoom}
+                  >
+                    🏠 Ke Lobby Catur
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <Modal
           isOpen={Boolean(chatOpen)}
@@ -1282,10 +1886,10 @@ export default function ChessMasterScreen({
                           <div className="cm-history-item__btns">
                             <button
                               type="button"
-                              className="btn btn--ghost btn--sm"
+                              className="btn btn--secondary btn--sm"
                               onClick={() => actions.openReplay(item.id)}
                             >
-                              ▶️ Replay
+                              🔍 Review Permainan
                             </button>
                             <button
                               type="button"
@@ -1306,17 +1910,17 @@ export default function ChessMasterScreen({
         </section>
       </div>
 
-      {/* Modal Replay Pertandingan */}
+      {/* Modal Review & Replay Pertandingan */}
       {replayMatch && (
         <div className="modal-backdrop" onClick={actions.closeReplay}>
           <div className="modal-sheet cm-replay-modal" onClick={e => e.stopPropagation()}>
             <div className="cm-side-card__head">
               <div>
                 <strong>
-                  Replay: {replayMatch.whitePlayer?.name} (Putih) vs {replayMatch.blackPlayer?.name} (Hitam)
+                  🔍 Review Permainan: {replayMatch.whitePlayer?.name} (Putih) vs {replayMatch.blackPlayer?.name} (Hitam)
                 </strong>
                 <span className="cm-side-card__sub">
-                  {replayMatch.result} · {formatResultReason(replayMatch.resultReason)}
+                  {replayMatch.result} · {formatResultReason(replayMatch.resultReason)} · {replayStats.totalTurns} langkah ({replayStats.totalPlies} ply)
                 </span>
               </div>
               <button type="button" className="btn btn--ghost btn--sm" onClick={actions.closeReplay}>
@@ -1332,12 +1936,45 @@ export default function ChessMasterScreen({
                   interactive={false}
                   lastMove={replayLastMove}
                 />
+
+                <div className="cm-review-commentary">
+                  <div className="cm-review-panel__title-group" style={{ marginBottom: 4 }}>
+                    <span className={`cm-review-tag cm-review-tag--${replayMoveInfo.tagType}`}>
+                      {replayMoveInfo.tag}
+                    </span>
+                  </div>
+                  <strong>{replayMoveInfo.title}</strong>
+                  <p>{replayMoveInfo.detail}</p>
+                </div>
+
+                {replayMoves.length > 0 && (
+                  <div className="cm-review-slider-row">
+                    <span>0</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={replayMoves.length}
+                      value={replayPly}
+                      onChange={e => {
+                        setAutoPlayReplay(false);
+                        setReplayPly(Number(e.target.value));
+                      }}
+                      className="cm-review-slider"
+                      aria-label="Timeline review langkah"
+                    />
+                    <span>{replayMoves.length}</span>
+                  </div>
+                )}
+
                 <div className="cm-ply-nav">
                   <button
                     type="button"
                     className="btn btn--ghost btn--sm"
                     disabled={replayPly <= 0}
-                    onClick={() => setReplayPly(0)}
+                    onClick={() => {
+                      setAutoPlayReplay(false);
+                      setReplayPly(0);
+                    }}
                   >
                     |&lt; Awal
                   </button>
@@ -1345,26 +1982,45 @@ export default function ChessMasterScreen({
                     type="button"
                     className="btn btn--ghost btn--sm"
                     disabled={replayPly <= 0}
-                    onClick={() => setReplayPly(p => Math.max(0, p - 1))}
+                    onClick={() => {
+                      setAutoPlayReplay(false);
+                      setReplayPly(p => Math.max(0, p - 1));
+                    }}
                   >
-                    &lt; Prev
+                    &lt; Mundur
                   </button>
-                  <span className="cm-ply-counter">
-                    Langkah {replayPly} / {replayMoves.length}
-                  </span>
+                  <button
+                    type="button"
+                    className={`btn btn--sm ${autoPlayReplay ? 'btn--danger' : 'btn--primary'}`}
+                    onClick={() => {
+                      sound.playClick();
+                      if (!autoPlayReplay && replayPly >= replayMoves.length) {
+                        setReplayPly(0);
+                      }
+                      setAutoPlayReplay(v => !v);
+                    }}
+                  >
+                    {autoPlayReplay ? '⏸️ Jeda' : '▶️ Putar'}
+                  </button>
                   <button
                     type="button"
                     className="btn btn--ghost btn--sm"
                     disabled={replayPly >= replayMoves.length}
-                    onClick={() => setReplayPly(p => Math.min(replayMoves.length, p + 1))}
+                    onClick={() => {
+                      setAutoPlayReplay(false);
+                      setReplayPly(p => Math.min(replayMoves.length, p + 1));
+                    }}
                   >
-                    Next &gt;
+                    Maju &gt;
                   </button>
                   <button
                     type="button"
                     className="btn btn--ghost btn--sm"
                     disabled={replayPly >= replayMoves.length}
-                    onClick={() => setReplayPly(replayMoves.length)}
+                    onClick={() => {
+                      setAutoPlayReplay(false);
+                      setReplayPly(replayMoves.length);
+                    }}
                   >
                     Akhir &gt;|
                   </button>
@@ -1379,7 +2035,10 @@ export default function ChessMasterScreen({
                       <button
                         type="button"
                         className={`cm-move-san ${replayPly === pair.white?.ply ? 'is-active' : ''}`}
-                        onClick={() => setReplayPly(pair.white?.ply || 0)}
+                        onClick={() => {
+                          setAutoPlayReplay(false);
+                          setReplayPly(pair.white?.ply || 0);
+                        }}
                       >
                         {pair.white?.san || ''}
                       </button>
@@ -1387,7 +2046,10 @@ export default function ChessMasterScreen({
                         <button
                           type="button"
                           className={`cm-move-san ${replayPly === pair.black?.ply ? 'is-active' : ''}`}
-                          onClick={() => setReplayPly(pair.black?.ply || 0)}
+                          onClick={() => {
+                            setAutoPlayReplay(false);
+                            setReplayPly(pair.black?.ply || 0);
+                          }}
                         >
                           {pair.black.san}
                         </button>

@@ -8,6 +8,8 @@ const quizEngine = require('../quiz/engine');
 const quizStore = require('../quiz/store');
 const chessEngine = require('../chess/engine');
 const chessStore = require('../chess/store');
+const snakesEngine = require('../snakes/engine');
+const snakesStore = require('../snakes/store');
 const { createLimiter } = require('../lib/limiter');
 const { EMOJIS, MAX_CHATS } = require('../game/config');
 
@@ -19,6 +21,8 @@ const quizActionLimiter = createLimiter({ windowMs: 3000, max: 12 });
 const quizPlayLimiter = createLimiter({ windowMs: 3000, max: 15 });
 const chessActionLimiter = createLimiter({ windowMs: 3000, max: 12 });
 const chessPlayLimiter = createLimiter({ windowMs: 3000, max: 25 });
+const snakesActionLimiter = createLimiter({ windowMs: 3000, max: 12 });
+const snakesPlayLimiter = createLimiter({ windowMs: 3000, max: 20 });
 const QUIZ_RATE_ERROR = { ok: false, error: 'Terlalu banyak aksi dalam waktu singkat.' };
 
 // Tolak event bila socket melewati batas; balas callback dengan error yang sama
@@ -106,9 +110,43 @@ function registerSocketHandlers(io) {
       const r = currentRoom();
       const qr = !r && socket.data.quizRoom ? quizEngine.quizRooms.get(socket.data.quizRoom) : null;
       const cr = !r && !qr && socket.data.chessRoom ? chessEngine.chessRooms.get(socket.data.chessRoom) : null;
+      const sr = !r && !qr && !cr && socket.data.snakesRoom ? snakesEngine.snakesRooms.get(socket.data.snakesRoom) : null;
 
-      if (!r && !qr && !cr) {
+      if (!r && !qr && !cr && !sr) {
         return reply({ ok: false, error: 'Room tidak tersedia atau permainan sudah dimulai.' });
+      }
+
+      if (sr) {
+        if (sr.status !== 'waiting') {
+          return reply({ ok: false, error: 'Pertandingan Ular Tangga sudah dimulai.' });
+        }
+        if (sr.players.length >= (sr.maxPlayers || 2)) {
+          return reply({ ok: false, error: 'Room Ular Tangga sudah penuh.' });
+        }
+        const mePlayer = sr.players.find(p => p.player_type === 'human' && (p.socketId === socket.id || p.user_id === socket.data.userId));
+        const senderUserId = socket.data.userId || mePlayer?.user_id;
+        if (!senderUserId) return reply({ ok: false, error: 'Silakan login terlebih dahulu.' });
+        if (!targetUserId || targetUserId === senderUserId) return reply({ ok: false, error: 'Target undangan tidak valid.' });
+        if (sr.players.some(p => p.user_id === targetUserId)) {
+          return reply({ ok: false, error: 'Pemain tersebut sudah berada di dalam room.' });
+        }
+        if (sr.groupId) {
+          if (!social.isGroupMember(sr.groupId, targetUserId)) {
+            return reply({ ok: false, error: 'Hanya anggota grup yang dapat diundang ke match grup ini.' });
+          }
+        } else if (!social.areFriends(senderUserId, targetUserId)) {
+          return reply({ ok: false, error: 'Kamu hanya dapat mengundang pemain yang sudah menjadi teman.' });
+        }
+        if (!social.isUserOnline(targetUserId)) {
+          return reply({ ok: false, error: 'Teman sedang offline.' });
+        }
+        social.emitToUser(targetUserId, 'room:invite', {
+          code: sr.code,
+          gameType: 'snakes',
+          from: social.userSummary(senderUserId),
+          group: sr.groupId ? social.getGroupBasic(sr.groupId) : null
+        });
+        return reply({ ok: true });
       }
 
       if (cr) {
@@ -524,6 +562,88 @@ function registerSocketHandlers(io) {
       if (cb) cb({ ok: true, leaderboard: lb });
     });
 
+    // ==========================================
+    // SNAKES AND LADDERS (ULAR TANGGA) SOCKET EVENTS
+    // ==========================================
+
+    on(socket, 'snakes:matchmaking:join', (payload, cb) => {
+      if (!allowQuiz(snakesActionLimiter, socket, cb)) return;
+      const res = snakesEngine.joinMatchmaking(socket, payload, store.rooms);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'snakes:matchmaking:cancel', (payload, cb) => {
+      if (!allowQuiz(snakesPlayLimiter, socket, cb)) return;
+      const res = snakesEngine.cancelMatchmaking(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'snakes:matchmaking:leave', (payload, cb) => {
+      if (!allowQuiz(snakesPlayLimiter, socket, cb)) return;
+      const res = snakesEngine.cancelMatchmaking(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'snakes:room:create', (payload, cb) => {
+      if (!allowQuiz(snakesActionLimiter, socket, cb)) return;
+      const res = snakesEngine.createPrivateRoom(socket, payload, store.rooms);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'snakes:room:join', (payload, cb) => {
+      if (!allowQuiz(snakesActionLimiter, socket, cb)) return;
+      const res = snakesEngine.joinPrivateRoom(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'snakes:room:start', (payload, cb) => {
+      if (!allowQuiz(snakesPlayLimiter, socket, cb)) return;
+      const res = snakesEngine.startPrivateRoom(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'snakes:roll', (payload, cb) => {
+      if (!allowQuiz(snakesPlayLimiter, socket, cb)) return;
+      const res = snakesEngine.handleRollDice(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'snakes:rematch', (payload, cb) => {
+      if (!allowQuiz(snakesPlayLimiter, socket, cb)) return;
+      const res = snakesEngine.requestRematch(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'snakes:room:leave', (payload, cb) => {
+      const res = snakesEngine.leaveRoom(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'snakes:chat', (payload, cb) => {
+      if (!chatLimiter(socket.id)) {
+        if (cb) cb({ ok: false, error: 'Terlalu cepat mengirim pesan. Tunggu sebentar.' });
+        return;
+      }
+      const res = snakesEngine.sendChat(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'snakes:reaction', (payload, cb) => {
+      if (!reactionLimiter(socket.id)) {
+        if (cb) cb({ ok: false, error: 'Terlalu cepat mengirim reaksi.' });
+        return;
+      }
+      const res = snakesEngine.sendReaction(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'snakes:leaderboard:get', (payload, cb) => {
+      if (!allowQuiz(snakesPlayLimiter, socket, cb)) return;
+      const lb = snakesStore.getSnakesLeaderboard(payload || {});
+      socket.emit('snakes:leaderboard:update', lb);
+      if (cb) cb({ ok: true, leaderboard: lb });
+    });
+
     socket.on('disconnect', reason => {
       logConnection(socket, 'disconnect', ` reason="${reason}" after=${Math.round((Date.now() - connectedAt) / 1000)}s`);
       social.detachSocket(socket);
@@ -536,6 +656,11 @@ function registerSocketHandlers(io) {
         chessEngine.handleDisconnect(socket);
       } catch (err) {
         console.error('[chess disconnect]', err);
+      }
+      try {
+        snakesEngine.handleDisconnect(socket);
+      } catch (err) {
+        console.error('[snakes disconnect]', err);
       }
       try {
         const r = currentRoom();

@@ -17,6 +17,7 @@ const store = require('./game/store');
 const engine = require('./game/engine');
 const quizEngine = require('./quiz/engine');
 const chessEngine = require('./chess/engine');
+const snakesEngine = require('./snakes/engine');
 const { createApiRouter } = require('./http/routes');
 const { registerSocketHandlers } = require('./realtime/socket');
 
@@ -53,6 +54,7 @@ const io = new Server(server, {
 store.init(io);
 quizEngine.init(io);
 chessEngine.init(io);
+snakesEngine.init(io);
 registerSocketHandlers(io);
 
 app.get('/health', (_, res) => res.json({
@@ -60,6 +62,7 @@ app.get('/health', (_, res) => res.json({
   rooms: store.rooms.size,
   quizRooms: quizEngine.quizRooms.size,
   chessRooms: chessEngine.chessRooms.size,
+  snakesRooms: snakesEngine.snakesRooms.size,
   db: db.getStatus().engine
 }));
 app.use('/api', createApiRouter());
@@ -103,6 +106,7 @@ app.get('/robots.txt', (req, res) => {
       'Allow: /?game=jakludo',
       'Allow: /?game=monster-quiz',
       'Allow: /?game=chess-master',
+      'Allow: /?game=snakes-and-ladders',
       'Disallow: /api/',
       'Disallow: /socket.io/',
       '',
@@ -144,6 +148,12 @@ app.get('/sitemap.xml', (req, res) => {
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
+  <url>
+    <loc>${origin}/?game=snakes-and-ladders</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
 </urlset>`
   );
 });
@@ -177,6 +187,12 @@ const GAME_SSR_META = {
     description:
       'Master the Board. Rule the Game. Challenge your friends in classic online chess di PlayGo! Rating Elo resmi, Bullet, Blitz, Rapid, Private Room, dan analisis PGN.',
     query: '?game=chess-master'
+  },
+  'snakes-and-ladders': {
+    title: 'Ular Tangga (Snakes and Ladders Online Multiplayer) · PlayGo Board Game',
+    description:
+      'Mainkan Ular Tangga (Snakes and Ladders) multiplayer realtime di PlayGo! Lempar dadu menuju kotak 100, panjat tangga, hindari ular, dengan Smart Matchmaking & Private Room!',
+    query: '?game=snakes-and-ladders'
   }
 };
 
@@ -197,6 +213,8 @@ app.get('*', (req, res) => {
       ? 'monster-quiz'
       : rawGame === 'chess-master' || rawGame === 'chess'
       ? 'chess-master'
+      : rawGame === 'snakes-and-ladders' || rawGame === 'snakes' || rawGame === 'ular-tangga'
+      ? 'snakes-and-ladders'
       : null;
   const gameMeta = gameKey ? GAME_SSR_META[gameKey] : null;
   const canonicalUrl = escapeHtml(`${origin}/${gameMeta ? gameMeta.query : ''}`);
@@ -259,6 +277,8 @@ function shutdown() {
   quizEngine.stopAllTimers();
   chessEngine.closeAllRoomsForShutdown();
   chessEngine.stopAllTimers();
+  snakesEngine.closeAllRoomsForShutdown();
+  snakesEngine.stopAllTimers();
   store.flushRooms();
   return db.close();
 }
