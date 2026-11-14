@@ -240,6 +240,90 @@ function SnakesAndLaddersSvgOverlay({ ladders = DEFAULT_LADDERS, snakes = DEFAUL
   );
 }
 
+const PAWN_PALETTES = {
+  red: { light: '#fca5a5', main: '#ef4444', mid: '#dc2626', dark: '#991b1b', rim: '#7f1d1d' },
+  blue: { light: '#93c5fd', main: '#2563eb', mid: '#1d4ed8', dark: '#1e3a8a', rim: '#172554' },
+  green: { light: '#86efac', main: '#22c55e', mid: '#16a34a', dark: '#166534', rim: '#14532d' },
+  yellow: { light: '#fef08a', main: '#facc15', mid: '#eab308', dark: '#a16207', rim: '#713f12' }
+};
+
+function SnakesPawnSvg({ color = 'red', isTurn = false, idSuffix = '0' }) {
+  const pal = PAWN_PALETTES[color] || PAWN_PALETTES.red;
+  const gradId = `snk-pawn-grad-${color}-${idSuffix}`;
+  const rimGradId = `snk-pawn-rim-${color}-${idSuffix}`;
+
+  return (
+    <svg
+      className="snk-pawn-svg"
+      viewBox="0 0 64 80"
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id={gradId} x1="18%" y1="10%" x2="88%" y2="85%">
+          <stop offset="0%" stopColor={pal.light} />
+          <stop offset="28%" stopColor={pal.main} />
+          <stop offset="72%" stopColor={pal.mid} />
+          <stop offset="100%" stopColor={pal.dark} />
+        </linearGradient>
+        <linearGradient id={rimGradId} x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor={pal.main} />
+          <stop offset="50%" stopColor={pal.mid} />
+          <stop offset="100%" stopColor={pal.rim} />
+        </linearGradient>
+      </defs>
+
+      {/* Ring highlight saat giliran aktif */}
+      {isTurn && (
+        <ellipse
+          cx="32"
+          cy="67"
+          rx="27"
+          ry="9"
+          fill="none"
+          stroke="#facc15"
+          strokeWidth="3.5"
+          opacity="0.95"
+        />
+      )}
+
+      {/* Bagian alas silinder bawah */}
+      <path
+        d="M 10 60 L 10 67 C 10 73 54 73 54 67 L 54 60 Z"
+        fill={`url(#${rimGradId})`}
+        stroke={pal.rim}
+        strokeWidth="1.5"
+      />
+
+      {/* Badan kerucut melengkung khas bidak ular tangga */}
+      <path
+        d="M 24 14 C 24 7 40 7 40 14 C 41 29 47 46 53 56 C 54.5 58.5 54 62 54 62 C 54 67.5 10 67.5 10 62 C 10 62 9.5 58.5 11 56 C 17 46 23 29 24 14 Z"
+        fill={`url(#${gradId})`}
+        stroke={pal.rim}
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+
+      {/* Pantulan cahaya plastik mengilap di sisi kiri */}
+      <path
+        d="M 26.5 16 C 26 28 21.5 44 16 54.5"
+        fill="none"
+        stroke="#ffffff"
+        strokeWidth="3.2"
+        strokeLinecap="round"
+        opacity="0.45"
+      />
+      <ellipse
+        cx="29"
+        cy="13"
+        rx="3"
+        ry="2"
+        fill="#ffffff"
+        opacity="0.55"
+      />
+    </svg>
+  );
+}
+
 function SnakesPlayerBadge({ player, isCurrentTurn, isMe, animatedPos, turnClock, onViewProfile }) {
   const isBot = player.player_type === 'bot' || player.isBot;
   const displayUsername = player.username || player.display_name || player.name || 'pemain';
@@ -690,25 +774,23 @@ export default function SnakesLaddersScreen({
                     const shiftY = sameSquarePlayers.length > 1 ? (offsetIdx === 0 ? -1.4 : 1.4) : 0;
 
                     const hopCount = hopCounters[p.id] || 0;
+                    const isTurn = currentTurnPlayer?.id === p.id;
                     return (
                       <div
                         key={p.id}
-                        className={`snk-token color-${p.color || 'red'} ${
-                          currentTurnPlayer?.id === p.id ? 'is-turn' : ''
-                        }`}
+                        className={`snk-token color-${p.color || 'red'} ${isTurn ? 'is-turn' : ''}`}
                         style={{
                           left: `${coords.xPercent + shiftX}%`,
                           top: `${coords.yPercent + shiftY}%`
                         }}
-                        title={`${p.display_name} — Kotak ${pos}`}
+                        title={`${p.username || p.display_name} — Kotak ${pos}`}
                       >
+                        <div key={`shadow-${hopCount}`} className={`snk-token__shadow ${hopCount > 0 ? 'is-hopping' : ''}`} />
                         <div
                           key={hopCount}
-                          className={`snk-token__body ${hopCount > 0 ? 'is-hopping' : ''}`}
+                          className={`snk-token__pawn ${hopCount > 0 ? 'is-hopping' : ''}`}
                         >
-                          <span className="snk-token__inner">
-                            {(p.username || p.display_name || 'P').slice(0, 1).toUpperCase()}
-                          </span>
+                          <SnakesPawnSvg color={p.color || 'red'} isTurn={isTurn} idSuffix={String(idx)} />
                         </div>
                       </div>
                     );

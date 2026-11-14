@@ -809,62 +809,83 @@
 
 .snk-token {
   position: absolute;
-  width: 6.8%;
-  height: 6.8%;
-  transform: translate(-50%, -50%);
+  width: 7.4%;
+  height: 9.2%;
+  transform: translate(-50%, -66%);
   display: grid;
   place-items: center;
   transition: left 0.38s cubic-bezier(0.22, 1, 0.36, 1), top 0.38s cubic-bezier(0.22, 1, 0.36, 1), transform 0.25s ease;
 }
 
 .snk-token.is-turn {
-  transform: translate(-50%, -50%) scale(1.16);
+  transform: translate(-50%, -68%) scale(1.12);
   z-index: 5;
 }
 
-.snk-token__body {
+.snk-token__shadow {
+  position: absolute;
+  bottom: 6%;
+  left: 50%;
+  width: 72%;
+  height: 18%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.38);
+  filter: blur(1.5px);
+  pointer-events: none;
+}
+
+.snk-token__pawn {
+  position: relative;
   width: 100%;
   height: 100%;
-  border-radius: 50%;
-  background: radial-gradient(circle at 32% 30%, rgba(255, 255, 255, 0.38), transparent 55%), var(--pc, #ef4444);
-  border: 2px solid #ffffff;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.45);
   display: grid;
   place-items: center;
 }
 
-.snk-token.is-turn .snk-token__body {
-  box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.9), 0 4px 10px rgba(15, 23, 42, 0.5);
-}
-
-.snk-token__inner {
-  font-size: clamp(8.5px, 1.4vw, 11.5px);
-  font-weight: 900;
-  color: #ffffff;
-  line-height: 1;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-  display: inline-block;
+.snk-pawn-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  filter: drop-shadow(0 2px 3px rgba(15, 23, 42, 0.35));
 }
 
 @keyframes snk-pawn-hop {
   0% {
     transform: translateY(0) scale(1);
-    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.45);
   }
   38% {
-    transform: translateY(-58%) scale(1.26, 1.2);
-    box-shadow: 0 12px 18px rgba(15, 23, 42, 0.38);
+    transform: translateY(-48%) scale(1.14, 1.18);
   }
   75% {
-    transform: translateY(-10%) scale(1.06);
+    transform: translateY(-8%) scale(1.03);
   }
   100% {
     transform: translateY(0) scale(1);
   }
 }
 
-.snk-token__body.is-hopping {
+@keyframes snk-shadow-hop {
+  0% {
+    transform: translateX(-50%) scale(1);
+    opacity: 0.42;
+  }
+  38% {
+    transform: translateX(-50%) scale(0.65);
+    opacity: 0.2;
+  }
+  100% {
+    transform: translateX(-50%) scale(1);
+    opacity: 0.42;
+  }
+}
+
+.snk-token__pawn.is-hopping {
   animation: snk-pawn-hop 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.snk-token__shadow.is-hopping {
+  animation: snk-shadow-hop 0.42s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Efek Banner di Papan (Tangga / Ular / Pantulan) */
