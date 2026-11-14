@@ -498,6 +498,7 @@ export default function App() {
           }}
           onOpenAuth={open('auth')}
           onOpenLeaderboard={open('leaderboard')}
+          onOpenAudio={openAudio}
           onViewProfile={openProfile}
         />
       ) : (

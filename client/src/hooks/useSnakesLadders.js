@@ -68,6 +68,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
   const diceRollTimerRef = useRef(null);
   const animTimersRef = useRef([]);
   const animatingRef = useRef(false);
+  const animEndTimeRef = useRef(0);
   const lastFinishedRoomRef = useRef('');
   const roomCodeRef = useRef('');
   const matchResultRef = useRef(null);
@@ -194,14 +195,14 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
     return () => clearInterval(id);
   }, [searching, searchStartedAt]);
 
-  // Aktifkan BGM saat berada di dalam room aktif
+  // Aktifkan BGM saat berada di dalam room aktif atau sedang mencari lawan
   useEffect(() => {
     if (!active) return undefined;
-    sound.setInRoom(Boolean(room?.code));
+    sound.setInRoom(Boolean(room?.code || searching));
     return () => {
       sound.setInRoom(false);
     };
-  }, [active, room?.code]);
+  }, [active, room?.code, searching]);
 
   // Reconnect otomatis ke room Ular Tangga aktif saat socket tersambung kembali
   useEffect(() => {
@@ -327,15 +328,16 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
       if (!payload) return;
       const { playerId, displayName, from, stepTo, to, moved, overshoot, stepPath, ladder, snake } = payload;
 
-      // Jalankan animasi langkah demi langkah segera setelah dadu mendarat (~220ms)
+      // Jalankan animasi langkah demi langkah setelah dadu mendarat (~260ms)
       // Catatan: jangan batalkan diceRollTimerRef agar setRolling(false) tetap tereksekusi!
       clearAnimTimers();
       animatingRef.current = true;
       setAnimatingMove(true);
 
-      const diceLandDelay = 220;
+      const diceLandDelay = 260;
 
       if (overshoot || !moved) {
+        animEndTimeRef.current = Date.now() + diceLandDelay + 250;
         const t = setTimeout(() => {
           setRolling(false);
           showBoardEffect({
@@ -343,7 +345,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
             from,
             to: from,
             playerName: displayName
-          }, 1900);
+          }, 2000);
           animatingRef.current = false;
           setAnimatingMove(false);
         }, diceLandDelay);
@@ -352,7 +354,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
       }
 
       const steps = Array.isArray(stepPath) && stepPath.length > 0 ? stepPath : [stepTo];
-      const stepInterval = 80;
+      const stepInterval = 240;
 
       steps.forEach((sq, idx) => {
         const t = setTimeout(() => {
@@ -363,9 +365,10 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
         animTimersRef.current.push(t);
       });
 
-      const afterStepsDelay = diceLandDelay + steps.length * stepInterval + 90;
+      const afterStepsDelay = diceLandDelay + steps.length * stepInterval + 200;
 
       if (ladder) {
+        animEndTimeRef.current = Date.now() + afterStepsDelay + 450;
         const tLadder = setTimeout(() => {
           sound.playCheer?.() || sound.playWin?.();
           setAnimatedPositions(prev => ({ ...prev, [playerId]: ladder.to }));
@@ -374,14 +377,15 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
             from: ladder.from,
             to: ladder.to,
             playerName: displayName
-          }, 2200);
+          }, 2400);
         }, afterStepsDelay);
         const tDone = setTimeout(() => {
           animatingRef.current = false;
           setAnimatingMove(false);
-        }, afterStepsDelay + 240);
+        }, afterStepsDelay + 450);
         animTimersRef.current.push(tLadder, tDone);
       } else if (snake) {
+        animEndTimeRef.current = Date.now() + afterStepsDelay + 450;
         const tSnake = setTimeout(() => {
           sound.playMonsterHurt?.() || sound.playClick?.();
           setAnimatedPositions(prev => ({ ...prev, [playerId]: snake.to }));
@@ -390,14 +394,15 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
             from: snake.from,
             to: snake.to,
             playerName: displayName
-          }, 2200);
+          }, 2400);
         }, afterStepsDelay);
         const tDone = setTimeout(() => {
           animatingRef.current = false;
           setAnimatingMove(false);
-        }, afterStepsDelay + 240);
+        }, afterStepsDelay + 450);
         animTimersRef.current.push(tSnake, tDone);
       } else {
+        animEndTimeRef.current = Date.now() + afterStepsDelay;
         const tDone = setTimeout(() => {
           setAnimatedPositions(prev => ({ ...prev, [playerId]: to }));
           animatingRef.current = false;
@@ -413,7 +418,8 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
       if (lastFinishedRoomRef.current === winKey) return;
       lastFinishedRoomRef.current = winKey;
 
-      const finishDelay = animatingRef.current ? 750 : 200;
+      const remainingAnimMs = Math.max(0, animEndTimeRef.current - Date.now());
+      const finishDelay = animatingRef.current ? Math.max(300, remainingAnimMs + 220) : 250;
       const t = setTimeout(() => {
         setRolling(false);
         setMatchResult(payload);
@@ -565,7 +571,9 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
   const startQuickMatch = useCallback(() => {
     const token = requireAuthToken();
     if (!token || !socket) return;
+    sound.hasUnlocked = true;
     sound.playClick?.();
+    sound.setInRoom(true);
     setError('');
     setMatchResult(null);
     socket.emit('snakes:matchmaking:join', { token }, res => {
@@ -666,6 +674,8 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
     if (!token || !socket || !room?.code) return;
     if (rolling || animatingMove || !room.isMyTurn || room.status !== 'playing') return;
 
+    sound.hasUnlocked = true;
+    sound.resumeBgmIfAllowed?.();
     setRolling(true);
     if (diceRollTimerRef.current) clearTimeout(diceRollTimerRef.current);
     diceRollTimerRef.current = setTimeout(() => {

@@ -335,6 +335,7 @@ export default function SnakesLaddersScreen({
   onBackToMenu,
   onOpenAuth,
   onOpenLeaderboard,
+  onOpenAudio,
   onViewProfile
 }) {
   const {
@@ -577,6 +578,17 @@ export default function SnakesLaddersScreen({
             </div>
           </div>
           <div className="snk-game-topbar__right">
+            {onOpenAudio && (
+              <button
+                type="button"
+                className="btn btn--secondary btn--sm"
+                onClick={onOpenAudio}
+                title="Pengaturan Musik & Suara"
+                aria-label="Pengaturan Musik dan Suara"
+              >
+                🎵 <span className="show-desktop">Musik</span>
+              </button>
+            )}
             <button
               type="button"
               className="btn btn--secondary btn--sm hide-desktop"
@@ -1075,7 +1087,19 @@ export default function SnakesLaddersScreen({
           <Icon name="arrow-left" size={16} />
           <span>Daftar Game PlayGo</span>
         </button>
-        <span className="badge badge--brand">Board Game · Ular Tangga</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {onOpenAudio && (
+            <button
+              type="button"
+              className="btn btn--secondary btn--sm"
+              onClick={onOpenAudio}
+              title="Pengaturan Musik & Suara"
+            >
+              🎵 Musik
+            </button>
+          )}
+          <span className="badge badge--brand">Board Game · Ular Tangga</span>
+        </div>
       </div>
 
       {/* Hero Card Ringkas & Modern (Setara Chess Master) */}
