@@ -206,9 +206,7 @@ function DirectChatView({ friend, currentUser, social, onBack, onViewProfile }) 
     setSending(true);
     setError('');
     try {
-      const msg = await social.actions.sendDirectMessage(friendId, clean, {
-        replyToId: replyTarget?.id || null
-      });
+      const msg = await social.actions.sendDirectMessage(friendId, clean, replyTarget?.id || null);
       setText('');
       clearReply();
       appendMessage(msg);

@@ -444,7 +444,9 @@ export function useSocial({ socket, authToken, currentUser, onUpdateUser, onCrop
     const clean = String(text || '').trim();
     if (!clean) throw new Error('Pesan tidak boleh kosong.');
     if (clean.length > 1000) throw new Error('Pesan maksimal 1000 karakter.');
-    const payload = replyToId ? { text: clean, replyToId } : { text: clean };
+    const resolvedReplyId =
+      replyToId && typeof replyToId === 'object' ? replyToId.replyToId || replyToId.id || null : replyToId;
+    const payload = resolvedReplyId ? { text: clean, replyToId: resolvedReplyId } : { text: clean };
     const data = await apiFetch(`/api/friends/${encodeURIComponent(friendId)}/messages`, {
       method: 'POST',
       body: JSON.stringify(payload)
@@ -618,7 +620,9 @@ export function useSocial({ socket, authToken, currentUser, onUpdateUser, onCrop
     const clean = String(text || '').trim();
     if (!clean) throw new Error('Pesan tidak boleh kosong.');
     if (clean.length > 1000) throw new Error('Pesan maksimal 1000 karakter.');
-    const payload = replyToId ? { text: clean, replyToId } : { text: clean };
+    const resolvedReplyId =
+      replyToId && typeof replyToId === 'object' ? replyToId.replyToId || replyToId.id || null : replyToId;
+    const payload = resolvedReplyId ? { text: clean, replyToId: resolvedReplyId } : { text: clean };
     const data = await apiFetch(`/api/groups/${encodeURIComponent(groupId)}/messages`, {
       method: 'POST',
       body: JSON.stringify(payload)
