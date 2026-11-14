@@ -65,11 +65,22 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
   const noticeTimerRef = useRef(null);
   const effectTimerRef = useRef(null);
   const announcementTimerRef = useRef(null);
+  const diceRollTimerRef = useRef(null);
   const animTimersRef = useRef([]);
   const animatingRef = useRef(false);
   const lastFinishedRoomRef = useRef('');
   const roomCodeRef = useRef('');
+  const matchResultRef = useRef(null);
   roomCodeRef.current = room?.code || '';
+  matchResultRef.current = matchResult;
+
+  const clearDiceTimer = useCallback(() => {
+    if (diceRollTimerRef.current) {
+      clearTimeout(diceRollTimerRef.current);
+      diceRollTimerRef.current = null;
+    }
+    setRolling(false);
+  }, []);
 
   const clearAnimTimers = useCallback(() => {
     for (const t of animTimersRef.current) {
@@ -110,12 +121,12 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
   const dropStaleRoom = useCallback(
     reason => {
       clearAnimTimers();
+      clearDiceTimer();
       storage.remove(SNAKES_ROOM_KEY);
       setRoom(null);
       setSearching(false);
       setSearchStartedAt(null);
       setMatchResult(null);
-      setRolling(false);
       setDiceValue(null);
       setAnimatedPositions({});
       setBoardEffect(null);
@@ -126,7 +137,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
       chatOpenRef.current = false;
       if (reason) showError(reason);
     },
-    [clearAnimTimers, showError]
+    [clearAnimTimers, clearDiceTimer, showError]
   );
 
   const fetchSnakesMeta = useCallback(async (page = 1) => {
@@ -280,10 +291,10 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
 
     const onGameStarted = payload => {
       clearAnimTimers();
+      clearDiceTimer();
       setSearching(false);
       setSearchStartedAt(null);
       setMatchResult(null);
-      setRolling(false);
       setDiceValue(null);
       setBoardEffect(null);
       if (payload?.players) {
@@ -302,33 +313,37 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
 
     const onDiceRolled = payload => {
       if (!payload) return;
+      sound.playDiceRoll?.();
       setRolling(true);
       setDiceValue(payload.dice);
-      const t = setTimeout(() => {
+      if (diceRollTimerRef.current) clearTimeout(diceRollTimerRef.current);
+      diceRollTimerRef.current = setTimeout(() => {
         setRolling(false);
-      }, 580);
-      animTimersRef.current.push(t);
+        diceRollTimerRef.current = null;
+      }, 220);
     };
 
     const onPlayerMoved = payload => {
       if (!payload) return;
       const { playerId, displayName, from, stepTo, to, moved, overshoot, stepPath, ladder, snake } = payload;
 
-      // Jalankan animasi langkah demi langkah setelah dadu mendarat (~580ms)
+      // Jalankan animasi langkah demi langkah segera setelah dadu mendarat (~220ms)
+      // Catatan: jangan batalkan diceRollTimerRef agar setRolling(false) tetap tereksekusi!
       clearAnimTimers();
       animatingRef.current = true;
       setAnimatingMove(true);
 
-      const diceLandDelay = 580;
+      const diceLandDelay = 220;
 
       if (overshoot || !moved) {
         const t = setTimeout(() => {
+          setRolling(false);
           showBoardEffect({
             type: 'overshoot',
             from,
             to: from,
             playerName: displayName
-          }, 2200);
+          }, 1900);
           animatingRef.current = false;
           setAnimatingMove(false);
         }, diceLandDelay);
@@ -337,17 +352,18 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
       }
 
       const steps = Array.isArray(stepPath) && stepPath.length > 0 ? stepPath : [stepTo];
-      const stepInterval = 145;
+      const stepInterval = 80;
 
       steps.forEach((sq, idx) => {
         const t = setTimeout(() => {
+          if (idx === 0) setRolling(false);
           sound.playStep?.() || sound.playClick?.();
           setAnimatedPositions(prev => ({ ...prev, [playerId]: sq }));
         }, diceLandDelay + idx * stepInterval);
         animTimersRef.current.push(t);
       });
 
-      const afterStepsDelay = diceLandDelay + steps.length * stepInterval + 160;
+      const afterStepsDelay = diceLandDelay + steps.length * stepInterval + 90;
 
       if (ladder) {
         const tLadder = setTimeout(() => {
@@ -358,12 +374,12 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
             from: ladder.from,
             to: ladder.to,
             playerName: displayName
-          }, 2600);
+          }, 2200);
         }, afterStepsDelay);
         const tDone = setTimeout(() => {
           animatingRef.current = false;
           setAnimatingMove(false);
-        }, afterStepsDelay + 450);
+        }, afterStepsDelay + 240);
         animTimersRef.current.push(tLadder, tDone);
       } else if (snake) {
         const tSnake = setTimeout(() => {
@@ -374,12 +390,12 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
             from: snake.from,
             to: snake.to,
             playerName: displayName
-          }, 2600);
+          }, 2200);
         }, afterStepsDelay);
         const tDone = setTimeout(() => {
           animatingRef.current = false;
           setAnimatingMove(false);
-        }, afterStepsDelay + 450);
+        }, afterStepsDelay + 240);
         animTimersRef.current.push(tSnake, tDone);
       } else {
         const tDone = setTimeout(() => {
@@ -397,8 +413,9 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
       if (lastFinishedRoomRef.current === winKey) return;
       lastFinishedRoomRef.current = winKey;
 
-      const finishDelay = animatingRef.current ? 1200 : 300;
+      const finishDelay = animatingRef.current ? 750 : 200;
       const t = setTimeout(() => {
+        setRolling(false);
         setMatchResult(payload);
         if (currentUser?.id && payload.winnerUserId === currentUser.id) {
           sound.playWin?.();
@@ -417,7 +434,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
     };
 
     const onGameFinished = payload => {
-      if (payload && !matchResult) {
+      if (payload && !matchResultRef.current) {
         onPlayerWon(payload);
       }
     };
@@ -445,7 +462,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
       if (Array.isArray(nextRoom.chats)) {
         setChats(nextRoom.chats);
       }
-      if (nextRoom.lastRoll?.dice && !rolling) {
+      if (nextRoom.lastRoll?.dice) {
         setDiceValue(nextRoom.lastRoll.dice);
       }
       syncPositionsFromRoom(nextRoom);
@@ -530,7 +547,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
       socket.off('snakes:chat_message', onChatMessage);
       socket.off('snakes:leaderboard:update', onLeaderboardUpdate);
     };
-  }, [socket, currentUser, rolling, matchResult, clearAnimTimers, dropStaleRoom, fetchSnakesMeta, onUpdateUser, showBoardEffect, showNotice]);
+  }, [socket, currentUser, clearAnimTimers, clearDiceTimer, dropStaleRoom, fetchSnakesMeta, onUpdateUser, showBoardEffect, showNotice]);
 
   // ==========================================
   // ACTIONS
@@ -649,12 +666,20 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
     if (!token || !socket || !room?.code) return;
     if (rolling || animatingMove || !room.isMyTurn || room.status !== 'playing') return;
 
+    setRolling(true);
+    if (diceRollTimerRef.current) clearTimeout(diceRollTimerRef.current);
+    diceRollTimerRef.current = setTimeout(() => {
+      setRolling(false);
+      diceRollTimerRef.current = null;
+    }, 900);
+
     socket.emit('snakes:roll', { roomId: room.id, roomCode: room.code, token }, res => {
       if (!res?.ok) {
+        clearDiceTimer();
         showError(res?.error || 'Gagal melempar dadu.');
       }
     });
-  }, [requireAuthToken, socket, room, rolling, animatingMove, showError]);
+  }, [requireAuthToken, socket, room, rolling, animatingMove, clearDiceTimer, showError]);
 
   const requestRematch = useCallback(() => {
     const token = requireAuthToken();
@@ -673,10 +698,10 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
     const token = authToken || storage.get('token');
     const code = room?.code || storage.get(SNAKES_ROOM_KEY);
     clearAnimTimers();
+    clearDiceTimer();
     storage.remove(SNAKES_ROOM_KEY);
     setRoom(null);
     setMatchResult(null);
-    setRolling(false);
     setDiceValue(null);
     setAnimatedPositions({});
     setBoardEffect(null);
@@ -689,7 +714,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
       socket.emit('snakes:room:leave', { code, token });
     }
     fetchSnakesMeta(1);
-  }, [authToken, room?.code, socket, clearAnimTimers, fetchSnakesMeta]);
+  }, [authToken, room?.code, socket, clearAnimTimers, clearDiceTimer, fetchSnakesMeta]);
 
   const setChatOpen = useCallback(open => {
     const val = Boolean(open);

@@ -51,7 +51,7 @@ function buildBoardRows() {
       const sq = rowFromBottom % 2 === 0 ? base + col + 1 : base + (10 - col);
       cells.push(sq);
     }
-    rows.push({ visualRow, cells });
+    rows.push({ visualRow, rowFromBottom, cells });
   }
   return rows;
 }
@@ -59,14 +59,14 @@ function buildBoardRows() {
 const BOARD_ROWS = buildBoardRows();
 
 const SNAKE_PALETTES = [
-  { body: '#ef4444', stripe: '#fecaca', head: '#dc2626' },
-  { body: '#8b5cf6', stripe: '#ddd6fe', head: '#7c3aed' },
-  { body: '#10b981', stripe: '#a7f3d0', head: '#059669' },
-  { body: '#f97316', stripe: '#fed7aa', head: '#ea580c' },
-  { body: '#ec4899', stripe: '#fbcfe8', head: '#db2777' },
-  { body: '#06b6d4', stripe: '#cffafe', head: '#0891b2' },
-  { body: '#eab308', stripe: '#fef08a', head: '#ca8a04' },
-  { body: '#6366f1', stripe: '#e0e7ff', head: '#4f46e5' }
+  { body: '#ef4444', stripe: '#fecaca', head: '#b91c1c' },
+  { body: '#8b5cf6', stripe: '#ddd6fe', head: '#6d28d9' },
+  { body: '#10b981', stripe: '#a7f3d0', head: '#047857' },
+  { body: '#f97316', stripe: '#fed7aa', head: '#c2410c' },
+  { body: '#ec4899', stripe: '#fbcfe8', head: '#be185d' },
+  { body: '#06b6d4', stripe: '#cffafe', head: '#0e7490' },
+  { body: '#eab308', stripe: '#fef08a', head: '#a16207' },
+  { body: '#6366f1', stripe: '#e0e7ff', head: '#4338ca' }
 ];
 
 function SnakesAndLaddersSvgOverlay({ ladders = DEFAULT_LADDERS, snakes = DEFAULT_SNAKES }) {
@@ -79,9 +79,9 @@ function SnakesAndLaddersSvgOverlay({ ladders = DEFAULT_LADDERS, snakes = DEFAUL
         const dx = end.svgX - start.svgX;
         const dy = end.svgY - start.svgY;
         const len = Math.hypot(dx, dy) || 1;
-        const nx = (-dy / len) * 15;
-        const ny = (dx / len) * 15;
-        const stepsCount = Math.max(3, Math.floor(len / 48));
+        const nx = (-dy / len) * 12.5;
+        const ny = (dx / len) * 12.5;
+        const stepsCount = Math.max(4, Math.floor(len / 44));
         const rungs = [];
         for (let i = 1; i < stepsCount; i++) {
           const t = i / stepsCount;
@@ -115,8 +115,9 @@ function SnakesAndLaddersSvgOverlay({ ladders = DEFAULT_LADDERS, snakes = DEFAUL
         const dx = tail.svgX - head.svgX;
         const dy = tail.svgY - head.svgY;
         const len = Math.hypot(dx, dy) || 1;
-        const perpX = (-dy / len) * 44 * (idx % 2 === 0 ? 1 : -1);
-        const perpY = (dx / len) * 44 * (idx % 2 === 0 ? 1 : -1);
+        const wave = Math.min(42, Math.max(24, len * 0.14));
+        const perpX = (-dy / len) * wave * (idx % 2 === 0 ? 1 : -1);
+        const perpY = (dx / len) * wave * (idx % 2 === 0 ? 1 : -1);
 
         const c1x = head.svgX + dx * 0.33 + perpX;
         const c1y = head.svgY + dy * 0.33 + perpY;
@@ -144,51 +145,15 @@ function SnakesAndLaddersSvgOverlay({ ladders = DEFAULT_LADDERS, snakes = DEFAUL
       aria-hidden="true"
     >
       <defs>
-        <filter id="snk-shadow" x="-15%" y="-15%" width="130%" height="130%">
-          <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="#0f172a" floodOpacity="0.38" />
+        <filter id="snk-soft-shadow" x="-15%" y="-15%" width="130%" height="130%">
+          <feDropShadow dx="0" dy="2.5" stdDeviation="2.5" floodColor="#0f172a" floodOpacity="0.26" />
         </filter>
       </defs>
 
       {/* Gambar Tangga (Ladders) */}
-      <g filter="url(#snk-shadow)">
+      <g filter="url(#snk-soft-shadow)" opacity="0.88">
         {ladderItems.map(item => (
           <g key={item.key} className="snakes-svg-ladder">
-            <line
-              x1={item.leftRail.x1}
-              y1={item.leftRail.y1}
-              x2={item.leftRail.x2}
-              y2={item.leftRail.y2}
-              stroke="#b45309"
-              strokeWidth="9"
-              strokeLinecap="round"
-            />
-            <line
-              x1={item.rightRail.x1}
-              y1={item.rightRail.y1}
-              x2={item.rightRail.x2}
-              y2={item.rightRail.y2}
-              stroke="#b45309"
-              strokeWidth="9"
-              strokeLinecap="round"
-            />
-            <line
-              x1={item.leftRail.x1}
-              y1={item.leftRail.y1}
-              x2={item.leftRail.x2}
-              y2={item.leftRail.y2}
-              stroke="#facc15"
-              strokeWidth="4.5"
-              strokeLinecap="round"
-            />
-            <line
-              x1={item.rightRail.x1}
-              y1={item.rightRail.y1}
-              x2={item.rightRail.x2}
-              y2={item.rightRail.y2}
-              stroke="#facc15"
-              strokeWidth="4.5"
-              strokeLinecap="round"
-            />
             {item.rungs.map((r, rIdx) => (
               <line
                 key={rIdx}
@@ -196,42 +161,78 @@ function SnakesAndLaddersSvgOverlay({ ladders = DEFAULT_LADDERS, snakes = DEFAUL
                 y1={r.y1}
                 x2={r.x2}
                 y2={r.y2}
-                stroke="#fde047"
-                strokeWidth="6"
+                stroke="#d97706"
+                strokeWidth="5"
                 strokeLinecap="round"
               />
             ))}
+            <line
+              x1={item.leftRail.x1}
+              y1={item.leftRail.y1}
+              x2={item.leftRail.x2}
+              y2={item.leftRail.y2}
+              stroke="#92400e"
+              strokeWidth="7"
+              strokeLinecap="round"
+            />
+            <line
+              x1={item.rightRail.x1}
+              y1={item.rightRail.y1}
+              x2={item.rightRail.x2}
+              y2={item.rightRail.y2}
+              stroke="#92400e"
+              strokeWidth="7"
+              strokeLinecap="round"
+            />
+            <line
+              x1={item.leftRail.x1}
+              y1={item.leftRail.y1}
+              x2={item.leftRail.x2}
+              y2={item.leftRail.y2}
+              stroke="#fbbf24"
+              strokeWidth="3.2"
+              strokeLinecap="round"
+            />
+            <line
+              x1={item.rightRail.x1}
+              y1={item.rightRail.y1}
+              x2={item.rightRail.x2}
+              y2={item.rightRail.y2}
+              stroke="#fbbf24"
+              strokeWidth="3.2"
+              strokeLinecap="round"
+            />
           </g>
         ))}
       </g>
 
       {/* Gambar Ular (Snakes) */}
-      <g filter="url(#snk-shadow)">
+      <g filter="url(#snk-soft-shadow)" opacity="0.88">
         {snakeItems.map(s => (
           <g key={s.key} className="snakes-svg-snake">
             <path
               d={s.pathD}
               fill="none"
               stroke={s.palette.body}
-              strokeWidth="20"
+              strokeWidth="13.5"
               strokeLinecap="round"
             />
             <path
               d={s.pathD}
               fill="none"
               stroke={s.palette.stripe}
-              strokeWidth="8"
-              strokeDasharray="10 14"
+              strokeWidth="5.5"
+              strokeDasharray="8 11"
               strokeLinecap="round"
             />
             {/* Ekor ular */}
-            <circle cx={s.tail.svgX} cy={s.tail.svgY} r="7" fill={s.palette.body} />
+            <circle cx={s.tail.svgX} cy={s.tail.svgY} r="5" fill={s.palette.body} />
             {/* Kepala ular */}
-            <circle cx={s.head.svgX} cy={s.head.svgY} r="16" fill={s.palette.head} />
-            <circle cx={s.head.svgX - 5} cy={s.head.svgY - 4} r="3.8" fill="#ffffff" />
-            <circle cx={s.head.svgX + 5} cy={s.head.svgY - 4} r="3.8" fill="#ffffff" />
-            <circle cx={s.head.svgX - 5} cy={s.head.svgY - 4} r="1.8" fill="#0f172a" />
-            <circle cx={s.head.svgX + 5} cy={s.head.svgY - 4} r="1.8" fill="#0f172a" />
+            <circle cx={s.head.svgX} cy={s.head.svgY} r="12" fill={s.palette.head} />
+            <circle cx={s.head.svgX - 4} cy={s.head.svgY - 3} r="3" fill="#ffffff" />
+            <circle cx={s.head.svgX + 4} cy={s.head.svgY - 3} r="3" fill="#ffffff" />
+            <circle cx={s.head.svgX - 4} cy={s.head.svgY - 3} r="1.4" fill="#0f172a" />
+            <circle cx={s.head.svgX + 4} cy={s.head.svgY - 3} r="1.4" fill="#0f172a" />
           </g>
         ))}
       </g>
@@ -242,24 +243,25 @@ function SnakesAndLaddersSvgOverlay({ ladders = DEFAULT_LADDERS, snakes = DEFAUL
 function SnakesPlayerBadge({ player, isCurrentTurn, isMe, animatedPos, turnClock, onViewProfile }) {
   const isBot = player.player_type === 'bot' || player.isBot;
   const pos = animatedPos !== undefined ? animatedPos : Number(player.position) || 0;
+  const progressPct = Math.min(100, Math.max(0, pos));
 
   return (
     <div
       className={`snk-player-card card color-${player.color || 'red'} ${
-        isCurrentTurn ? 'is-active-turn card--focus' : ''
+        isCurrentTurn ? 'is-active-turn' : ''
       }`}
     >
       <div className="snk-player-card__head">
         <div className="snk-player-card__avatar-wrap">
           {isBot ? (
             <span className="avatar snk-bot-avatar" aria-label="Ikon Pemain Komputer">
-              <Icon name="bot" size={20} />
+              <Icon name="bot" size={18} />
             </span>
           ) : (
             <PlayerAvatar
               avatar={player.avatar}
               name={player.display_name || player.name || 'Pemain'}
-              size={38}
+              size={36}
               className="avatar"
             />
           )}
@@ -279,33 +281,48 @@ function SnakesPlayerBadge({ player, isCurrentTurn, isMe, animatedPos, turnClock
             ) : (
               <strong>{isBot ? 'Pemain Komputer' : player.display_name || player.name}</strong>
             )}
-            {isMe && <span className="badge badge--brand">Kamu</span>}
+            {isMe && <span className="snk-mini-badge snk-mini-badge--me">Kamu</span>}
             {isBot && (
-              <span className="badge snk-bot-badge" title="Lawan otomatis komputer">
-                <Icon name="bot" size={12} /> Bot
+              <span className="snk-mini-badge snk-mini-badge--bot" title="Lawan otomatis komputer">
+                Bot
               </span>
             )}
           </div>
           <span className="muted snk-player-card__sub">
-            {isBot ? 'Lawan Komputer Otomatis' : `@${player.username || 'pemain'}`}
-            {!isBot && !player.connected ? ' · Terputus...' : ''}
+            {isCurrentTurn
+              ? isMe
+                ? '🎲 Giliranmu melempar!'
+                : isBot
+                ? '🤖 Komputer melempar...'
+                : '⏳ Sedang giliran...'
+              : isBot
+              ? 'Komputer Otomatis'
+              : !player.connected
+              ? 'Terputus...'
+              : `@${player.username || 'pemain'}`}
           </span>
         </div>
 
         <div className="snk-player-card__pos">
-          <span className="snk-player-card__pos-label muted">Posisi</span>
           <strong className="snk-player-card__pos-value">
-            {pos === 0 ? 'Start (0)' : `Kotak ${pos}`}
+            {pos === 0 ? 'Start' : `#${pos}`}
           </strong>
+          <span className="snk-player-card__pos-label muted">
+            {pos === 0 ? 'Kotak 0' : `${pos}/100`}
+          </span>
         </div>
       </div>
 
-      {isCurrentTurn && (
-        <div className="snk-player-card__turn-bar">
-          <span className="snk-turn-pill">
-            {isMe ? '🎲 Giliranmu Sekarang!' : isBot ? '🤖 Komputer sedang melempar dadu...' : `⏳ Giliran ${player.display_name}`}
-          </span>
-          {turnClock && <TurnTimer clock={turnClock} isMine={isMe} />}
+      <div className="snk-player-card__progress" aria-hidden="true">
+        <div
+          className="snk-player-card__progress-fill"
+          style={{ width: `${progressPct}%` }}
+        />
+      </div>
+
+      {isCurrentTurn && turnClock && (
+        <div className="snk-player-card__timer">
+          <TurnTimer clock={turnClock} isMine={isMe} />
         </div>
       )}
     </div>
@@ -379,9 +396,9 @@ export default function SnakesLaddersScreen({
 
     return (
       <main className="snk-screen" id="main">
-        <div className="playgo-subnav">
-          <button type="button" className="btn btn--secondary" onClick={actions.leaveRoom}>
-            <Icon name="arrow-left" size={18} />
+        <div className="snk-subnav">
+          <button type="button" className="btn btn--secondary btn--sm" onClick={actions.leaveRoom}>
+            <Icon name="arrow-left" size={16} />
             <span>Keluar Room</span>
           </button>
           <span className="badge badge--brand">Private Room · Ular Tangga</span>
@@ -395,7 +412,7 @@ export default function SnakesLaddersScreen({
             <span className="playgo-eyebrow">RUANG TUNGGU PRIVATE</span>
             <h2>Kode Room: <span className="code-text">{room.code}</span></h2>
             <p className="muted">
-              Bagikan kode room ini kepada temanmu. Permainan hanya dapat diikuti oleh pemain yang memiliki kode ini.
+              Bagikan kode room ini kepada temanmu. Permainan dimulai segera setelah minimal 2 pemain bergabung.
             </p>
             <div className="snk-waiting-card__code-actions">
               <button type="button" className="btn btn--secondary" onClick={() => copyRoomCode(room.code)}>
@@ -430,8 +447,7 @@ export default function SnakesLaddersScreen({
             </div>
           </div>
 
-          {/* Bar Emoticon & Tombol Chat di Ruang Tunggu */}
-          <div className="turn-panel__toolbar" style={{ marginTop: 'var(--space-3)' }}>
+          <div className="turn-panel__toolbar" style={{ marginTop: 'var(--space-2)' }}>
             <div className="reaction-row" role="group" aria-label="Kirim reaksi">
               {REACTIONS.map(emoji => (
                 <button
@@ -528,19 +544,35 @@ export default function SnakesLaddersScreen({
         (myPlayer && matchResult.winnerPlayerId === myPlayer.id))
     );
 
+    const statusDescription = rolling
+      ? 'Mengocok dadu...'
+      : animatingMove
+      ? 'Bidak sedang melangkah...'
+      : room.lastRoll
+      ? `${room.lastRoll.displayName} dapat 🎲 ${room.lastRoll.dice}: kotak ${room.lastRoll.from} → ${room.lastRoll.to}${
+          room.lastRoll.ladder
+            ? ' (🪜 Naik tangga!)'
+            : room.lastRoll.snake
+            ? ' (🐍 Turun ular!)'
+            : room.lastRoll.overshoot
+            ? ` (Lewat 100, tetap di ${room.lastRoll.from})`
+            : ''
+        }`
+      : 'Lempar dadu untuk mulai melangkah dari posisi 0!';
+
     return (
       <main className="snk-game-layout" id="main">
-        {/* Top Bar Pertandingan */}
+        {/* Top Bar Ringkas */}
         <header className="snk-game-topbar card">
           <div className="snk-game-topbar__left">
             <button type="button" className="btn btn--secondary btn--sm" onClick={actions.leaveRoom}>
               <Icon name="arrow-left" size={16} />
               <span>Keluar</span>
             </button>
-            <div>
-              <strong className="snk-game-topbar__title">Ular Tangga · Room {room.code}</strong>
+            <div className="snk-game-topbar__meta">
+              <strong className="snk-game-topbar__title">Ular Tangga · #{room.code}</strong>
               <span className="muted snk-game-topbar__sub">
-                {isBotMatch ? '🤖 Melawan Pemain Komputer' : '👥 Pertandingan Multiplayer Manusia'} · Giliran #{room.turnNumber || 1}
+                {isBotMatch ? '🤖 vs Pemain Komputer' : '👥 vs Pemain Manusia'} · Giliran #{room.turnNumber || 1}
               </span>
             </div>
           </div>
@@ -551,6 +583,15 @@ export default function SnakesLaddersScreen({
               onClick={() => setShowMobileHistory(true)}
             >
               📜 Log ({room.moveLog?.length || 0})
+            </button>
+            <button
+              type="button"
+              className="icon-btn hide-desktop"
+              aria-label={`Buka obrolan${unreadChats ? `, ${unreadChats} pesan baru` : ''}`}
+              onClick={() => actions.setChatOpen(true)}
+            >
+              <span aria-hidden="true">💬</span>
+              {unreadChats > 0 && <span className="count-badge" aria-hidden="true">{unreadChats}</span>}
             </button>
           </div>
         </header>
@@ -564,7 +605,7 @@ export default function SnakesLaddersScreen({
           >
             {matchAnnouncement.type === 'bot' ? (
               <>
-                <span className="snk-bot-avatar"><Icon name="bot" size={20} /></span>
+                <span className="snk-bot-avatar"><Icon name="bot" size={18} /></span>
                 <div>
                   <strong>{matchAnnouncement.message}</strong>
                   <p className="muted" style={{ margin: 0, fontSize: 'var(--fs-xs)' }}>
@@ -577,7 +618,7 @@ export default function SnakesLaddersScreen({
                 <PlayerAvatar
                   avatar={matchAnnouncement.opponent?.avatar}
                   name={matchAnnouncement.opponent?.display_name || 'Lawan'}
-                  size={36}
+                  size={34}
                   className="avatar"
                 />
                 <div>
@@ -595,9 +636,9 @@ export default function SnakesLaddersScreen({
         {notice && <p className="alert" role="status">{notice}</p>}
 
         <div className="snk-game-grid">
-          {/* AREA UTAMA: PAPAN ULAR TANGGA 10x10 */}
+          {/* KOLOM KIRI: PAPAN ULAR TANGGA 10x10 */}
           <section className="snk-board-column" aria-label="Papan Permainan Ular Tangga 100 Kotak">
-            {/* Kartu Pemain di Mobile (Atas Papan: Lawan) */}
+            {/* Bar Pemain di Mobile (di atas papan agar selalu terlihat) */}
             <div className="snk-mobile-players hide-desktop">
               {players.map(p => (
                 <SnakesPlayerBadge
@@ -616,12 +657,12 @@ export default function SnakesLaddersScreen({
               <div className="snakes-board">
                 {BOARD_ROWS.map(row => (
                   <div key={row.visualRow} className="snakes-board__row">
-                    {row.cells.map(sq => {
+                    {row.cells.map((sq, colIdx) => {
                       const ladderTo = ladders[sq];
                       const snakeTo = snakesMap[sq];
                       const isStart = sq === 1;
                       const isFinish = sq === 100;
-                      const isAlt = (row.visualRow + (sq % 2)) % 2 === 0;
+                      const isAlt = (row.visualRow + colIdx) % 2 === 1;
 
                       return (
                         <div
@@ -634,16 +675,22 @@ export default function SnakesLaddersScreen({
                           } ${isStart ? 'snakes-cell--start' : ''}`}
                         >
                           <span className="snakes-cell__num">{sq}</span>
-                          {isFinish && <span className="snakes-cell__tag snakes-cell__tag--finish" title="Kotak 100 Kemenangan">👑</span>}
-                          {isStart && <span className="snakes-cell__tag snakes-cell__tag--start">START</span>}
+                          {isFinish && (
+                            <span className="snakes-cell__tag snakes-cell__tag--finish" title="Kotak 100 Kemenangan">
+                              🏆
+                            </span>
+                          )}
+                          {isStart && (
+                            <span className="snakes-cell__tag snakes-cell__tag--start">START</span>
+                          )}
                           {ladderTo && (
-                            <span className="snakes-cell__tag snakes-cell__tag--ladder" title={`Tangga naik ke ${ladderTo}`}>
-                              🪜{ladderTo}
+                            <span className="snakes-cell__tag snakes-cell__tag--ladder" title={`Tangga naik ke kotak ${ladderTo}`}>
+                              ↑{ladderTo}
                             </span>
                           )}
                           {snakeTo && (
-                            <span className="snakes-cell__tag snakes-cell__tag--snake" title={`Ular turun ke ${snakeTo}`}>
-                              🐍{snakeTo}
+                            <span className="snakes-cell__tag snakes-cell__tag--snake" title={`Ular turun ke kotak ${snakeTo}`}>
+                              ↓{snakeTo}
                             </span>
                           )}
                         </div>
@@ -655,14 +702,13 @@ export default function SnakesLaddersScreen({
                 {/* Overlay SVG Ular & Tangga */}
                 <SnakesAndLaddersSvgOverlay ladders={ladders} snakes={snakesMap} />
 
-                {/* Bidak Pemain yang Sudah Berada di Papan (Kotak 1..100) */}
+                {/* Bidak Pemain di Papan (Kotak 1..100) */}
                 <div className="snakes-board__tokens" aria-live="polite">
                   {boardPlayers.map((p, idx) => {
                     const pos = animatedPositions[p.id] !== undefined ? animatedPositions[p.id] : Number(p.position) || 0;
                     const coords = getSquareCoords(pos);
                     if (!coords) return null;
 
-                    // Offset kecil bila dua bidak berada di kotak yang sama
                     const sameSquarePlayers = boardPlayers.filter(other => {
                       const oPos = animatedPositions[other.id] !== undefined ? animatedPositions[other.id] : Number(other.position) || 0;
                       return oPos === pos;
@@ -727,15 +773,15 @@ export default function SnakesLaddersScreen({
 
               {/* Area Start (Posisi 0 - Belum Masuk Papan) */}
               <div className="snk-start-dock">
-                <span className="snk-start-dock__label muted">Posisi Awal (Kotak 0):</span>
+                <span className="snk-start-dock__label muted">Posisi Start (0):</span>
                 {startDockPlayers.length === 0 ? (
-                  <span className="muted" style={{ fontSize: 'var(--fs-xs)' }}>Semua bidak sudah berada di atas papan</span>
+                  <span className="muted" style={{ fontSize: '11px' }}>Semua bidak sudah berada di atas papan</span>
                 ) : (
                   <div className="snk-start-dock__tokens">
                     {startDockPlayers.map(p => (
                       <span key={p.id} className={`snk-dock-chip color-${p.color}`}>
                         <span className="snk-dock-chip__dot" />
-                        <span>{p.display_name} (Kotak 0)</span>
+                        <span>{p.display_name}</span>
                       </span>
                     ))}
                   </div>
@@ -744,7 +790,7 @@ export default function SnakesLaddersScreen({
             </div>
           </section>
 
-          {/* PANEL SAMPING (INFORMASI PEMAIN, GILIRAN, DADU, RIWAYAT, CHAT) */}
+          {/* KOLOM KANAN: PEMAIN, KONSOL DADU CEPAT, LOG, & CHAT */}
           <aside className="snk-side-column">
             {/* Daftar Pemain (Desktop) */}
             <div className="snk-desktop-players show-desktop">
@@ -761,64 +807,62 @@ export default function SnakesLaddersScreen({
               ))}
             </div>
 
-            {/* Panel Giliran & Dadu 3D */}
-            <section className={`turn-panel card ${room.isMyTurn ? 'is-my-turn card--focus' : ''}`} aria-label="Kontrol Dadu dan Giliran">
-              <div className="turn-panel__main">
-                <Dice3D
-                  value={diceValue || room.lastRoll?.dice || 1}
-                  isRolling={rolling}
-                  canRoll={canRoll}
-                  onRoll={actions.rollDice}
-                  disabled={!canRoll}
-                  playerColor={currentTurnPlayer?.color || 'red'}
-                />
+            {/* Konsol Dadu & Giliran (Cepat & Responsif) */}
+            <section
+              className={`snk-dice-console card ${room.isMyTurn && room.status === 'playing' ? 'is-my-turn card--focus' : ''}`}
+              aria-label="Kontrol Dadu dan Giliran"
+            >
+              <div className="snk-dice-console__body">
+                <div className="snk-dice-console__cube">
+                  <Dice3D
+                    value={diceValue || room.lastRoll?.dice || 1}
+                    isRolling={rolling}
+                    canRoll={canRoll}
+                    onRoll={actions.rollDice}
+                    disabled={!canRoll}
+                    playerColor={currentTurnPlayer?.color || 'red'}
+                  />
+                </div>
 
-                <div className="turn-panel__side">
-                  <p className={`turn-panel__who color-${currentTurnPlayer?.color || 'red'}`}>
-                    <span className="dot" style={{ background: 'var(--pc)' }} aria-hidden="true" />
-                    <span className="turn-panel__who-name">
+                <div className="snk-dice-console__info">
+                  <div className="snk-dice-console__turn-row">
+                    <span className={`snk-color-dot color-${currentTurnPlayer?.color || 'red'}`} />
+                    <strong className="snk-dice-console__who">
                       {room.status === 'finished'
                         ? `🏆 Pemenang: ${room.winner?.display_name || 'Pemain'}`
                         : room.isMyTurn
-                        ? 'Giliranmu!'
+                        ? 'Giliranmu Sekarang!'
                         : currentTurnPlayer?.player_type === 'bot'
                         ? 'Giliran Pemain Komputer'
                         : `Giliran ${currentTurnPlayer?.display_name || 'Lawan'}`}
-                    </span>
+                    </strong>
+                  </div>
+
+                  <p className="snk-dice-console__status" aria-live="polite">
+                    {statusDescription}
                   </p>
 
-                  <p className="turn-panel__status" aria-live="polite">
+                  <button
+                    type="button"
+                    className={`btn ${canRoll ? 'btn--primary' : 'btn--secondary'} btn--block snk-roll-cta`}
+                    disabled={!canRoll}
+                    onClick={actions.rollDice}
+                  >
                     {rolling
-                      ? 'Mengocok dadu...'
+                      ? '🎲 Mengocok...'
                       : animatingMove
-                      ? 'Bidak sedang bergerak di papan...'
-                      : room.lastRoll
-                      ? `${room.lastRoll.displayName} dapat dadu ${room.lastRoll.dice}: kotak ${room.lastRoll.from} → ${room.lastRoll.to}${
-                          room.lastRoll.ladder
-                            ? ` (🪜 Naik tangga!)`
-                            : room.lastRoll.snake
-                            ? ` (🐍 Turun ular!)`
-                            : room.lastRoll.overshoot
-                            ? ` (Melewati 100, tetap di ${room.lastRoll.from})`
-                            : ''
-                        }`
-                      : 'Lempar dadu untuk mulai melangkah dari posisi 0!'}
-                  </p>
-
-                  {canRoll && (
-                    <button
-                      type="button"
-                      className="btn btn--primary btn--lg btn--block"
-                      onClick={actions.rollDice}
-                    >
-                      🎲 Lempar Dadu
-                    </button>
-                  )}
+                      ? '🏃 Melangkah...'
+                      : canRoll
+                      ? '🎲 Lempar Dadu Sekarang'
+                      : currentTurnPlayer?.player_type === 'bot'
+                      ? '🤖 Giliran Komputer...'
+                      : '⏳ Menunggu Lawan...'}
+                  </button>
                 </div>
               </div>
 
-              {/* Bar Emoticon Reaction & Tombol Chat */}
-              <div className="turn-panel__toolbar">
+              {/* Bar Emoticon Reaction */}
+              <div className="turn-panel__toolbar snk-dice-console__toolbar">
                 <div className="reaction-row" role="group" aria-label="Kirim reaksi">
                   {REACTIONS.map(emoji => (
                     <button
@@ -832,10 +876,10 @@ export default function SnakesLaddersScreen({
                     </button>
                   ))}
                 </div>
-                <div className="turn-panel__tools">
+                <div className="turn-panel__tools hide-desktop">
                   <button
                     type="button"
-                    className="icon-btn hide-desktop"
+                    className="icon-btn"
                     aria-label={`Buka obrolan${unreadChats ? `, ${unreadChats} pesan baru` : ''}`}
                     onClick={() => actions.setChatOpen(true)}
                   >
@@ -848,20 +892,23 @@ export default function SnakesLaddersScreen({
 
             {/* Riwayat Langkah Permainan (Desktop) */}
             <section className="snk-log-card card show-desktop" aria-label="Riwayat Lemparan Dadu">
-              <h3 className="panel-section__title">📜 Riwayat Langkah ({room.moveLog?.length || 0})</h3>
+              <div className="snk-card-head-inline">
+                <h3 className="panel-section__title" style={{ margin: 0 }}>📜 Riwayat Langkah</h3>
+                <span className="badge">{room.moveLog?.length || 0} lemparan</span>
+              </div>
               {(!room.moveLog || room.moveLog.length === 0) ? (
-                <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: 0 }}>
+                <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '6px 0 0' }}>
                   Belum ada lemparan dadu.
                 </p>
               ) : (
                 <ol className="snk-log-list">
-                  {[...room.moveLog].reverse().slice(0, 12).map(item => (
+                  {[...room.moveLog].reverse().slice(0, 10).map(item => (
                     <li key={item.id} className="snk-log-item">
                       <span className={`snk-color-dot color-${item.color}`} />
                       <span className="snk-log-item__text">
-                        <strong>{item.displayName}</strong> lempar <strong>🎲 {item.dice}</strong>:{' '}
+                        <strong>{item.displayName}</strong> 🎲<strong>{item.dice}</strong>:{' '}
                         {item.overshoot ? (
-                          <span>tetap di kotak {item.from} (&gt;100)</span>
+                          <span>tetap di #{item.from} (&gt;100)</span>
                         ) : (
                           <span>
                             {item.from} → {item.stepTo}
@@ -903,7 +950,7 @@ export default function SnakesLaddersScreen({
           {(!room.moveLog || room.moveLog.length === 0) ? (
             <p className="muted">Belum ada lemparan dadu.</p>
           ) : (
-            <ol className="snk-log-list">
+            <ol className="snk-log-list" style={{ maxHeight: '340px' }}>
               {[...room.moveLog].reverse().map(item => (
                 <li key={item.id} className="snk-log-item">
                   <span className={`snk-color-dot color-${item.color}`} />
@@ -1023,184 +1070,198 @@ export default function SnakesLaddersScreen({
   // ==========================================
   return (
     <main className="snk-screen" id="main">
-      <div className="playgo-subnav">
-        <button type="button" className="btn btn--secondary" onClick={onBackToMenu}>
-          <Icon name="arrow-left" size={18} />
+      <div className="snk-subnav">
+        <button type="button" className="btn btn--secondary btn--sm" onClick={onBackToMenu}>
+          <Icon name="arrow-left" size={16} />
           <span>Daftar Game PlayGo</span>
         </button>
-        <span className="badge badge--brand">PlayGo · Ular Tangga (Snakes and Ladders)</span>
+        <span className="badge badge--brand">Board Game · Ular Tangga</span>
       </div>
 
-      {/* Hero Lobby Ular Tangga */}
-      <section className="home__hero snk-lobby-hero card">
-        <div className="home__intro">
-          <span className="playgo-eyebrow">BOARD GAME KLASIK · 100 KOTAK</span>
-          <h1 className="home__title">
-            Ular Tangga: <span className="home__title-accent">Balapan Dadu Menuju Kotak 100!</span>
-          </h1>
-          <p className="home__lead">
-            Lempar dadu, panjat 8 tangga emas untuk melesat naik, dan hindari 8 kepala ular!
-            Sistem Smart Matchmaking otomatis mencarikan lawan pemain online terlebih dahulu.
-          </p>
-          <div className="playgo-game-card__tags" style={{ marginTop: 'var(--space-2)' }}>
-            <span className="badge badge--brand">2 Pemain (Quick Match)</span>
-            <span className="badge">2–4 Pemain (Private Room)</span>
-            <span className="badge badge--success">+15 Coins Menang Kompetitif</span>
-          </div>
-        </div>
-        <figure className="home__art">
+      {/* Hero Card Ringkas & Modern (Setara Chess Master) */}
+      <section className="snk-hero-card card">
+        <figure className="snk-hero-card__art">
           <img
             src={snakesLogo}
-            alt="Logo Ular Tangga (Snakes and Ladders) PlayGo"
-            width="720"
-            height="480"
+            alt="Ular Tangga (Snakes and Ladders) PlayGo"
+            width="480"
+            height="320"
             fetchpriority="high"
           />
+          <span className="snk-hero-card__badge">10 × 10 Klasik</span>
         </figure>
+
+        <div className="snk-hero-card__body">
+          <div>
+            <span className="playgo-eyebrow">PLAYGO BOARD GAME · 100 KOTAK</span>
+            <h1 className="snk-hero-card__title">Ular Tangga (Snakes and Ladders)</h1>
+            <p className="snk-hero-card__desc muted">
+              Lempar dadu, panjat 8 tangga emas untuk melesat naik, dan hindari 8 kepala ular!
+              Prioritas lawan manusia online otomatis, dengan hadiah <strong>+15 Coins</strong> setiap menang kompetitif.
+            </p>
+          </div>
+
+          {currentUser && (
+            <div className="snk-hero-stats">
+              <div className="snk-hero-stat">
+                <span className="snk-hero-stat__label muted">Pemain</span>
+                <strong className="snk-hero-stat__val">{currentUser.name}</strong>
+              </div>
+              <div className="snk-hero-stat">
+                <span className="snk-hero-stat__label muted">Vs Manusia</span>
+                <strong className="snk-hero-stat__val">
+                  {stats ? `${stats.wins}M / ${stats.losses}K` : '0M / 0K'}
+                </strong>
+              </div>
+              <div className="snk-hero-stat">
+                <span className="snk-hero-stat__label muted">Win Rate</span>
+                <strong className="snk-hero-stat__val">{stats ? `${stats.winRate}%` : '0%'}</strong>
+              </div>
+              <div className="snk-hero-stat">
+                <span className="snk-hero-stat__label muted">Vs Komputer</span>
+                <strong className="snk-hero-stat__val">
+                  {stats?.botStats ? `${stats.botStats.wins}M / ${stats.botStats.losses}K` : '0M / 0K'}
+                </strong>
+              </div>
+            </div>
+          )}
+        </div>
       </section>
 
       {error && <p className="alert alert--error" role="alert">{error}</p>}
       {notice && <p className="alert" role="status">{notice}</p>}
 
-      <div className="snk-lobby-grid">
-        {/* KARTU UTAMA: QUICK MATCH & PRIVATE ROOM */}
-        <section className="snk-action-card card card--focus" aria-label="Mulai Bermain Ular Tangga">
-          {!currentUser ? (
-            <div className="snk-auth-prompt">
-              <h2>Masuk ke PlayGo untuk Bermain</h2>
-              <p className="muted">
-                Gunakan akun PlayGo untuk mencari lawan secara realtime, membuat Private Room, dan menyimpan statistik kemenanganmu.
+      {/* KARTU MODE PERMAINAN: QUICK MATCH & PRIVATE ROOM */}
+      {!currentUser ? (
+        <section className="card card--focus snk-auth-card">
+          <div>
+            <h2 style={{ margin: '0 0 6px' }}>Masuk ke PlayGo untuk Bermain Ular Tangga</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              Gunakan akun PlayGo untuk mencari lawan secara realtime, membuat Private Room, dan mengumpulkan Coins.
+            </p>
+          </div>
+          <button type="button" className="btn btn--primary btn--lg" onClick={onOpenAuth}>
+            Masuk / Daftar Akun
+          </button>
+        </section>
+      ) : searching ? (
+        <section className="card card--focus snk-matchmaking-box" role="status" aria-live="polite">
+          <div className="snk-matchmaking-radar" aria-hidden="true">
+            <span className="spinner snk-matchmaking-spinner" />
+            <span className="snk-matchmaking-icon">🎲</span>
+          </div>
+          <h2 className="snk-matchmaking-title">Mencari lawan...</h2>
+          <p className="snk-matchmaking-priority">
+            <span className="dot" style={{ background: '#22c55e' }} /> Memprioritaskan pemain online
+          </p>
+          <div className="snk-matchmaking-timer">
+            <span>Waktu pencarian: <strong>{searchElapsedSec} dtk</strong> / {searchTimeoutSec} dtk</span>
+          </div>
+          <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 12px', maxWidth: '460px' }}>
+            Jika belum ada pemain online setelah {searchTimeoutSec} detik, sistem otomatis memulai pertandingan melawan <strong>Pemain Komputer</strong>.
+          </p>
+          <button
+            type="button"
+            className="btn btn--secondary"
+            onClick={actions.cancelMatchmaking}
+          >
+            ✕ Batalkan Pencarian (Cancel)
+          </button>
+        </section>
+      ) : (
+        <div className="snk-modes-grid">
+          {/* Quick Match Card */}
+          <section className="card card--focus snk-mode-card" aria-label="Mode Quick Match">
+            <div className="snk-mode-card__top">
+              <div className="snk-mode-block__head">
+                <h3>⚡ Quick Match (2 Pemain)</h3>
+                <span className="badge badge--success">Prioritas Manusia</span>
+              </div>
+              <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '6px 0 0' }}>
+                Langsung cari lawan pemain online. Bila tidak ditemukan dalam 15 detik, otomatis bertanding melawan Pemain Komputer tanpa perlu menunggu lama.
               </p>
-              <button type="button" className="btn btn--primary btn--lg btn--block" onClick={onOpenAuth}>
-                Masuk atau Daftar Akun
-              </button>
             </div>
-          ) : searching ? (
-            /* LAYAR MATCHMAKING (HUMAN FIRST, 15s BOT FALLBACK) */
-            <div className="snk-matchmaking-box" role="status" aria-live="polite">
-              <div className="snk-matchmaking-radar" aria-hidden="true">
-                <span className="spinner snk-matchmaking-spinner" />
-                <span className="snk-matchmaking-icon">🎲</span>
+            <button
+              type="button"
+              className="btn btn--primary btn--lg btn--block"
+              onClick={actions.startQuickMatch}
+            >
+              🎲 Main Sekarang (Quick Match)
+            </button>
+          </section>
+
+          {/* Private Room Card */}
+          <section className="card snk-mode-card" aria-label="Mode Private Room">
+            <div className="snk-mode-card__top">
+              <div className="snk-mode-block__head">
+                <h3>🔒 Private Room (Teman)</h3>
+                <span className="badge">Kode 5 Huruf</span>
               </div>
-              <h2 className="snk-matchmaking-title">Mencari lawan...</h2>
-              <p className="snk-matchmaking-priority">
-                <span className="dot" style={{ background: '#22c55e' }} /> Memprioritaskan pemain online
+              <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '6px 0 0' }}>
+                Buat room privat untuk dimainkan bersama teman, atau masukkan kode room milik temanmu.
               </p>
-              <div className="snk-matchmaking-timer">
-                <span>Waktu pencarian: <strong>{searchElapsedSec} dtk</strong> / {searchTimeoutSec} dtk</span>
-              </div>
-              <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 16px' }}>
-                Jika belum ada pemain online setelah {searchTimeoutSec} detik, pertandingan otomatis dimulai melawan <strong>Pemain Komputer</strong>.
-              </p>
+            </div>
+
+            <div className="snk-private-controls">
               <button
                 type="button"
                 className="btn btn--secondary btn--block"
-                onClick={actions.cancelMatchmaking}
+                onClick={() => actions.createPrivateRoom({ maxPlayers: 2 })}
               >
-                ✕ Batalkan Pencarian (Cancel)
+                ➕ Buat Private Room Baru
               </button>
+
+              <form
+                className="join-form"
+                onSubmit={e => {
+                  e.preventDefault();
+                  actions.joinRoomByCode();
+                }}
+              >
+                <label htmlFor="snk-room-code" className="sr-only">Kode Private Room</label>
+                <input
+                  id="snk-room-code"
+                  className="input code-input"
+                  value={joinCode}
+                  onChange={e => actions.setJoinCode(e.target.value.toUpperCase())}
+                  placeholder="Kode room (mis. AB12C)"
+                  maxLength={5}
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                />
+                <button type="submit" className="btn btn--secondary">
+                  Gabung
+                </button>
+              </form>
             </div>
-          ) : (
-            <>
-              <div className="snk-mode-block">
-                <div className="snk-mode-block__head">
-                  <h3>⚡ Quick Match (2 Pemain)</h3>
-                  <span className="badge badge--success">Prioritas Pemain Online</span>
-                </div>
-                <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginBottom: 'var(--space-3)' }}>
-                  Cari lawan manusia yang sedang online. Bila tidak ditemukan dalam 15 detik, otomatis bertanding melawan Pemain Komputer.
-                </p>
-                <button
-                  type="button"
-                  className="btn btn--primary btn--lg btn--block"
-                  onClick={actions.startQuickMatch}
-                >
-                  🎲 Quick Match — Cari Lawan Sekarang
-                </button>
-              </div>
+          </section>
+        </div>
+      )}
 
-              <div className="divider"><span>atau main bareng teman di Private Room</span></div>
-
-              <div className="snk-mode-block">
-                <h3>🔒 Private Room (Kode Undangan)</h3>
-                <p className="muted" style={{ fontSize: 'var(--fs-sm)', marginBottom: 'var(--space-3)' }}>
-                  Buat room privat lalu bagikan kodenya ke temanmu, atau masukkan kode room milik teman.
-                </p>
-                <button
-                  type="button"
-                  className="btn btn--secondary btn--block"
-                  onClick={() => actions.createPrivateRoom({ maxPlayers: 2 })}
-                  style={{ marginBottom: 'var(--space-3)' }}
-                >
-                  ➕ Buat Private Room Baru
-                </button>
-
-                <form
-                  className="join-form"
-                  onSubmit={e => {
-                    e.preventDefault();
-                    actions.joinRoomByCode();
-                  }}
-                >
-                  <label htmlFor="snk-room-code" className="sr-only">Kode Private Room</label>
-                  <input
-                    id="snk-room-code"
-                    className="input code-input"
-                    value={joinCode}
-                    onChange={e => actions.setJoinCode(e.target.value.toUpperCase())}
-                    placeholder="Kode room, mis. AB12C"
-                    maxLength={5}
-                    autoComplete="off"
-                    autoCapitalize="characters"
-                  />
-                  <button type="submit" className="btn btn--secondary">
-                    Gabung Room
-                  </button>
-                </form>
-              </div>
-            </>
-          )}
-        </section>
-
-        {/* KARTU ATURAN & STATISTIK PEMAIN */}
-        <section className="snk-info-column">
-          {currentUser && stats && (
-            <article className="card snk-stats-card" aria-label="Statistik Ular Tangga Kamu">
-              <div className="snk-stats-card__head">
-                <PlayerAvatar avatar={currentUser.avatar} name={currentUser.name} size={40} className="avatar" />
-                <div>
-                  <strong>Statistik Ular Tangga — {currentUser.name}</strong>
-                  <p className="muted" style={{ margin: 0, fontSize: 'var(--fs-xs)' }}>
-                    Peringkat Kompetitif: {stats.rank ? `#${stats.rank}` : 'Belum berperingkat'}
-                  </p>
-                </div>
-              </div>
-              <div className="profile-stats" style={{ marginTop: 'var(--space-3)' }}>
-                <div className="profile-stat card">
-                  <span className="profile-stat__label muted">Vs Manusia</span>
-                  <strong className="profile-stat__value">{stats.wins}M / {stats.losses}K</strong>
-                  <span className="profile-stat__sub muted">{stats.totalMatches} match ({stats.winRate}%)</span>
-                </div>
-                <div className="profile-stat card">
-                  <span className="profile-stat__label muted">Vs Komputer</span>
-                  <strong className="profile-stat__value">{stats.botStats?.wins || 0}M / {stats.botStats?.losses || 0}K</strong>
-                  <span className="profile-stat__sub muted">{stats.botStats?.totalMatches || 0} latihan</span>
-                </div>
-              </div>
-            </article>
-          )}
-
-          <article className="card snk-rules-card" aria-label="Aturan Permainan Ular Tangga">
-            <h3>📖 Aturan Klasik Ular Tangga</h3>
-            <ul className="snk-rules-list">
-              <li><strong>Posisi Awal 0:</strong> Semua pemain memulai dari posisi 0 di luar papan dan melempar dadu untuk masuk ke papan.</li>
-              <li><strong>8 Tangga &amp; 8 Ular:</strong> Berhenti di pangkal tangga otomatis naik ke kotak atas; berhenti di kepala ular otomatis turun ke ekor.</li>
-              <li><strong>Tepat Kotak 100:</strong> Harus mendapatkan angka dadu yang pas untuk mencapai kotak 100. Jika melewati 100, bidak tetap di tempat.</li>
-              <li><strong>Tanpa Giliran Ekstra:</strong> Mendapatkan angka 6 tidak memberikan lemparan tambahan — giliran selalu bergantian secara adil.</li>
-            </ul>
-          </article>
-        </section>
-      </div>
+      {/* RINGKASAN ATURAN SINGKAT */}
+      <section className="card snk-rules-strip" aria-label="Aturan Klasik Ular Tangga">
+        <div className="snk-rules-strip__item">
+          <span className="snk-rules-strip__icon">🏁</span>
+          <div>
+            <strong>Mulai dari Posisi 0</strong>
+            <p className="muted">Lempar dadu untuk masuk ke papan menuju kotak 100.</p>
+          </div>
+        </div>
+        <div className="snk-rules-strip__item">
+          <span className="snk-rules-strip__icon">🪜</span>
+          <div>
+            <strong>8 Tangga &amp; 8 Ular</strong>
+            <p className="muted">Berhenti di pangkal tangga otomatis naik; di kepala ular otomatis turun.</p>
+          </div>
+        </div>
+        <div className="snk-rules-strip__item">
+          <span className="snk-rules-strip__icon">🎯</span>
+          <div>
+            <strong>Pas di Kotak 100</strong>
+            <p className="muted">Jika angka dadu melewati 100, bidak tetap di tempat. Angka 6 tidak memberi giliran ekstra.</p>
+          </div>
+        </div>
+      </section>
 
       {/* RIWAYAT PERTANDINGAN & LEADERBOARD KOMPETITIF */}
       <div className="snk-bottom-grid">
@@ -1222,7 +1283,7 @@ export default function SnakesLaddersScreen({
                       {item.result === 'win' ? 'Menang' : 'Kalah'} vs {item.opponentName}
                     </strong>
                     <span className="muted">
-                      {item.opponentType === 'bot' ? '🤖 Lawan: Pemain Komputer (Bot)' : '👥 Lawan: Pemain Manusia'} · {item.duration} dtk · {item.totalTurns} giliran
+                      {item.opponentType === 'bot' ? '🤖 Pemain Komputer (Bot)' : '👥 Pemain Manusia'} · {item.duration} dtk · {item.totalTurns} giliran
                     </span>
                   </div>
                   <div className="lb-row__stats">
@@ -1239,8 +1300,8 @@ export default function SnakesLaddersScreen({
         </section>
 
         <section className="card" aria-label="Leaderboard Ular Tangga">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
-            <h3 className="panel-section__title" style={{ margin: 0 }}>🏆 Leaderboard Kompetitif (Vs Manusia)</h3>
+          <div className="snk-card-head-inline" style={{ marginBottom: 'var(--space-2)' }}>
+            <h3 className="panel-section__title" style={{ margin: 0 }}>🏆 Leaderboard Kompetitif</h3>
             {onOpenLeaderboard && (
               <button type="button" className="btn btn--secondary btn--sm" onClick={onOpenLeaderboard}>
                 Buka Penuh
@@ -1248,7 +1309,7 @@ export default function SnakesLaddersScreen({
             )}
           </div>
           <p className="muted" style={{ fontSize: 'var(--fs-xs)', marginTop: 0 }}>
-            Hanya mencatat kemenangan melawan sesama pemain manusia. Pemain Komputer tidak pernah masuk ke Leaderboard.
+            Hanya mencatat kemenangan melawan sesama pemain manusia. Pemain Komputer tidak masuk ke Leaderboard.
           </p>
           {leaderboard.length === 0 ? (
             <p className="muted">Belum ada pemain di peringkat kompetitif. Jadilah pemenang pertama!</p>
@@ -1277,4 +1338,3 @@ export default function SnakesLaddersScreen({
     </main>
   );
 }
-
