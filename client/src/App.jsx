@@ -334,7 +334,7 @@ export default function App() {
         error={inGame ? game.error : ''}
         memberNotice={game.memberNotice}
         roomInvite={social.roomInvite}
-        chatToast={game.chatToast}
+        chatToast={game.chatToast || quiz.chatToast || chess.chatToast}
         reactions={game.reactions}
         onAcceptRoomInvite={(targetCode, inviteGameType) => {
           social.actions.dismissRoomInvite();
@@ -351,10 +351,22 @@ export default function App() {
         }}
         onDismissRoomInvite={social.actions.dismissRoomInvite}
         onOpenChat={() => {
-          game.actions.dismissChatToast();
-          if (inGame) changeSheet('chat');
+          if (game.chatToast) {
+            game.actions.dismissChatToast();
+            if (inGame) changeSheet('chat');
+          } else if (quiz.chatToast) {
+            quiz.actions.dismissChatToast();
+            quiz.actions.setChatOpen(true);
+          } else if (chess.chatToast) {
+            chess.actions.dismissChatToast();
+            chess.actions.setChatOpen(true);
+          }
         }}
-        onDismissChat={game.actions.dismissChatToast}
+        onDismissChat={() => {
+          game.actions.dismissChatToast();
+          quiz.actions.dismissChatToast?.();
+          chess.actions.dismissChatToast?.();
+        }}
       />
 
       {inGame ? (

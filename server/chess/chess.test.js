@@ -315,6 +315,20 @@ test('Quick Matchmaking, Draw Offer/Accept, Resign & Rematch flow', async () => 
   const code = matchRes.room.code;
   const firstMatchId = matchRes.room.match.id;
 
+  // Test Chat & Reaction (Emoticon) in Chess Master room
+  const chatRecvPromise = new Promise(resolve => c2.once('chess:chat_message', resolve));
+  const reactRecvPromise = new Promise(resolve => c2.once('room:reaction', resolve));
+
+  const chatRes = await emitAck(c1, 'chess:chat', { code, token: u1.token, text: 'Good Game! 👏' });
+  assert.equal(chatRes.ok, true);
+  const chatMsg = await chatRecvPromise;
+  assert.equal(chatMsg.text, 'Good Game! 👏');
+
+  const reactRes = await emitAck(c1, 'chess:reaction', { code, token: u1.token, emoji: '🔥' });
+  assert.equal(reactRes.ok, true);
+  const reactMsg = await reactRecvPromise;
+  assert.equal(reactMsg.emoji, '🔥');
+
   // Player 1 offers draw, Player 2 accepts draw
   const offerRes = await emitAck(c1, 'chess:draw:offer', { code, token: u1.token });
   assert.equal(offerRes.ok, true);

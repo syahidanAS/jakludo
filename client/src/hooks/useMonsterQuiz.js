@@ -30,8 +30,16 @@ export function useMonsterQuiz({ socket, authToken, currentUser, onUpdateUser, o
   const [leaderboard, setLeaderboard] = useState([]);
   const [loadingStats, setLoadingStats] = useState(false);
 
+  // Obrolan room & notifikasi chat
+  const [chats, setChats] = useState([]);
+  const [unreadChats, setUnreadChats] = useState(0);
+  const [chatToast, setChatToast] = useState(null);
+  const [chatOpen, setChatOpenState] = useState(false);
+
   // Selisih jam server vs klien (serverNow - Date.now()) agar countdown 15 detik akurat
   const serverOffsetRef = useRef(0);
+  const chatOpenRef = useRef(false);
+  const chatToastTimerRef = useRef(null);
   // Deduplikasi event round/attack/damage berdasarkan roundId
   const lastHandledRoundRef = useRef('');
   const lastHandledAttackRef = useRef('');
@@ -58,6 +66,9 @@ export function useMonsterQuiz({ socket, authToken, currentUser, onUpdateUser, o
       setMatchResult(null);
       setDamagePopup(null);
       setNotice('');
+      setChats([]);
+      setUnreadChats(0);
+      setChatToast(null);
       setSlotAnim({ 0: 'idle', 1: 'idle', 2: 'idle' });
       showError(reason);
     },
@@ -171,6 +182,9 @@ export function useMonsterQuiz({ socket, authToken, currentUser, onUpdateUser, o
       syncServerClock(nextRoom.serverNow);
       setRoom(nextRoom);
       setSearching(false);
+      if (Array.isArray(nextRoom.chats)) {
+        setChats(nextRoom.chats);
+      }
       if (nextRoom.code) {
         storage.set(QUIZ_ROOM_KEY, nextRoom.code);
       }
@@ -346,6 +360,17 @@ export function useMonsterQuiz({ socket, authToken, currentUser, onUpdateUser, o
       if (Array.isArray(list)) setLeaderboard(list);
     };
 
+    const onChatMessage = msg => {
+      if (!msg) return;
+      setChats(prev => [...prev.slice(-49), msg]);
+      if (msg.senderId === currentUser?.id) return;
+      sound.playChatNotification();
+      if (!chatOpenRef.current) setUnreadChats(n => n + 1);
+      setChatToast(msg);
+      if (chatToastTimerRef.current) clearTimeout(chatToastTimerRef.current);
+      chatToastTimerRef.current = setTimeout(() => setChatToast(null), 4200);
+    };
+
     socket.on('quiz:room:state', onRoomState);
     socket.on('room.created', onRoomCreated);
     socket.on('room.joined', onRoomJoined);
@@ -358,6 +383,7 @@ export function useMonsterQuiz({ socket, authToken, currentUser, onUpdateUser, o
     socket.on('player.disconnected', onPlayerDisconnected);
     socket.on('player.reconnected', onPlayerReconnected);
     socket.on('quiz:leaderboard:update', onLeaderboardUpdate);
+    socket.on('quiz:chat_message', onChatMessage);
 
     return () => {
       socket.off('quiz:room:state', onRoomState);
@@ -372,6 +398,7 @@ export function useMonsterQuiz({ socket, authToken, currentUser, onUpdateUser, o
       socket.off('player.disconnected', onPlayerDisconnected);
       socket.off('player.reconnected', onPlayerReconnected);
       socket.off('quiz:leaderboard:update', onLeaderboardUpdate);
+      socket.off('quiz:chat_message', onChatMessage);
     };
   }, [socket, currentUser?.id, onUpdateUser, syncServerClock, fetchQuizMeta]);
 
@@ -557,9 +584,56 @@ export function useMonsterQuiz({ socket, authToken, currentUser, onUpdateUser, o
     setMatchResult(null);
     setDamagePopup(null);
     setNotice('');
+    setChats([]);
+    setUnreadChats(0);
+    setChatToast(null);
+    setChatOpenState(false);
+    chatOpenRef.current = false;
     setSlotAnim({ 0: 'idle', 1: 'idle', 2: 'idle' });
     fetchQuizMeta();
   }, [socket, room?.code, authToken, fetchQuizMeta]);
+
+  const sendReaction = useCallback(
+    emoji => {
+      const token = ensureAuth();
+      if (!token || !socket || !room) return;
+      sound.playClick();
+      socket.emit('quiz:reaction', { code: room.code, token, emoji });
+    },
+    [ensureAuth, socket, room]
+  );
+
+  const sendChat = useCallback(
+    (text, replyTo = null) => {
+      const token = ensureAuth();
+      if (!token || !socket || !room) return false;
+      const clean = String(text || '').trim();
+      if (!clean) return false;
+      sound.playClick();
+      const payload = {
+        code: room.code,
+        token,
+        text: clean,
+        ...(replyTo?.id !== undefined && replyTo?.id !== null ? { replyToId: replyTo.id } : {})
+      };
+      socket.emit('quiz:chat', payload, res => {
+        if (res && !res.ok && res.error) showError(res.error);
+      });
+      return true;
+    },
+    [ensureAuth, socket, room, showError]
+  );
+
+  const setChatOpen = useCallback(open => {
+    const isOpen = Boolean(open);
+    chatOpenRef.current = isOpen;
+    setChatOpenState(isOpen);
+    if (isOpen) setUnreadChats(0);
+  }, []);
+
+  const dismissChatToast = useCallback(() => {
+    setChatToast(null);
+  }, []);
 
   return {
     room,
@@ -579,6 +653,10 @@ export function useMonsterQuiz({ socket, authToken, currentUser, onUpdateUser, o
     history,
     leaderboard,
     loadingStats,
+    chats,
+    unreadChats,
+    chatToast,
+    chatOpen,
     actions: {
       createRoom,
       joinRoomByCode,
@@ -590,6 +668,10 @@ export function useMonsterQuiz({ socket, authToken, currentUser, onUpdateUser, o
       useHint,
       playAgain,
       leaveRoom,
+      sendChat,
+      sendReaction,
+      setChatOpen,
+      dismissChatToast,
       refreshStats: fetchQuizMeta
     }
   };

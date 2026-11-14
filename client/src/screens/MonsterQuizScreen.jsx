@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import Icon from '../components/Icon';
+import Modal from '../components/Modal';
 import PlayerAvatar from '../components/PlayerAvatar';
+import ChatPanel from '../components/game/ChatPanel';
 import MonsterSprite from '../quiz/MonsterSprite';
 import { QUIZ_MONSTERS, getClientMonster } from '../quiz/monsters';
 import { sound } from '../sound';
 import monsterQuizLogo from '../assets/monster-quiz-logo.webp';
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D'];
+const REACTIONS = ['🎲', '🔥', '👏', '😂', '😭', '👑'];
+const QUIZ_QUICK_CHATS = ['Semangat! 🔥', 'GG! 👏', 'Soalnya susah! 😂', 'Jangan serang aku! 😭', 'Ayo cepat jawab! ⚡'];
 
 function hpTone(hp) {
   if (hp > 50) return 'high';
@@ -148,6 +152,9 @@ export default function MonsterQuizScreen({
     stats,
     history,
     leaderboard,
+    chats = [],
+    unreadChats = 0,
+    chatOpen = false,
     actions
   } = quiz;
 
@@ -636,6 +643,36 @@ export default function MonsterQuizScreen({
           </div>
 
           <div className="mq-lobby-footer">
+            <div className="turn-panel__toolbar" style={{ width: '100%', marginBottom: '0.5rem' }}>
+              <div className="reaction-row" role="group" aria-label="Kirim reaksi">
+                {REACTIONS.map(emoji => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    className="icon-btn icon-btn--plain"
+                    aria-label={`Kirim reaksi ${emoji}`}
+                    onClick={() => actions.sendReaction(emoji)}
+                  >
+                    <span aria-hidden="true">{emoji}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="turn-panel__tools">
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label={`Buka obrolan${unreadChats ? `, ${unreadChats} pesan baru` : ''}`}
+                  onClick={() => {
+                    sound.playClick();
+                    actions.setChatOpen(true);
+                  }}
+                >
+                  <span aria-hidden="true">💬</span>
+                  {unreadChats > 0 && <span className="count-badge" aria-hidden="true">{unreadChats}</span>}
+                </button>
+              </div>
+            </div>
+
             <button
               type="button"
               className={`btn btn--lg ${me?.ready ? 'btn--secondary' : 'btn--primary'}`}
@@ -652,6 +689,21 @@ export default function MonsterQuizScreen({
             </button>
           </div>
         </section>
+
+        <Modal
+          isOpen={Boolean(chatOpen)}
+          onClose={() => actions.setChatOpen(false)}
+          variant="sheet"
+          title="Obrolan room"
+          icon="💬"
+        >
+          <ChatPanel
+            chats={chats}
+            playerId={currentUser?.id}
+            onSend={actions.sendChat}
+            quickChats={QUIZ_QUICK_CHATS}
+          />
+        </Modal>
       </main>
     );
   }
@@ -1015,6 +1067,54 @@ export default function MonsterQuizScreen({
           )}
         </section>
       )}
+
+      {/* Bar Reaksi Emoticon & Tombol Obrolan (seperti JakLudo) */}
+      <section className="card mq-chat-bar" aria-label="Reaksi dan Obrolan Room" style={{ padding: '0.65rem 1rem' }}>
+        <div className="turn-panel__toolbar" style={{ marginTop: 0, paddingTop: 0, borderTop: 'none' }}>
+          <div className="reaction-row" role="group" aria-label="Kirim reaksi">
+            {REACTIONS.map(emoji => (
+              <button
+                key={emoji}
+                type="button"
+                className="icon-btn icon-btn--plain"
+                aria-label={`Kirim reaksi ${emoji}`}
+                onClick={() => actions.sendReaction(emoji)}
+              >
+                <span aria-hidden="true">{emoji}</span>
+              </button>
+            ))}
+          </div>
+          <div className="turn-panel__tools">
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label={`Buka obrolan${unreadChats ? `, ${unreadChats} pesan baru` : ''}`}
+              onClick={() => {
+                sound.playClick();
+                actions.setChatOpen(true);
+              }}
+            >
+              <span aria-hidden="true">💬</span>
+              {unreadChats > 0 && <span className="count-badge" aria-hidden="true">{unreadChats}</span>}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <Modal
+        isOpen={Boolean(chatOpen)}
+        onClose={() => actions.setChatOpen(false)}
+        variant="sheet"
+        title="Obrolan room"
+        icon="💬"
+      >
+        <ChatPanel
+          chats={chats}
+          playerId={currentUser?.id}
+          onSend={actions.sendChat}
+          quickChats={QUIZ_QUICK_CHATS}
+        />
+      </Modal>
     </main>
   );
 }

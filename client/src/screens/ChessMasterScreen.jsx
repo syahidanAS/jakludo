@@ -1,12 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Icon from '../components/Icon';
+import Modal from '../components/Modal';
 import PlayerAvatar from '../components/PlayerAvatar';
+import ChatPanel from '../components/game/ChatPanel';
 import ChessBoard from '../components/chess/ChessBoard';
 import { CHESS_TIME_CONTROLS } from '../hooks/useChessMaster';
 import { sound } from '../sound';
 import chessMasterLogo from '../assets/chess-master-logo.webp';
 
 const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+const REACTIONS = ['🎲', '🔥', '👏', '😂', '😭', '👑'];
+const CHESS_QUICK_CHATS = ['Good Game! 👏', 'Langkah bagus! 🔥', 'Skak! 👑', 'Ampun master! 😂', 'Ayo cepat jalan! ⚡'];
 
 export function formatChessClock(ms) {
   const safe = Math.max(0, Math.floor(Number(ms) || 0));
@@ -106,6 +110,9 @@ export default function ChessMasterScreen({
     replayMatch,
     replayPly,
     setReplayPly,
+    chats = [],
+    unreadChats = 0,
+    chatOpen = false,
     actions
   } = chess;
 
@@ -440,9 +447,40 @@ export default function ChessMasterScreen({
                 </>
               )}
             </div>
+
+            {/* Bar Reaksi Emoticon & Tombol Obrolan (seperti JakLudo) */}
+            <div className="turn-panel__toolbar" style={{ width: '100%' }}>
+              <div className="reaction-row" role="group" aria-label="Kirim reaksi">
+                {REACTIONS.map(emoji => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    className="icon-btn icon-btn--plain"
+                    aria-label={`Kirim reaksi ${emoji}`}
+                    onClick={() => actions.sendReaction(emoji)}
+                  >
+                    <span aria-hidden="true">{emoji}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="turn-panel__tools">
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label={`Buka obrolan${unreadChats ? `, ${unreadChats} pesan baru` : ''}`}
+                  onClick={() => {
+                    sound.playClick();
+                    actions.setChatOpen(true);
+                  }}
+                >
+                  <span aria-hidden="true">💬</span>
+                  {unreadChats > 0 && <span className="count-badge" aria-hidden="true">{unreadChats}</span>}
+                </button>
+              </div>
+            </div>
           </div>
 
-          {/* Panel Kanan (Desktop): Notasi SAN, Navigasi Langkah, & Hasil Pertandingan */}
+          {/* Panel Kanan (Desktop): Notasi SAN, Navigasi Langkah, Hasil Pertandingan, & Obrolan */}
           <aside className="cm-side-panel">
             <div className="cm-side-card">
               <div className="cm-side-card__head">
@@ -599,8 +637,36 @@ export default function ChessMasterScreen({
                 </div>
               </div>
             )}
+
+            {/* Panel Obrolan Desktop (seperti JakLudo) */}
+            <div className="cm-side-card show-desktop">
+              <div className="cm-side-card__head">
+                <strong>💬 Obrolan Room</strong>
+              </div>
+              <ChatPanel
+                chats={chats}
+                playerId={myUserId}
+                onSend={actions.sendChat}
+                quickChats={CHESS_QUICK_CHATS}
+              />
+            </div>
           </aside>
         </div>
+
+        <Modal
+          isOpen={Boolean(chatOpen)}
+          onClose={() => actions.setChatOpen(false)}
+          variant="sheet"
+          title="Obrolan room"
+          icon="💬"
+        >
+          <ChatPanel
+            chats={chats}
+            playerId={myUserId}
+            onSend={actions.sendChat}
+            quickChats={CHESS_QUICK_CHATS}
+          />
+        </Modal>
 
         {/* Drawer Riwayat Langkah untuk Mobile */}
         {mobileMovesOpen && (
@@ -772,6 +838,36 @@ export default function ChessMasterScreen({
           </div>
 
           <div className="cm-private-lobby__footer">
+            <div className="turn-panel__toolbar" style={{ width: '100%', marginBottom: '0.6rem' }}>
+              <div className="reaction-row" role="group" aria-label="Kirim reaksi">
+                {REACTIONS.map(emoji => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    className="icon-btn icon-btn--plain"
+                    aria-label={`Kirim reaksi ${emoji}`}
+                    onClick={() => actions.sendReaction(emoji)}
+                  >
+                    <span aria-hidden="true">{emoji}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="turn-panel__tools">
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label={`Buka obrolan${unreadChats ? `, ${unreadChats} pesan baru` : ''}`}
+                  onClick={() => {
+                    sound.playClick();
+                    actions.setChatOpen(true);
+                  }}
+                >
+                  <span aria-hidden="true">💬</span>
+                  {unreadChats > 0 && <span className="count-badge" aria-hidden="true">{unreadChats}</span>}
+                </button>
+              </div>
+            </div>
+
             <button
               type="button"
               className={`btn btn--lg btn--block ${mePlayer?.ready ? 'btn--ghost' : 'btn--primary'}`}
@@ -784,6 +880,21 @@ export default function ChessMasterScreen({
             </p>
           </div>
         </div>
+
+        <Modal
+          isOpen={Boolean(chatOpen)}
+          onClose={() => actions.setChatOpen(false)}
+          variant="sheet"
+          title="Obrolan room"
+          icon="💬"
+        >
+          <ChatPanel
+            chats={chats}
+            playerId={myUserId}
+            onSend={actions.sendChat}
+            quickChats={CHESS_QUICK_CHATS}
+          />
+        </Modal>
       </div>
     );
   }

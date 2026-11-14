@@ -43,7 +43,15 @@ export function useChessMaster({ socket, authToken, currentUser, onUpdateUser, o
   const [replayPly, setReplayPly] = useState(0);
   const [loadingReplay, setLoadingReplay] = useState(false);
 
+  // Obrolan room & notifikasi chat
+  const [chats, setChats] = useState([]);
+  const [unreadChats, setUnreadChats] = useState(0);
+  const [chatToast, setChatToast] = useState(null);
+  const [chatOpen, setChatOpenState] = useState(false);
+
   const serverOffsetRef = useRef(0);
+  const chatOpenRef = useRef(false);
+  const chatToastTimerRef = useRef(null);
   const lastCompletedMatchRef = useRef('');
   const errorTimerRef = useRef(null);
   const noticeTimerRef = useRef(null);
@@ -82,6 +90,11 @@ export function useChessMaster({ socket, authToken, currentUser, onUpdateUser, o
       setSearching(false);
       setMatchResult(null);
       setNotice('');
+      setChats([]);
+      setUnreadChats(0);
+      setChatToast(null);
+      setChatOpenState(false);
+      chatOpenRef.current = false;
       showError(reason);
     },
     [showError]
@@ -200,6 +213,9 @@ export function useChessMaster({ socket, authToken, currentUser, onUpdateUser, o
       syncServerClock(nextRoom.serverNow);
       setRoom(nextRoom);
       setSearching(false);
+      if (Array.isArray(nextRoom.chats)) {
+        setChats(nextRoom.chats);
+      }
       if (nextRoom.code) {
         storage.set(CHESS_ROOM_KEY, nextRoom.code);
       }
@@ -371,6 +387,17 @@ export function useChessMaster({ socket, authToken, currentUser, onUpdateUser, o
       }
     };
 
+    const onChatMessage = msg => {
+      if (!msg) return;
+      setChats(prev => [...prev.slice(-49), msg]);
+      if (msg.senderId === currentUser?.id) return;
+      sound.playChatNotification();
+      if (!chatOpenRef.current) setUnreadChats(n => n + 1);
+      setChatToast(msg);
+      if (chatToastTimerRef.current) clearTimeout(chatToastTimerRef.current);
+      chatToastTimerRef.current = setTimeout(() => setChatToast(null), 4200);
+    };
+
     socket.on('chess:room:state', onRoomState);
     socket.on('MatchFound', onMatchFound);
     socket.on('PlayerJoined', onPlayerJoined);
@@ -386,6 +413,7 @@ export function useChessMaster({ socket, authToken, currentUser, onUpdateUser, o
     socket.on('PlayerDisconnected', onPlayerDisconnected);
     socket.on('PlayerReconnected', onPlayerReconnected);
     socket.on('chess:leaderboard:update', onLeaderboardUpdate);
+    socket.on('chess:chat_message', onChatMessage);
 
     return () => {
       socket.off('chess:room:state', onRoomState);
@@ -403,6 +431,7 @@ export function useChessMaster({ socket, authToken, currentUser, onUpdateUser, o
       socket.off('PlayerDisconnected', onPlayerDisconnected);
       socket.off('PlayerReconnected', onPlayerReconnected);
       socket.off('chess:leaderboard:update', onLeaderboardUpdate);
+      socket.off('chess:chat_message', onChatMessage);
     };
   }, [socket, currentUser?.id, onUpdateUser, syncServerClock, showNotice, fetchChessMeta]);
 
@@ -635,8 +664,55 @@ export function useChessMaster({ socket, authToken, currentUser, onUpdateUser, o
     setSearching(false);
     setMatchResult(null);
     setNotice('');
+    setChats([]);
+    setUnreadChats(0);
+    setChatToast(null);
+    setChatOpenState(false);
+    chatOpenRef.current = false;
     fetchChessMeta(1);
   }, [socket, room?.code, authToken, fetchChessMeta]);
+
+  const sendReaction = useCallback(
+    emoji => {
+      const token = ensureAuth();
+      if (!token || !socket || !room) return;
+      sound.playClick();
+      socket.emit('chess:reaction', { code: room.code, token, emoji });
+    },
+    [ensureAuth, socket, room]
+  );
+
+  const sendChat = useCallback(
+    (text, replyTo = null) => {
+      const token = ensureAuth();
+      if (!token || !socket || !room) return false;
+      const clean = String(text || '').trim();
+      if (!clean) return false;
+      sound.playClick();
+      const payload = {
+        code: room.code,
+        token,
+        text: clean,
+        ...(replyTo?.id !== undefined && replyTo?.id !== null ? { replyToId: replyTo.id } : {})
+      };
+      socket.emit('chess:chat', payload, res => {
+        if (res && !res.ok && res.error) showError(res.error);
+      });
+      return true;
+    },
+    [ensureAuth, socket, room, showError]
+  );
+
+  const setChatOpen = useCallback(open => {
+    const isOpen = Boolean(open);
+    chatOpenRef.current = isOpen;
+    setChatOpenState(isOpen);
+    if (isOpen) setUnreadChats(0);
+  }, []);
+
+  const dismissChatToast = useCallback(() => {
+    setChatToast(null);
+  }, []);
 
   const openReplay = useCallback(async matchId => {
     if (!matchId) return;
@@ -697,6 +773,10 @@ export function useChessMaster({ socket, authToken, currentUser, onUpdateUser, o
     replayPly,
     setReplayPly,
     loadingReplay,
+    chats,
+    unreadChats,
+    chatToast,
+    chatOpen,
     actions: {
       startMatchmaking,
       cancelMatchmaking,
@@ -712,6 +792,10 @@ export function useChessMaster({ socket, authToken, currentUser, onUpdateUser, o
       resign,
       requestRematch,
       leaveRoom,
+      sendChat,
+      sendReaction,
+      setChatOpen,
+      dismissChatToast,
       openReplay,
       closeReplay,
       downloadPgn,

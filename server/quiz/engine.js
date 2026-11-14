@@ -265,6 +265,7 @@ function serializeRoomForUser(room, viewerUserId = null) {
     serverNow: Date.now(),
     countdownEndsAt: room.countdownEndsAt || null,
     players,
+    chats: Array.isArray(room.chats) ? room.chats : [],
     match: room.match
       ? {
           id: room.match.id,
@@ -1683,6 +1684,86 @@ function handleDisconnect(socket) {
   }, timings.disconnectGraceMs);
 }
 
+const SLOT_COLORS = ['red', 'blue', 'green', 'yellow'];
+const ALLOWED_REACTIONS = ['🎲', '🔥', '👏', '😂', '😭', '👑', '⚡', '🎯'];
+const MAX_QUIZ_CHATS = 50;
+
+function sendReaction(socket, payload = {}) {
+  const user = authenticateSocketUser(socket, payload);
+  if (!user) return { ok: false, error: 'Silakan login terlebih dahulu.' };
+
+  const emoji = String(payload?.emoji || '').trim();
+  if (!ALLOWED_REACTIONS.includes(emoji)) {
+    return { ok: false, error: 'Reaksi tidak valid.' };
+  }
+
+  const code = String(payload?.code || userRoomMap.get(user.id) || '').toUpperCase();
+  const room = quizRooms.get(code);
+  if (!room) return { ok: false, error: 'Room tidak ditemukan.' };
+
+  const player = room.players.find(p => p.userId === user.id);
+  if (!player) return { ok: false, error: 'Kamu bukan peserta room ini.' };
+
+  const color = SLOT_COLORS[player.slot] || 'red';
+  const reactionPayload = {
+    id: Date.now() + Math.random(),
+    playerId: user.id,
+    playerName: player.name,
+    color,
+    emoji
+  };
+  emitToRoom(room, 'room:reaction', reactionPayload);
+  return { ok: true };
+}
+
+function sendChat(socket, payload = {}) {
+  const user = authenticateSocketUser(socket, payload);
+  if (!user) return { ok: false, error: 'Silakan login terlebih dahulu.' };
+
+  const code = String(payload?.code || userRoomMap.get(user.id) || '').toUpperCase();
+  const room = quizRooms.get(code);
+  if (!room) return { ok: false, error: 'Room tidak ditemukan.' };
+
+  const player = room.players.find(p => p.userId === user.id);
+  if (!player) return { ok: false, error: 'Kamu bukan peserta room ini.' };
+
+  const cleanText = String(payload?.text || '').trim().slice(0, 140);
+  if (!cleanText) return { ok: false, error: 'Pesan tidak boleh kosong.' };
+
+  if (!Array.isArray(room.chats)) room.chats = [];
+
+  let replyTo = null;
+  if (payload?.replyToId !== undefined && payload?.replyToId !== null && payload?.replyToId !== '') {
+    const target = room.chats.find(c => String(c.id) === String(payload.replyToId));
+    if (target) {
+      replyTo = {
+        id: target.id,
+        senderId: target.senderId,
+        senderName: target.senderName,
+        senderColor: target.senderColor,
+        text: String(target.text || '').slice(0, 90)
+      };
+    }
+  }
+
+  const color = SLOT_COLORS[player.slot] || 'red';
+  const chatMsg = {
+    id: Date.now() + Math.random(),
+    senderId: user.id,
+    senderName: player.name,
+    senderAvatar: player.avatar || '🎯',
+    senderColor: color,
+    text: cleanText,
+    replyTo,
+    time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+  };
+
+  room.chats.push(chatMsg);
+  if (room.chats.length > MAX_QUIZ_CHATS) room.chats.shift();
+  emitToRoom(room, 'quiz:chat_message', chatMsg);
+  return { ok: true, message: chatMsg };
+}
+
 function getActiveRoomForUser(userId) {
   if (!userId) return null;
   const code = userRoomMap.get(userId);
@@ -1713,6 +1794,8 @@ module.exports = {
   useHint,
   syncUserInventory,
   submitAnswer,
+  sendChat,
+  sendReaction,
   leaveRoom,
   handleDisconnect,
   getActiveRoomForUser,

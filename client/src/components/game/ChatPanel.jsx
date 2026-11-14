@@ -2,10 +2,10 @@ import React, { useEffect, useId, useRef, useState } from 'react';
 import Icon from '../Icon';
 import PlayerAvatar from '../PlayerAvatar';
 
-const QUICK_CHATS = ['Semangat! 🔥', 'GG! 👏', 'Ampun bang! 😂', 'Jangan makan bidakku! 😭', 'Maju terus! 🚀'];
+const DEFAULT_QUICK_CHATS = ['Semangat! 🔥', 'GG! 👏', 'Ampun bang! 😂', 'Jangan makan bidakku! 😭', 'Maju terus! 🚀'];
 
 // Obrolan room: dipakai di panel samping (desktop) dan bottom sheet (HP)
-export default function ChatPanel({ chats, playerId, onSend, autoFocus = false }) {
+export default function ChatPanel({ chats, playerId, onSend, autoFocus = false, quickChats = DEFAULT_QUICK_CHATS }) {
   const [text, setText] = useState('');
   const [replyTarget, setReplyTarget] = useState(null);
   const [highlightedId, setHighlightedId] = useState(null);
@@ -124,7 +124,7 @@ export default function ChatPanel({ chats, playerId, onSend, autoFocus = false }
       </ol>
 
       <div className="chat__quick" role="group" aria-label="Pesan cepat">
-        {QUICK_CHATS.map(q => (
+        {quickChats.map(q => (
           <button key={q} type="button" className="chip" onClick={() => sendQuick(q)}>{q}</button>
         ))}
       </div>

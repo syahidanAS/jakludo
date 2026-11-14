@@ -31,12 +31,21 @@ export default function Toasts({
         <div className="toast toast--invite" key={roomInvite.id} role="status">
           <div className="toast__invite-body">
             <span className="toast__icon" aria-hidden="true">
-              <Icon name={roomInvite.gameType === 'quiz' ? 'swords' : 'dice'} size={20} />
+              <Icon
+                name={roomInvite.gameType === 'quiz' ? 'swords' : roomInvite.gameType === 'chess' ? 'chess' : 'dice'}
+                size={20}
+              />
             </span>
             <span>
               <strong>{roomInvite.from?.name || 'Teman'}</strong> mengajakmu main{' '}
-              <strong>{roomInvite.gameType === 'quiz' ? 'Monster Quiz Battle' : 'JakLudo'}</strong> di room{' '}
-              <span className="code-text">{roomInvite.code}</span>
+              <strong>
+                {roomInvite.gameType === 'quiz'
+                  ? 'Monster Quiz Battle'
+                  : roomInvite.gameType === 'chess'
+                  ? 'Chess Master'
+                  : 'JakLudo'}
+              </strong>{' '}
+              di room <span className="code-text">{roomInvite.code}</span>
               {roomInvite.group?.name ? ` (${roomInvite.group.name})` : ''}
             </span>
           </div>

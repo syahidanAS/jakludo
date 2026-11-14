@@ -201,6 +201,7 @@ function serializeRoomForUser(room, viewerUserId = null) {
     colorPreference: room.colorPreference || 'random',
     preferredSide: room.colorPreference || 'random',
     players,
+    chats: Array.isArray(room.chats) ? room.chats : [],
     rematchRequests: rematchReqs,
     myColor: myPlayer?.color || null,
     serverNow: now,
@@ -1824,6 +1825,90 @@ function handleDisconnect(socket) {
   if (player.disconnectTimer.unref) player.disconnectTimer.unref();
 }
 
+const ALLOWED_REACTIONS = ['🎲', '🔥', '👏', '😂', '😭', '👑', '⚡', '🎯'];
+const MAX_CHESS_CHATS = 50;
+
+function playerThemeColor(room, player) {
+  if (!player) return 'blue';
+  if (player.color === 'w') return 'blue';
+  if (player.color === 'b') return 'red';
+  const idx = room?.players?.findIndex(p => p.userId === player.userId) ?? 0;
+  return idx === 0 ? 'blue' : 'red';
+}
+
+function sendReaction(socket, payload = {}) {
+  const user = resolveUser(socket, payload);
+  if (!user) return { ok: false, error: 'Silakan login terlebih dahulu.' };
+
+  const emoji = String(payload?.emoji || '').trim();
+  if (!ALLOWED_REACTIONS.includes(emoji)) {
+    return { ok: false, error: 'Reaksi tidak valid.' };
+  }
+
+  const room = resolveRoomForAction(user, payload);
+  if (!room) return { ok: false, error: 'Room tidak ditemukan.' };
+
+  const player = room.players.find(p => p.userId === user.id);
+  if (!player) return { ok: false, error: 'Kamu bukan peserta room ini.' };
+
+  const color = playerThemeColor(room, player);
+  emitToRoom(room, 'room:reaction', {
+    id: Date.now() + Math.random(),
+    playerId: user.id,
+    playerName: player.name,
+    color,
+    emoji
+  });
+  return { ok: true };
+}
+
+function sendChat(socket, payload = {}) {
+  const user = resolveUser(socket, payload);
+  if (!user) return { ok: false, error: 'Silakan login terlebih dahulu.' };
+
+  const room = resolveRoomForAction(user, payload);
+  if (!room) return { ok: false, error: 'Room tidak ditemukan.' };
+
+  const player = room.players.find(p => p.userId === user.id);
+  if (!player) return { ok: false, error: 'Kamu bukan peserta room ini.' };
+
+  const cleanText = String(payload?.text || '').trim().slice(0, 140);
+  if (!cleanText) return { ok: false, error: 'Pesan tidak boleh kosong.' };
+
+  if (!Array.isArray(room.chats)) room.chats = [];
+
+  let replyTo = null;
+  if (payload?.replyToId !== undefined && payload?.replyToId !== null && payload?.replyToId !== '') {
+    const target = room.chats.find(c => String(c.id) === String(payload.replyToId));
+    if (target) {
+      replyTo = {
+        id: target.id,
+        senderId: target.senderId,
+        senderName: target.senderName,
+        senderColor: target.senderColor,
+        text: String(target.text || '').slice(0, 90)
+      };
+    }
+  }
+
+  const color = playerThemeColor(room, player);
+  const chatMsg = {
+    id: Date.now() + Math.random(),
+    senderId: user.id,
+    senderName: player.name,
+    senderAvatar: player.avatar || '♟️',
+    senderColor: color,
+    text: cleanText,
+    replyTo,
+    time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+  };
+
+  room.chats.push(chatMsg);
+  if (room.chats.length > MAX_CHESS_CHATS) room.chats.shift();
+  emitToRoom(room, 'chess:chat_message', chatMsg);
+  return { ok: true, message: chatMsg };
+}
+
 function getActiveRoomForUser(userId) {
   if (!userId) return null;
   const code = userActiveRoom.get(userId);
@@ -1884,6 +1969,8 @@ module.exports = {
   declineDraw,
   resignMatch,
   requestRematch,
+  sendChat,
+  sendReaction,
   leaveRoom,
   handleDisconnect,
   getActiveRoomForUser,

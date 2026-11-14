@@ -387,6 +387,24 @@ function registerSocketHandlers(io) {
       if (cb) cb(res);
     });
 
+    on(socket, 'quiz:chat', (payload, cb) => {
+      if (!chatLimiter(socket.id)) {
+        if (cb) cb({ ok: false, error: 'Terlalu cepat mengirim pesan. Tunggu sebentar.' });
+        return;
+      }
+      const res = quizEngine.sendChat(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'quiz:reaction', (payload, cb) => {
+      if (!reactionLimiter(socket.id)) {
+        if (cb) cb({ ok: false, error: 'Terlalu cepat mengirim reaksi.' });
+        return;
+      }
+      const res = quizEngine.sendReaction(socket, payload);
+      if (cb) cb(res);
+    });
+
     on(socket, 'quiz:leaderboard:get', (_, cb) => {
       if (!allowQuiz(quizPlayLimiter, socket, cb)) return;
       const lb = quizStore.getQuizLeaderboard();
@@ -478,6 +496,24 @@ function registerSocketHandlers(io) {
     on(socket, 'chess:bot:play', (payload, cb) => {
       if (!allowQuiz(chessPlayLimiter, socket, cb)) return;
       const res = chessEngine.playVsBot(socket, payload, store.rooms);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'chess:chat', (payload, cb) => {
+      if (!chatLimiter(socket.id)) {
+        if (cb) cb({ ok: false, error: 'Terlalu cepat mengirim pesan. Tunggu sebentar.' });
+        return;
+      }
+      const res = chessEngine.sendChat(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'chess:reaction', (payload, cb) => {
+      if (!reactionLimiter(socket.id)) {
+        if (cb) cb({ ok: false, error: 'Terlalu cepat mengirim reaksi.' });
+        return;
+      }
+      const res = chessEngine.sendReaction(socket, payload);
       if (cb) cb(res);
     });
 
