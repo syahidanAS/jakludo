@@ -69,20 +69,20 @@ const MONSTERS = [
 ];
 
 // Profil bot AI untuk Cari Lawan Cepat (Monster Quiz Battle).
-// Menggunakan nama dan username organik seperti pemain sungguhan agar pengalaman bermain terasa natural.
+// Menggunakan username-like organik agar pengalaman bermain terasa natural seperti melawan pemain sungguhan.
 const BOT_PROFILES = [
-  { id: 'bot_quiz_rex', username: 'rian_pratama', name: 'Rian Pratama', avatar: '1', monsterId: 'emberon' },
-  { id: 'bot_quiz_luna', username: 'nadiasafitri', name: 'Nadia Safitri', avatar: '2', monsterId: 'aquaris' },
-  { id: 'bot_quiz_blaze', username: 'dimas_stw', name: 'Dimas Setiawan', avatar: '3', monsterId: 'voltix' },
-  { id: 'bot_quiz_terra', username: 'citrakirana', name: 'Citra Kirana', avatar: '4', monsterId: 'terragon' },
-  { id: 'bot_quiz_flora', username: 'reza_aditya', name: 'Reza Aditya', avatar: '5', monsterId: 'sylvara' },
-  { id: 'bot_quiz_frosty', username: 'indah_prm', name: 'Indah Permata', avatar: '6', monsterId: 'frostbite' },
-  { id: 'bot_quiz_budi', username: 'budi_santoso', name: 'Budi Santoso', avatar: '1', monsterId: 'emberon' },
-  { id: 'bot_quiz_alya', username: 'alya_putri', name: 'Alya Putri', avatar: '2', monsterId: 'aquaris' },
-  { id: 'bot_quiz_fajar', username: 'fajar_nugraha', name: 'Fajar Nugraha', avatar: '3', monsterId: 'voltix' },
-  { id: 'bot_quiz_sitir', username: 'siti_rahma', name: 'Siti Rahma', avatar: '4', monsterId: 'terragon' },
-  { id: 'bot_quiz_kevin', username: 'kevin_wijaya', name: 'Kevin Wijaya', avatar: '5', monsterId: 'sylvara' },
-  { id: 'bot_quiz_dewi', username: 'dewi_lestari', name: 'Dewi Lestari', avatar: '6', monsterId: 'frostbite' }
+  { id: 'bot_quiz_rex', username: 'rizky_p', name: 'rizky_p', avatar: '1', monsterId: 'emberon' },
+  { id: 'bot_quiz_luna', username: 'nadia.k', name: 'nadia.k', avatar: '2', monsterId: 'aquaris' },
+  { id: 'bot_quiz_blaze', username: 'dimas99', name: 'dimas99', avatar: '3', monsterId: 'voltix' },
+  { id: 'bot_quiz_terra', username: 'citra_m', name: 'citra_m', avatar: '4', monsterId: 'terragon' },
+  { id: 'bot_quiz_flora', username: 'reza_xd', name: 'reza_xd', avatar: '5', monsterId: 'sylvara' },
+  { id: 'bot_quiz_frosty', username: 'indah.w', name: 'indah.w', avatar: '6', monsterId: 'frostbite' },
+  { id: 'bot_quiz_budi', username: 'budi_07', name: 'budi_07', avatar: '1', monsterId: 'emberon' },
+  { id: 'bot_quiz_alya', username: 'alya.r', name: 'alya.r', avatar: '2', monsterId: 'aquaris' },
+  { id: 'bot_quiz_fajar', username: 'fajar_id', name: 'fajar_id', avatar: '3', monsterId: 'voltix' },
+  { id: 'bot_quiz_sitir', username: 'siti_nm', name: 'siti_nm', avatar: '4', monsterId: 'terragon' },
+  { id: 'bot_quiz_kevin', username: 'kevin_k', name: 'kevin_k', avatar: '5', monsterId: 'sylvara' },
+  { id: 'bot_quiz_dewi', username: 'dewi.s', name: 'dewi.s', avatar: '6', monsterId: 'frostbite' }
 ];
 
 const MONSTERS_BY_ID = new Map(MONSTERS.map(m => [m.id, m]));

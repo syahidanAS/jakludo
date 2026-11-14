@@ -536,10 +536,10 @@
   }
 }
 
-/* Bar Pemain (Selalu 2 kartu pemain, responsif di atas grid) */
+/* Bar Pemain (2–4 kartu pemain, responsif di atas grid) */
 .snk-players-bar {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 10px;
   width: 100%;
 }

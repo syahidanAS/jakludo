@@ -434,6 +434,8 @@ export default function SnakesLaddersScreen({
     actions
   } = snakes;
 
+  const [privateMaxPlayers, setPrivateMaxPlayers] = useState(4);
+
   const [copiedCode, setCopiedCode] = useState(false);
   const [showMobileHistory, setShowMobileHistory] = useState(false);
 
@@ -691,7 +693,7 @@ export default function SnakesLaddersScreen({
         {error && <p className="alert alert--error" role="alert">{error}</p>}
         {notice && <p className="alert" role="status">{notice}</p>}
 
-        {/* Bar 2 Pemain (Selalu hanya 2 kartu pemain) */}
+        {/* Bar Pemain (2–4 Pemain) */}
         <section className="snk-players-bar" aria-label="Pemain dalam Pertandingan">
           {players.map(p => (
             <SnakesPlayerBadge
@@ -1253,12 +1255,27 @@ export default function SnakesLaddersScreen({
             </div>
 
             <div className="snk-private-controls">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                <span className="muted" style={{ fontSize: 'var(--fs-xs)', fontWeight: 600 }}>Maksimal Pemain:</span>
+                <div style={{ display: 'flex', gap: '6px' }} role="group" aria-label="Pilih jumlah maksimal pemain">
+                  {[2, 3, 4].map(count => (
+                    <button
+                      key={count}
+                      type="button"
+                      className={`btn btn--sm ${privateMaxPlayers === count ? 'btn--primary' : 'btn--secondary'}`}
+                      onClick={() => setPrivateMaxPlayers(count)}
+                    >
+                      {count} Pemain
+                    </button>
+                  ))}
+                </div>
+              </div>
               <button
                 type="button"
                 className="btn btn--secondary btn--block"
-                onClick={() => actions.createPrivateRoom({ maxPlayers: 2 })}
+                onClick={() => actions.createPrivateRoom({ maxPlayers: privateMaxPlayers })}
               >
-                ➕ Buat Private Room Baru
+                ➕ Buat Private Room ({privateMaxPlayers} Pemain)
               </button>
 
               <form

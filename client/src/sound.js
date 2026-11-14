@@ -1,6 +1,7 @@
 // Web Audio API Sound Synthesizer & Background Music Controller - JakLudo
 import { createSynth, makeImpulse } from './audio/synth';
 import { ElectroBgm } from './audio/electroBgm';
+import { SnakesBgm } from './audio/snakesBgm';
 import * as ludoSfx from './audio/ludoSfx';
 
 // localStorage bisa melempar error (mode privat, in-app browser WhatsApp/Instagram, storage diblokir).
@@ -46,8 +47,11 @@ class SoundManager {
     this.hasUnlocked = false;
     this.isInRoom = false; // BGM hanya dimainkan saat berada di dalam room/gameplay
 
-    // Musik latar dibuat prosedural lewat Web Audio (lihat audio/electroBgm.js), tanpa file mp3
-    this.music = new ElectroBgm();
+    // Musik latar dibuat prosedural lewat Web Audio (lihat audio/electroBgm.js & audio/snakesBgm.js)
+    this.ludoMusic = new ElectroBgm();
+    this.snakesMusic = new SnakesBgm();
+    this.bgmTheme = 'ludo';
+    this.music = this.ludoMusic;
     this.updateBgmAudioVolume();
     if (typeof window !== 'undefined') {
       this.setupAutoplayUnlock();
@@ -96,6 +100,20 @@ class SoundManager {
     window.addEventListener('pointerdown', unlock, { once: true, passive: true });
     window.addEventListener('keydown', unlock, { once: true, passive: true });
     window.addEventListener('touchstart', unlock, { once: true, passive: true });
+  }
+
+  setBgmTheme(theme) {
+    const nextTheme = theme === 'snakes' ? 'snakes' : 'ludo';
+    if (this.bgmTheme === nextTheme) return;
+    const wasPlaying = this.music?.playing;
+    if (wasPlaying) this.music.stop();
+    this.bgmTheme = nextTheme;
+    this.music = nextTheme === 'snakes' ? this.snakesMusic : this.ludoMusic;
+    this.updateBgmAudioVolume();
+    if (wasPlaying) {
+      this.resumeBgmIfAllowed();
+    }
+    this.notifyListeners();
   }
 
   setInRoom(inRoom) {
@@ -178,7 +196,8 @@ class SoundManager {
   // ==========================================
   updateBgmAudioVolume() {
     const target = (this.bgmMuted || !this.bgmEnabled) ? 0 : Math.max(0, Math.min(1, this.bgmVolume));
-    this.music.setVolume(target);
+    this.ludoMusic.setVolume(target);
+    this.snakesMusic.setVolume(target);
   }
 
   setBgmVolume(val) {

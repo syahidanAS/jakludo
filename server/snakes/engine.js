@@ -1152,7 +1152,7 @@ function createPrivateRoom(socket, payload = {}, existingLudoRooms = null) {
 
   const maxPlayers = Math.min(
     snakesConfig.MAX_PRIVATE_ROOM_PLAYERS,
-    Math.max(2, Number(payload.maxPlayers) || 2)
+    Math.max(2, Number(payload.maxPlayers) || snakesConfig.MAX_PRIVATE_ROOM_PLAYERS)
   );
 
   const hostPlayer = snakesConfig.createHumanPlayerRecord(user, {

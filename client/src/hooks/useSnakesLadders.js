@@ -204,13 +204,18 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
     return () => clearInterval(id);
   }, [searching, searchStartedAt]);
 
-  // Aktifkan BGM secara otomatis saat permainan Ular Tangga dimulai (status === 'playing')
+  // Aktifkan BGM khusus Ular Tangga secara otomatis saat permainan dimulai (status === 'playing')
   useEffect(() => {
-    if (!active) return undefined;
+    if (!active) {
+      sound.setBgmTheme('ludo');
+      return undefined;
+    }
+    sound.setBgmTheme('snakes');
     const isPlaying = room?.status === 'playing';
     sound.setInRoom(isPlaying);
     return () => {
       sound.setInRoom(false);
+      sound.setBgmTheme('ludo');
     };
   }, [active, room?.status]);
 
