@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Icon from '../components/Icon';
 import Modal from '../components/Modal';
 import PlayerAvatar from '../components/PlayerAvatar';
@@ -365,6 +365,21 @@ export default function SnakesLaddersScreen({
 
   const [copiedCode, setCopiedCode] = useState(false);
   const [showMobileHistory, setShowMobileHistory] = useState(false);
+  const [audioState, setAudioState] = useState(() => sound.getState());
+
+  useEffect(() => sound.subscribe(state => setAudioState({ ...state })), []);
+
+  const isBgmActive = Boolean(audioState.bgmEnabled && !audioState.bgmMuted);
+  const toggleBgmDirect = () => {
+    sound.unlockFromGesture?.();
+    sound.playClick?.();
+    if (isBgmActive) {
+      sound.toggleBgmMute();
+    } else {
+      if (audioState.bgmMuted) sound.toggleBgmMute();
+      sound.playBgm();
+    }
+  };
 
   const ladders = room?.boardConfig?.ladders || DEFAULT_LADDERS;
   const snakesMap = room?.boardConfig?.snakes || DEFAULT_SNAKES;
@@ -578,6 +593,15 @@ export default function SnakesLaddersScreen({
             </div>
           </div>
           <div className="snk-game-topbar__right">
+            <button
+              type="button"
+              className={`btn btn--sm ${isBgmActive ? 'btn--primary' : 'btn--secondary'}`}
+              onClick={toggleBgmDirect}
+              title={isBgmActive ? 'Matikan Musik Latar' : 'Nyalakan Musik Latar'}
+              aria-pressed={isBgmActive}
+            >
+              {isBgmActive ? '🔊' : '🔇'} <span className="show-desktop">{isBgmActive ? 'Musik ON' : 'Musik OFF'}</span>
+            </button>
             {onOpenAudio && (
               <button
                 type="button"
@@ -586,7 +610,7 @@ export default function SnakesLaddersScreen({
                 title="Pengaturan Musik & Suara"
                 aria-label="Pengaturan Musik dan Suara"
               >
-                🎵 <span className="show-desktop">Musik</span>
+                🎚️
               </button>
             )}
             <button
@@ -1088,6 +1112,15 @@ export default function SnakesLaddersScreen({
           <span>Daftar Game PlayGo</span>
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            type="button"
+            className={`btn btn--sm ${isBgmActive ? 'btn--primary' : 'btn--secondary'}`}
+            onClick={toggleBgmDirect}
+            title={isBgmActive ? 'Matikan Musik Latar' : 'Nyalakan Musik Latar'}
+            aria-pressed={isBgmActive}
+          >
+            {isBgmActive ? '🔊 Musik' : '🔇 Musik'}
+          </button>
           {onOpenAudio && (
             <button
               type="button"
@@ -1095,7 +1128,7 @@ export default function SnakesLaddersScreen({
               onClick={onOpenAudio}
               title="Pengaturan Musik & Suara"
             >
-              🎵 Musik
+              🎚️
             </button>
           )}
           <span className="badge badge--brand">Board Game · Ular Tangga</span>

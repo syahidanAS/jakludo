@@ -108,6 +108,13 @@ class SoundManager {
     this.notifyListeners();
   }
 
+  unlockFromGesture() {
+    this.hasUnlocked = true;
+    this.init();
+    this.resumeBgmIfAllowed();
+    this.notifyListeners();
+  }
+
   // AudioContext hanya dibuat setelah ada interaksi pengguna. Membuatnya lebih awal (misalnya dari
   // event socket) memicu peringatan "AudioContext was not allowed to start" di browser.
   init() {

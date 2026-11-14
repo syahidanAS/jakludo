@@ -823,7 +823,7 @@
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.45);
   display: grid;
   place-items: center;
-  transition: left 0.21s cubic-bezier(0.22, 1, 0.36, 1), top 0.21s cubic-bezier(0.22, 1, 0.36, 1), transform 0.2s ease;
+  transition: left 0.38s cubic-bezier(0.22, 1, 0.36, 1), top 0.38s cubic-bezier(0.22, 1, 0.36, 1), transform 0.25s ease;
 }
 
 .snk-token.is-turn {
