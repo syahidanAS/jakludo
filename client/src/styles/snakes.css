@@ -536,17 +536,12 @@
   }
 }
 
-/* Player Cards (Mobile 2-col strip above board, Desktop 2-col or stacked in sidebar) */
-.snk-mobile-players {
+/* Bar Pemain (Selalu 2 kartu pemain, responsif di atas grid) */
+.snk-players-bar {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.snk-desktop-players {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 10px;
+  width: 100%;
 }
 
 .snk-player-card {

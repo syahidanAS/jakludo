@@ -260,7 +260,7 @@ test('2. Matchmaking: queue entry, cancel, human pairing before timeout, active 
 
   const bfEvent = await botFallbackPromise;
   assert.ok(bfEvent.roomCode);
-  assert.equal(bfEvent.opponent.display_name, 'Pemain Komputer');
+  assert.ok(snakesConfig.ORGANIC_BOT_USERNAMES.includes(bfEvent.opponent.display_name));
   assert.equal(bfEvent.opponent.player_type, 'bot');
   assert.equal(bfEvent.opponent.user_id, null);
 
@@ -307,7 +307,7 @@ test('3. Bot Identity & Behavior: transparent identity, user_id is null, no fake
   assert.equal(botPlayer.player_type, 'bot');
   assert.equal(botPlayer.playerType, 'bot');
   assert.equal(botPlayer.bot_id, 'default-bot');
-  assert.equal(botPlayer.display_name, 'Pemain Komputer');
+  assert.ok(snakesConfig.ORGANIC_BOT_USERNAMES.includes(botPlayer.display_name));
   assert.equal(botPlayer.avatar, null);
 
   // Verify no fake user was added to users store
@@ -338,7 +338,7 @@ test('3. Bot Identity & Behavior: transparent identity, user_id is null, no fake
 
   const botRollPayload = await botMovedPromise;
   assert.equal(botRollPayload.playerType, 'bot');
-  assert.equal(botRollPayload.displayName, 'Pemain Komputer');
+  assert.equal(botRollPayload.displayName, botPlayer.display_name);
   assert.ok(botRollPayload.dice >= 1 && botRollPayload.dice <= 6);
 
   await emitAck(cBotTester, 'snakes:room:leave', {
@@ -558,7 +558,7 @@ test('5. Leaderboard & History: bots never appear on leaderboard, bot wins separ
         player_type: 'bot',
         user_id: null,
         bot_id: 'default-bot',
-        display_name: 'Pemain Komputer',
+        display_name: 'rizky_p',
         avatar: null,
         player_order: 1,
         position: 64,
@@ -575,11 +575,11 @@ test('5. Leaderboard & History: bots never appear on leaderboard, bot wins separ
   assert.equal(lbRes.status, 200);
   assert.equal(lbBody.success, true);
 
-  // Rule A: No entry in leaderboard has playerType === 'bot' or userId === null or name === 'Pemain Komputer'
+  // Rule A: No entry in leaderboard has playerType === 'bot' or userId === null or organic bot name
   for (const entry of lbBody.leaderboard) {
     assert.ok(entry.userId, 'Every leaderboard entry must have a real userId');
     assert.equal(entry.playerType, 'human');
-    assert.notEqual(entry.name, 'Pemain Komputer', 'Bot must never appear on leaderboard');
+    assert.notEqual(entry.name, 'rizky_p', 'Bot must never appear on leaderboard');
   }
 
   // Rule B: humanWinner IS on the competitive leaderboard with 1 win
@@ -600,5 +600,5 @@ test('5. Leaderboard & History: bots never appear on leaderboard, bot wins separ
   assert.equal(histBody.stats.wins, 0, 'Competitive human wins should be 0');
   assert.equal(histBody.stats.botStats.wins, 1, 'Bot practice wins should be 1');
   assert.equal(histBody.history[0].opponentType, 'bot');
-  assert.equal(histBody.history[0].opponentName, 'Pemain Komputer');
+  assert.equal(histBody.history[0].opponentName, 'rizky_p');
 });

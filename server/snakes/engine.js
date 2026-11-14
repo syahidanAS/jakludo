@@ -399,9 +399,13 @@ function scheduleTurnTimerAndBot(room) {
   if (currentPlayer.player_type === 'bot') {
     const minDelay = Math.max(20, Number(timings.botActionDelayMinMs) || 1000);
     const maxDelay = Math.max(minDelay, Number(timings.botActionDelayMaxMs) || 2000);
-    const delay = minDelay === maxDelay
+    let delay = minDelay === maxDelay
       ? minDelay
       : crypto.randomInt(minDelay, maxDelay + 1);
+    if (minDelay >= 500 && room.lastAnimDelayMs) {
+      delay = Math.max(delay, room.lastAnimDelayMs);
+    }
+    room.lastAnimDelayMs = 0;
 
     const expectedTurnNumber = room.turnNumber;
     room.botTimer = setTimeout(() => {
@@ -521,6 +525,9 @@ function executeAuthoritativeRoll(room, actingPlayer, options = {}) {
 
     currentPlayer.position = outcome.finalPosition;
     room.consecutiveSixes = outcome.consecutiveSixes;
+    room.lastAnimDelayMs = outcome.threeSixesSkip || outcome.overshoot
+      ? 900
+      : 280 + (outcome.stepPath?.length || 1) * 450 + (outcome.ladder || outcome.snake ? 1100 : 350);
     room.updatedAt = now;
 
     const rollInfo = {
@@ -811,7 +818,7 @@ function triggerBotFallbackForUser(userId, existingLudoRooms = null) {
     {
       roomId: room.id,
       roomCode: room.code,
-      message: 'Memulai pertandingan dengan pemain komputer',
+      message: 'Lawan ditemukan!',
       opponent: serializePlayer(botPlayer),
       serverNow: Date.now()
     },

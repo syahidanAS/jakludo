@@ -52,17 +52,42 @@ const LOBBY_EXPIRE_MS = Number(process.env.SNAKES_LOBBY_EXPIRE_MS || 5 * 60 * 10
 // Hadiah Coins untuk pertandingan kompetitif melawan manusia
 const HUMAN_WIN_REWARD_COINS = 15;
 
-// Identitas transparan untuk Bot (wajib: tidak menyamar sebagai manusia, user_id = null)
+// Identitas Bot dengan username organik (tetap terpisah di DB: player_type = 'bot', user_id = null)
+const ORGANIC_BOT_USERNAMES = Object.freeze([
+  'rizky_p',
+  'dinda_putri',
+  'bagas99',
+  'nadia.k',
+  'fajar_aditya',
+  'salsa_m',
+  'bima.pratama',
+  'tiara_n',
+  'reza_k',
+  'alya_r',
+  'kevin_w',
+  'putra_m',
+  'intan.s',
+  'dimas_p',
+  'citra.w',
+  'gilang_r'
+]);
+
+function pickOrganicBotUsername() {
+  const idx = Math.floor(Math.random() * ORGANIC_BOT_USERNAMES.length);
+  return ORGANIC_BOT_USERNAMES[idx] || 'rizky_p';
+}
+
 const DEFAULT_BOT_IDENTITY = Object.freeze({
   player_type: 'bot',
   user_id: null,
   bot_id: 'default-bot',
-  display_name: 'Pemain Komputer',
+  display_name: 'rizky_p',
   avatar: null,
   difficulty: 'easy'
 });
 
-function createBotPlayerRecord({ order = 1, color = 'blue', difficulty = 'easy' } = {}) {
+function createBotPlayerRecord({ order = 1, color = 'blue', difficulty = 'easy', username = null } = {}) {
+  const organicName = username || pickOrganicBotUsername();
   return {
     id: `snk_comp_${order}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     player_type: 'bot',
@@ -71,9 +96,9 @@ function createBotPlayerRecord({ order = 1, color = 'blue', difficulty = 'easy' 
     userId: null,
     bot_id: DEFAULT_BOT_IDENTITY.bot_id,
     botId: DEFAULT_BOT_IDENTITY.bot_id,
-    display_name: DEFAULT_BOT_IDENTITY.display_name,
-    name: DEFAULT_BOT_IDENTITY.display_name,
-    username: null,
+    display_name: organicName,
+    name: organicName,
+    username: organicName,
     avatar: null,
     isBot: true,
     difficulty: difficulty || 'easy',
@@ -88,6 +113,7 @@ function createBotPlayerRecord({ order = 1, color = 'blue', difficulty = 'easy' 
 }
 
 function createHumanPlayerRecord(user, { order = 0, color = 'red', socketId = null, ready = false } = {}) {
+  const uname = user.username || user.name || 'pemain';
   return {
     id: `human_${user.id}_${order}_${Date.now()}`,
     player_type: 'human',
@@ -96,9 +122,9 @@ function createHumanPlayerRecord(user, { order = 0, color = 'red', socketId = nu
     userId: user.id,
     bot_id: null,
     botId: null,
-    display_name: user.name || user.username,
-    name: user.name || user.username,
-    username: user.username,
+    display_name: uname,
+    name: uname,
+    username: uname,
     avatar: user.avatar || null,
     isBot: false,
     difficulty: null,
@@ -197,6 +223,8 @@ module.exports = {
   DISCONNECT_GRACE_MS,
   LOBBY_EXPIRE_MS,
   HUMAN_WIN_REWARD_COINS,
+  ORGANIC_BOT_USERNAMES,
+  pickOrganicBotUsername,
   DEFAULT_BOT_IDENTITY,
   createBotPlayerRecord,
   createHumanPlayerRecord,

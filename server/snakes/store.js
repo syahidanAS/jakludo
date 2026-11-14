@@ -80,7 +80,7 @@ async function hydrateFromPostgres() {
       gameId: r.game_id,
       userId: r.user_id,
       opponentType: r.opponent_type,
-      opponentName: r.opponent_name || (r.opponent_type === 'bot' ? 'Pemain Komputer' : 'Pemain'),
+      opponentName: r.opponent_name || 'pemain',
       result: r.result,
       duration: Number(r.duration) || 0,
       totalTurns: Number(r.total_turns) || 0,
@@ -170,7 +170,7 @@ function saveRoomAndPlayers(room) {
     userId: p.player_type === 'bot' ? null : p.user_id,
     botId: p.player_type === 'bot' ? p.bot_id || 'default-bot' : null,
     playerType: p.player_type === 'bot' ? 'bot' : 'human',
-    displayName: p.display_name || p.name || (p.player_type === 'bot' ? 'Pemain Komputer' : 'Pemain'),
+    displayName: p.username || p.display_name || p.name || 'pemain',
     avatar: p.player_type === 'bot' ? null : p.avatar || null,
     playerOrder: typeof p.player_order === 'number' ? p.player_order : idx,
     position: Number(p.position) || 0,
@@ -271,7 +271,7 @@ function recordCompletedMatch(room) {
     const opponentType = isVsHuman ? 'human' : 'bot';
     const opponents = players.filter(other => other.id !== p.id);
     const opponentName = opponents.map(o => o.display_name || o.name).join(', ') ||
-      (opponentType === 'bot' ? 'Pemain Komputer' : 'Pemain');
+      (opponent ? (opponent.username || opponent.display_name || opponent.name) : 'pemain');
 
     const isWinner = room.winnerPlayerId === p.id || (room.winnerUserId && room.winnerUserId === p.user_id);
     const result = isWinner ? 'win' : 'loss';

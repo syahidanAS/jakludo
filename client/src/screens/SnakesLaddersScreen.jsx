@@ -242,6 +242,7 @@ function SnakesAndLaddersSvgOverlay({ ladders = DEFAULT_LADDERS, snakes = DEFAUL
 
 function SnakesPlayerBadge({ player, isCurrentTurn, isMe, animatedPos, turnClock, onViewProfile }) {
   const isBot = player.player_type === 'bot' || player.isBot;
+  const displayUsername = player.username || player.display_name || player.name || 'pemain';
   const pos = animatedPos !== undefined ? animatedPos : Number(player.position) || 0;
   const progressPct = Math.min(100, Math.max(0, pos));
 
@@ -253,18 +254,12 @@ function SnakesPlayerBadge({ player, isCurrentTurn, isMe, animatedPos, turnClock
     >
       <div className="snk-player-card__head">
         <div className="snk-player-card__avatar-wrap">
-          {isBot ? (
-            <span className="avatar snk-bot-avatar" aria-label="Ikon Pemain Komputer">
-              <Icon name="bot" size={18} />
-            </span>
-          ) : (
-            <PlayerAvatar
-              avatar={player.avatar}
-              name={player.display_name || player.name || 'Pemain'}
-              size={36}
-              className="avatar"
-            />
-          )}
+          <PlayerAvatar
+            avatar={player.avatar}
+            name={displayUsername}
+            size={36}
+            className="avatar"
+          />
           <span className={`snk-color-dot color-${player.color || 'red'}`} aria-hidden="true" />
         </div>
 
@@ -276,30 +271,21 @@ function SnakesPlayerBadge({ player, isCurrentTurn, isMe, animatedPos, turnClock
                 className="user-link"
                 onClick={() => onViewProfile(player.user_id)}
               >
-                <strong>{player.display_name || player.name}</strong>
+                <strong>{displayUsername}</strong>
               </button>
             ) : (
-              <strong>{isBot ? 'Pemain Komputer' : player.display_name || player.name}</strong>
+              <strong>{displayUsername}</strong>
             )}
             {isMe && <span className="snk-mini-badge snk-mini-badge--me">Kamu</span>}
-            {isBot && (
-              <span className="snk-mini-badge snk-mini-badge--bot" title="Lawan otomatis komputer">
-                Bot
-              </span>
-            )}
           </div>
           <span className="muted snk-player-card__sub">
             {isCurrentTurn
               ? isMe
                 ? '🎲 Giliranmu melempar!'
-                : isBot
-                ? '🤖 Komputer melempar...'
                 : '⏳ Sedang giliran...'
-              : isBot
-              ? 'Komputer Otomatis'
-              : !player.connected
+              : !isBot && !player.connected
               ? 'Terputus...'
-              : `@${player.username || 'pemain'}`}
+              : `@${displayUsername}`}
           </span>
         </div>
 
@@ -539,7 +525,8 @@ export default function SnakesLaddersScreen({
 
     const myPlayer = players.find(p => p.player_type === 'human' && p.user_id === currentUser?.id);
     const opponentPlayer = players.find(p => p.id !== myPlayer?.id) || players[1] || null;
-    const isBotMatch = room.opponentType === 'bot' || players.some(p => p.player_type === 'bot');
+    const opponentUsername = opponentPlayer?.username || opponentPlayer?.display_name || 'lawan';
+    const currentTurnUsername = currentTurnPlayer?.username || currentTurnPlayer?.display_name || 'lawan';
     const didIWin = Boolean(
       matchResult &&
       ((currentUser?.id && matchResult.winnerUserId === currentUser.id) ||
@@ -576,7 +563,7 @@ export default function SnakesLaddersScreen({
             <div className="snk-game-topbar__meta">
               <strong className="snk-game-topbar__title">Ular Tangga · #{room.code}</strong>
               <span className="muted snk-game-topbar__sub">
-                {isBotMatch ? '🤖 vs Pemain Komputer' : '👥 vs Pemain Manusia'} · Giliran #{room.turnNumber || 1}
+                vs @{opponentUsername} · Giliran #{room.turnNumber || 1}
               </span>
             </div>
           </div>
@@ -601,62 +588,43 @@ export default function SnakesLaddersScreen({
         </header>
 
         {matchAnnouncement && (
-          <div
-            className={`snk-match-banner card ${
-              matchAnnouncement.type === 'bot' ? 'snk-match-banner--bot' : 'snk-match-banner--human'
-            }`}
-            role="status"
-          >
-            {matchAnnouncement.type === 'bot' ? (
-              <>
-                <span className="snk-bot-avatar"><Icon name="bot" size={18} /></span>
-                <div>
-                  <strong>{matchAnnouncement.message}</strong>
-                  <p className="muted" style={{ margin: 0, fontSize: 'var(--fs-xs)' }}>
-                    Lawan: <strong>Pemain Komputer</strong> (Bot Otomatis)
-                  </p>
-                </div>
-              </>
-            ) : (
-              <>
-                <PlayerAvatar
-                  avatar={matchAnnouncement.opponent?.avatar}
-                  name={matchAnnouncement.opponent?.display_name || 'Lawan'}
-                  size={34}
-                  className="avatar"
-                />
-                <div>
-                  <strong>🎉 {matchAnnouncement.message}</strong>
-                  <p className="muted" style={{ margin: 0, fontSize: 'var(--fs-xs)' }}>
-                    Melawan <strong>{matchAnnouncement.opponent?.display_name}</strong> (@{matchAnnouncement.opponent?.username})
-                  </p>
-                </div>
-              </>
-            )}
+          <div className="snk-match-banner card snk-match-banner--human" role="status">
+            <PlayerAvatar
+              avatar={matchAnnouncement.opponent?.avatar}
+              name={matchAnnouncement.opponent?.username || matchAnnouncement.opponent?.display_name || 'lawan'}
+              size={34}
+              className="avatar"
+            />
+            <div>
+              <strong>🎉 {matchAnnouncement.message}</strong>
+              <p className="muted" style={{ margin: 0, fontSize: 'var(--fs-xs)' }}>
+                Melawan <strong>@{matchAnnouncement.opponent?.username || matchAnnouncement.opponent?.display_name || 'lawan'}</strong>
+              </p>
+            </div>
           </div>
         )}
 
         {error && <p className="alert alert--error" role="alert">{error}</p>}
         {notice && <p className="alert" role="status">{notice}</p>}
 
+        {/* Bar 2 Pemain (Selalu hanya 2 kartu pemain) */}
+        <section className="snk-players-bar" aria-label="Pemain dalam Pertandingan">
+          {players.map(p => (
+            <SnakesPlayerBadge
+              key={p.id}
+              player={p}
+              isCurrentTurn={currentTurnPlayer?.id === p.id && room.status === 'playing'}
+              isMe={p.player_type === 'human' && p.user_id === currentUser?.id}
+              animatedPos={animatedPositions[p.id]}
+              turnClock={room.turnClock}
+              onViewProfile={onViewProfile}
+            />
+          ))}
+        </section>
+
         <div className="snk-game-grid">
           {/* KOLOM KIRI: PAPAN ULAR TANGGA 10x10 */}
           <section className="snk-board-column" aria-label="Papan Permainan Ular Tangga 100 Kotak">
-            {/* Bar Pemain di Mobile (di atas papan agar selalu terlihat) */}
-            <div className="snk-mobile-players hide-desktop">
-              {players.map(p => (
-                <SnakesPlayerBadge
-                  key={p.id}
-                  player={p}
-                  isCurrentTurn={currentTurnPlayer?.id === p.id && room.status === 'playing'}
-                  isMe={p.player_type === 'human' && p.user_id === currentUser?.id}
-                  animatedPos={animatedPositions[p.id]}
-                  turnClock={room.turnClock}
-                  onViewProfile={onViewProfile}
-                />
-              ))}
-            </div>
-
             <div className="snk-board-frame card">
               <div className="snakes-board">
                 {BOARD_ROWS.map(row => (
@@ -739,7 +707,7 @@ export default function SnakesLaddersScreen({
                           className={`snk-token__body ${hopCount > 0 ? 'is-hopping' : ''}`}
                         >
                           <span className="snk-token__inner">
-                            {p.player_type === 'bot' ? '🤖' : p.display_name?.slice(0, 1).toUpperCase() || (idx + 1)}
+                            {(p.username || p.display_name || 'P').slice(0, 1).toUpperCase()}
                           </span>
                         </div>
                       </div>
@@ -818,23 +786,8 @@ export default function SnakesLaddersScreen({
             </div>
           </section>
 
-          {/* KOLOM KANAN: PEMAIN, KONSOL DADU CEPAT, LOG, & CHAT */}
+          {/* KOLOM KANAN: KONSOL DADU CEPAT, LOG, & CHAT */}
           <aside className="snk-side-column">
-            {/* Daftar Pemain (Desktop) */}
-            <div className="snk-desktop-players show-desktop">
-              {players.map(p => (
-                <SnakesPlayerBadge
-                  key={p.id}
-                  player={p}
-                  isCurrentTurn={currentTurnPlayer?.id === p.id && room.status === 'playing'}
-                  isMe={p.player_type === 'human' && p.user_id === currentUser?.id}
-                  animatedPos={animatedPositions[p.id]}
-                  turnClock={room.turnClock}
-                  onViewProfile={onViewProfile}
-                />
-              ))}
-            </div>
-
             {/* Konsol Dadu & Giliran (Cepat & Responsif) */}
             <section
               className={`snk-dice-console card ${room.isMyTurn && room.status === 'playing' ? 'is-my-turn card--focus' : ''}`}
@@ -857,12 +810,10 @@ export default function SnakesLaddersScreen({
                     <span className={`snk-color-dot color-${currentTurnPlayer?.color || 'red'}`} />
                     <strong className="snk-dice-console__who">
                       {room.status === 'finished'
-                        ? `🏆 Pemenang: ${room.winner?.display_name || 'Pemain'}`
+                        ? `🏆 Pemenang: ${room.winner?.username || room.winner?.display_name || 'Pemain'}`
                         : room.isMyTurn
                         ? 'Giliranmu Sekarang!'
-                        : currentTurnPlayer?.player_type === 'bot'
-                        ? 'Giliran Pemain Komputer'
-                        : `Giliran ${currentTurnPlayer?.display_name || 'Lawan'}`}
+                        : `Giliran ${currentTurnUsername}`}
                     </strong>
                   </div>
 
@@ -882,9 +833,7 @@ export default function SnakesLaddersScreen({
                       ? '🏃 Melangkah...'
                       : canRoll
                       ? '🎲 Lempar Dadu Sekarang'
-                      : currentTurnPlayer?.player_type === 'bot'
-                      ? '🤖 Giliran Komputer...'
-                      : '⏳ Menunggu Lawan...'}
+                      : `⏳ Giliran ${currentTurnUsername}...`}
                   </button>
                 </div>
               </div>
@@ -1045,17 +994,7 @@ export default function SnakesLaddersScreen({
               <div className="snk-result-details card">
                 <div className="snk-result-row">
                   <span className="muted">Lawan</span>
-                  <strong>
-                    {opponentPlayer?.player_type === 'bot'
-                      ? '🤖 Pemain Komputer'
-                      : opponentPlayer?.display_name || 'Pemain'}
-                  </strong>
-                </div>
-                <div className="snk-result-row">
-                  <span className="muted">Tipe Lawan</span>
-                  <span className="badge">
-                    {matchResult.opponentType === 'bot' ? 'Bot (Pemain Komputer)' : 'Manusia (Kompetitif)'}
-                  </span>
+                  <strong>@{opponentUsername}</strong>
                 </div>
                 <div className="snk-result-row">
                   <span className="muted">Durasi Pertandingan</span>
@@ -1066,12 +1005,6 @@ export default function SnakesLaddersScreen({
                   <strong>{matchResult.totalTurns || room.turnNumber || 1} giliran</strong>
                 </div>
               </div>
-
-              {matchResult.opponentType === 'bot' && (
-                <p className="muted" style={{ fontSize: 'var(--fs-xs)', textAlign: 'center', margin: 0 }}>
-                  Pertandingan melawan Pemain Komputer dicatat pada riwayat latihan dan tidak dihitung sebagai kemenangan kompetitif melawan manusia di Leaderboard.
-                </p>
-              )}
 
               <div className="snk-result-actions">
                 <button
@@ -1189,7 +1122,7 @@ export default function SnakesLaddersScreen({
             <span>Waktu pencarian: <strong>{searchElapsedSec} dtk</strong> / {searchTimeoutSec} dtk</span>
           </div>
           <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '4px 0 12px', maxWidth: '460px' }}>
-            Jika belum ada pemain online setelah {searchTimeoutSec} detik, sistem otomatis memulai pertandingan melawan <strong>Pemain Komputer</strong>.
+            Jika belum ada pemain online setelah {searchTimeoutSec} detik, sistem otomatis memasangkan lawan agar permainan segera dimulai.
           </p>
           <button
             type="button"
@@ -1209,7 +1142,7 @@ export default function SnakesLaddersScreen({
                 <span className="badge badge--success">Prioritas Manusia</span>
               </div>
               <p className="muted" style={{ fontSize: 'var(--fs-sm)', margin: '6px 0 0' }}>
-                Langsung cari lawan pemain online. Bila tidak ditemukan dalam 15 detik, otomatis bertanding melawan Pemain Komputer tanpa perlu menunggu lama.
+                Langsung cari lawan pemain online. Bila antrean sepi dalam 15 detik, permainan otomatis dimulai tanpa perlu menunggu lama.
               </p>
             </div>
             <button
@@ -1323,7 +1256,7 @@ export default function SnakesLaddersScreen({
                         {isWin ? 'Menang' : 'Kalah'} vs {item.opponentName}
                       </strong>
                       <span className="snk-history-row__meta muted">
-                        {item.opponentType === 'bot' ? '🤖 Pemain Komputer' : '👥 Pemain Manusia'} · {item.duration} dtk · {item.totalTurns} giliran
+                        @{item.opponentName} · {item.duration} dtk · {item.totalTurns} giliran
                       </span>
                     </div>
                     <div className="snk-history-row__badge">
@@ -1331,7 +1264,7 @@ export default function SnakesLaddersScreen({
                         <span className="badge badge--success">+{item.rewardCoins} Coins</span>
                       ) : (
                         <span className={`badge ${isWin ? 'badge--brand' : ''}`}>
-                          {item.opponentType === 'bot' ? 'Latihan Bot' : isWin ? 'Menang' : 'Kalah'}
+                          {isWin ? 'Menang' : 'Kalah'}
                         </span>
                       )}
                     </div>
@@ -1352,7 +1285,7 @@ export default function SnakesLaddersScreen({
             )}
           </div>
           <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: 0 }}>
-            Hanya mencatat kemenangan melawan sesama pemain manusia. Pemain Komputer tidak masuk ke Leaderboard.
+            Peringkat dihitung berdasarkan kemenangan pertandingan kompetitif antar pemain.
           </p>
           {leaderboard.length === 0 ? (
             <p className="muted" style={{ margin: 0 }}>Belum ada pemain di peringkat kompetitif. Jadilah pemenang pertama!</p>

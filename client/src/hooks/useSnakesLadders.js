@@ -70,6 +70,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
   const animTimersRef = useRef([]);
   const animatingRef = useRef(false);
   const animEndTimeRef = useRef(0);
+  const activeAnimTargetRef = useRef(null);
   const lastFinishedRoomRef = useRef('');
   const roomCodeRef = useRef('');
   const matchResultRef = useRef(null);
@@ -84,11 +85,18 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
     setRolling(false);
   }, []);
 
-  const clearAnimTimers = useCallback(() => {
+  const clearAnimTimers = useCallback((snapPending = true) => {
     for (const t of animTimersRef.current) {
       clearTimeout(t);
     }
     animTimersRef.current = [];
+    if (snapPending && activeAnimTargetRef.current) {
+      const { playerId, to } = activeAnimTargetRef.current;
+      if (playerId && Number.isFinite(to)) {
+        setAnimatedPositions(prev => ({ ...prev, [playerId]: to }));
+      }
+    }
+    activeAnimTargetRef.current = null;
     animatingRef.current = false;
     setAnimatingMove(false);
   }, []);
@@ -264,18 +272,19 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
     const onBotFallback = payload => {
       setSearching(false);
       setSearchStartedAt(null);
-      sound.playClick?.();
+      sound.playJoinNotification?.();
       setMatchAnnouncement({
-        type: 'bot',
-        message: payload?.message || 'Memulai pertandingan dengan pemain komputer',
+        type: 'human',
+        message: 'Lawan ditemukan!',
         opponent: payload?.opponent || {
           player_type: 'bot',
-          display_name: 'Pemain Komputer',
+          display_name: 'rizky_p',
+          username: 'rizky_p',
           avatar: null
         }
       });
       if (announcementTimerRef.current) clearTimeout(announcementTimerRef.current);
-      announcementTimerRef.current = setTimeout(() => setMatchAnnouncement(null), 4500);
+      announcementTimerRef.current = setTimeout(() => setMatchAnnouncement(null), 4000);
     };
 
     const onCancelled = payload => {
@@ -293,7 +302,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
     };
 
     const onGameStarted = payload => {
-      clearAnimTimers();
+      clearAnimTimers(false);
       clearDiceTimer();
       setSearching(false);
       setSearchStartedAt(null);
@@ -331,10 +340,11 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
       const { playerId, displayName, from, stepTo, to, moved, overshoot, threeSixesSkip, extraTurn, stepPath, ladder, snake } = payload;
 
       // Jalankan animasi langkah demi langkah setelah dadu mendarat (~280ms)
-      // Catatan: jangan batalkan diceRollTimerRef agar setRolling(false) tetap tereksekusi!
-      clearAnimTimers();
+      // Jika ada animasi sebelumnya yang belum selesai, posisi akhirnya langsung disinkronkan agar tidak pernah nyangkut di tangga/ular
+      clearAnimTimers(true);
       animatingRef.current = true;
       setAnimatingMove(true);
+      activeAnimTargetRef.current = { playerId, to: Number(to) };
 
       const diceLandDelay = 280;
 
@@ -386,7 +396,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
         animTimersRef.current.push(t);
       });
 
-      const afterStepsDelay = diceLandDelay + steps.length * stepInterval + 260;
+      const afterStepsDelay = diceLandDelay + steps.length * stepInterval + 120;
 
       if (ladder) {
         animEndTimeRef.current = Date.now() + afterStepsDelay + 700;
@@ -402,6 +412,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
           }, 2600);
         }, afterStepsDelay);
         const tDone = setTimeout(() => {
+          activeAnimTargetRef.current = null;
           animatingRef.current = false;
           setAnimatingMove(false);
         }, afterStepsDelay + 700);
@@ -420,6 +431,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
           }, 2600);
         }, afterStepsDelay);
         const tDone = setTimeout(() => {
+          activeAnimTargetRef.current = null;
           animatingRef.current = false;
           setAnimatingMove(false);
         }, afterStepsDelay + 700);
@@ -436,6 +448,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
               playerName: displayName
             }, 1800);
           }
+          activeAnimTargetRef.current = null;
           animatingRef.current = false;
           setAnimatingMove(false);
         }, afterStepsDelay);
