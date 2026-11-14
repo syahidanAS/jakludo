@@ -1043,11 +1043,11 @@
 
 .snk-dice-console__cube {
   flex-shrink: 0;
-  width: 68px;
-  height: 68px;
+  width: 88px;
+  height: 88px;
   display: grid;
   place-items: center;
-  overflow: hidden;
+  overflow: visible;
 }
 
 /* Percepat putaran visual Dice3D khusus di Ular Tangga agar terasa instan & responsif */
@@ -1221,16 +1221,41 @@
     gap: 10px;
   }
 
-  /* Di mobile, obrolan diakses lewat tombol ikon chat di toolbar agar layar fokus ke papan & dadu */
+  .snk-log-card,
   .snk-chat-card {
-    display: none;
-  }
-
-  .snk-log-card {
     padding: 8px 10px;
   }
 
   .snk-log-list {
-    max-height: 88px;
+    max-height: 140px;
   }
+}
+
+/* Header tombol collapse/expand untuk Riwayat Langkah & Chat Ruangan */
+.snk-collapse-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.snk-collapse-head__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.snk-collapse-head__chevron {
+  font-size: 0.95rem;
+  color: var(--ink-2);
+  flex-shrink: 0;
 }

@@ -435,6 +435,12 @@ export default function SnakesLaddersScreen({
   } = snakes;
 
   const [privateMaxPlayers, setPrivateMaxPlayers] = useState(4);
+  const [logExpanded, setLogExpanded] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 920 : true
+  );
+  const [chatExpanded, setChatExpanded] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 920 : true
+  );
 
   const [copiedCode, setCopiedCode] = useState(false);
   const [showMobileHistory, setShowMobileHistory] = useState(false);
@@ -950,52 +956,79 @@ export default function SnakesLaddersScreen({
               </div>
             </section>
 
-            {/* Riwayat Langkah Permainan (Desktop) */}
-            <section className="snk-log-card card show-desktop" aria-label="Riwayat Lemparan Dadu">
-              <div className="snk-card-head-inline">
-                <h3 className="panel-section__title" style={{ margin: 0 }}>📜 Riwayat Langkah</h3>
-                <span className="badge">{room.moveLog?.length || 0} lemparan</span>
-              </div>
-              {(!room.moveLog || room.moveLog.length === 0) ? (
-                <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '6px 0 0' }}>
-                  Belum ada lemparan dadu.
-                </p>
-              ) : (
-                <ol className="snk-log-list">
-                  {[...room.moveLog].reverse().slice(0, 10).map(item => (
-                    <li key={item.id} className="snk-log-item">
-                      <span className={`snk-color-dot color-${item.color}`} />
-                      <span className="snk-log-item__text">
-                        <strong>{item.displayName}</strong> 🎲<strong>{item.dice}</strong>:{' '}
-                        {item.threeSixesSkip ? (
-                          <span>dadu 6 ke-3 berturut-turut, giliran dilewati ⚠️</span>
-                        ) : item.overshoot ? (
-                          <span>tetap di #{item.from} (&gt;100){item.extraTurn ? ' · kocok lagi!' : ''}</span>
-                        ) : (
-                          <span>
-                            {item.from} → {item.stepTo}
-                            {item.ladder ? ` 🪜 naik ke ${item.to}` : item.snake ? ` 🐍 turun ke ${item.to}` : ''}
-                            {item.extraTurn ? ' · kocok lagi!' : ''}
-                          </span>
-                        )}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
+            {/* Riwayat Langkah Permainan (Collapsible) */}
+            <section className="snk-log-card card" aria-label="Riwayat Lemparan Dadu">
+              <button
+                type="button"
+                className="snk-collapse-head"
+                aria-expanded={logExpanded}
+                onClick={() => setLogExpanded(prev => !prev)}
+              >
+                <span className="snk-collapse-head__title">
+                  <h3 className="panel-section__title" style={{ margin: 0 }}>📜 Riwayat Langkah</h3>
+                  <span className="badge">{room.moveLog?.length || 0} lemparan</span>
+                </span>
+                <span className="snk-collapse-head__chevron" aria-hidden="true">
+                  {logExpanded ? '▾' : '▸'}
+                </span>
+              </button>
+              {logExpanded && (
+                (!room.moveLog || room.moveLog.length === 0) ? (
+                  <p className="muted" style={{ fontSize: 'var(--fs-xs)', margin: '8px 0 0' }}>
+                    Belum ada lemparan dadu.
+                  </p>
+                ) : (
+                  <ol className="snk-log-list">
+                    {[...room.moveLog].reverse().slice(0, 10).map(item => (
+                      <li key={item.id} className="snk-log-item">
+                        <span className={`snk-color-dot color-${item.color}`} />
+                        <span className="snk-log-item__text">
+                          <strong>{item.displayName}</strong> 🎲<strong>{item.dice}</strong>:{' '}
+                          {item.threeSixesSkip ? (
+                            <span>dadu 6 ke-3 berturut-turut, giliran dilewati ⚠️</span>
+                          ) : item.overshoot ? (
+                            <span>tetap di #{item.from} (&gt;100){item.extraTurn ? ' · kocok lagi!' : ''}</span>
+                          ) : (
+                            <span>
+                              {item.from} → {item.stepTo}
+                              {item.ladder ? ` 🪜 naik ke ${item.to}` : item.snake ? ` 🐍 turun ke ${item.to}` : ''}
+                              {item.extraTurn ? ' · kocok lagi!' : ''}
+                            </span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                )
               )}
             </section>
 
-            {/* Chat Panel Langsung di Kolom Kanan Desktop */}
-            <section className="snk-chat-card card show-desktop" aria-label="Obrolan Ruangan">
-              <h3 className="panel-section__title" style={{ marginBottom: 'var(--space-2)' }}>
-                💬 Chat Ruangan
-              </h3>
-              <ChatPanel
-                chats={chats}
-                playerId={currentUser?.id}
-                onSend={actions.sendChat}
-                quickChats={SNAKES_QUICK_CHATS}
-              />
+            {/* Chat Panel (Collapsible) */}
+            <section className="snk-chat-card card" aria-label="Obrolan Ruangan">
+              <button
+                type="button"
+                className="snk-collapse-head"
+                aria-expanded={chatExpanded}
+                onClick={() => setChatExpanded(prev => !prev)}
+              >
+                <span className="snk-collapse-head__title">
+                  <h3 className="panel-section__title" style={{ margin: 0 }}>💬 Chat Ruangan</h3>
+                  {chats.length > 0 && <span className="badge">{chats.length}</span>}
+                </span>
+                <span className="snk-collapse-head__chevron" aria-hidden="true">
+                  {chatExpanded ? '▾' : '▸'}
+                </span>
+              </button>
+              {chatExpanded && (
+                <div style={{ marginTop: 'var(--space-2)' }}>
+                  <ChatPanel
+                    chats={chats}
+                    playerId={currentUser?.id}
+                    onSend={actions.sendChat}
+                    quickChats={SNAKES_QUICK_CHATS}
+                  />
+                </div>
+              )}
             </section>
           </aside>
         </div>
