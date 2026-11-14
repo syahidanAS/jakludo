@@ -17,6 +17,7 @@ import {
   startVoiceRecording
 } from '../social/media';
 import monsterQuizLogo from '../assets/monster-quiz-logo.webp';
+import snakesLaddersLogo from '../assets/snakes-ladders-logo.webp';
 
 const ROLE_LABELS = {
   owner: 'Owner',
@@ -73,7 +74,12 @@ function previewLastMessage(msg) {
   const sender = msg.sender?.name ? `${msg.sender.name}: ` : '';
   if (msg.type === 'system') return msg.text || 'Info grup';
   if (msg.type === 'match') {
-    const gName = msg.match?.gameType === 'quiz' ? 'Monster Quiz Battle' : 'JakLudo';
+    const gName =
+      msg.match?.gameType === 'quiz'
+        ? 'Monster Quiz Battle'
+        : msg.match?.gameType === 'snakes'
+        ? 'Ular Tangga'
+        : 'JakLudo';
     return `${sender}Match ${gName} (${msg.match?.code || 'Room'})`;
   }
   if (msg.type === 'image') return `${sender}[Foto]${msg.text ? ` — ${msg.text}` : ''}`;
@@ -379,8 +385,18 @@ function GroupChatTab({ groupId, currentUser, social, onJoinMatch, onViewProfile
 
             if (msg.type === 'match') {
               const matchCode = msg.match?.code;
-              const matchGameType = msg.match?.gameType === 'quiz' ? 'quiz' : 'ludo';
-              const matchGameName = matchGameType === 'quiz' ? 'Monster Quiz Battle' : 'JakLudo';
+              const matchGameType =
+                msg.match?.gameType === 'quiz'
+                  ? 'quiz'
+                  : msg.match?.gameType === 'snakes'
+                  ? 'snakes'
+                  : 'ludo';
+              const matchGameName =
+                matchGameType === 'quiz'
+                  ? 'Monster Quiz Battle'
+                  : matchGameType === 'snakes'
+                  ? 'Ular Tangga'
+                  : 'JakLudo';
               return (
                 <div
                   key={msg.id}
@@ -389,7 +405,11 @@ function GroupChatTab({ groupId, currentUser, social, onJoinMatch, onViewProfile
                 >
                   <div className="gmsg__match-info">
                     <span className="gmsg__match-icon" aria-hidden="true">
-                      <Icon name={matchGameType === 'quiz' ? 'swords' : 'dice'} size={22} />
+                      {matchGameType === 'snakes' ? (
+                        <img src={snakesLaddersLogo} alt="" width="24" height="24" style={{ borderRadius: 6, objectFit: 'cover' }} />
+                      ) : (
+                        <Icon name={matchGameType === 'quiz' ? 'swords' : 'dice'} size={22} />
+                      )}
                     </span>
                     <div>
                       <strong>
@@ -1294,6 +1314,7 @@ export default function GroupsScreen({
   social,
   gameActions,
   quizActions,
+  snakesActions,
   onSelectGameMode,
   onViewProfile,
   onOpenAuth
@@ -1425,6 +1446,9 @@ export default function GroupsScreen({
     if (selectedGame === 'quiz') {
       onSelectGameMode?.('quiz');
       quizActions?.createRoom?.(activeGroupId);
+    } else if (selectedGame === 'snakes') {
+      onSelectGameMode?.('snakes');
+      snakesActions?.createPrivateRoom?.({ groupId: activeGroupId, maxPlayers: 4 });
     } else {
       onSelectGameMode?.('ludo');
       gameActions.createRoom(activeGroupId);
@@ -1437,6 +1461,9 @@ export default function GroupsScreen({
     if (matchGameType === 'quiz') {
       onSelectGameMode?.('quiz');
       quizActions?.joinRoomByCode?.(matchCode);
+    } else if (matchGameType === 'snakes') {
+      onSelectGameMode?.('snakes');
+      snakesActions?.joinRoomByCode?.(matchCode);
     } else {
       onSelectGameMode?.('ludo');
       gameActions.joinRoom(matchCode);
@@ -1557,6 +1584,21 @@ export default function GroupsScreen({
                     <strong>Monster Quiz Battle</strong>
                     <span className="badge badge--info">2–3 Pemain (Maks 3 Orang) · RPG Trivia</span>
                     <span className="muted">Jawab soal pengetahuan &amp; matematika dalam 15 detik untuk menyerang monster lawan!</span>
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  className="group-game-picker__option"
+                  onClick={() => handleConfirmCreateGroupMatch('snakes')}
+                >
+                  <span className="group-game-picker__icon group-game-picker__icon--quiz" aria-hidden="true">
+                    <img src={snakesLaddersLogo} alt="" width="44" height="44" />
+                  </span>
+                  <span className="group-game-picker__meta">
+                    <strong>Ular Tangga</strong>
+                    <span className="badge badge--success">2–4 Pemain · Board Game Klasik</span>
+                    <span className="muted">Naiki tangga, hindari ular, dan kejar kotak 100 lebih dulu bersama anggota grup!</span>
                   </span>
                 </button>
               </div>

@@ -440,6 +440,7 @@ export default function App() {
               social={social}
               gameActions={game.actions}
               quizActions={quiz.actions}
+              snakesActions={snakes.actions}
               onSelectGameMode={mode => navigateTo({ mode })}
               onViewProfile={openProfile}
               onOpenAuth={open('auth')}
@@ -608,6 +609,7 @@ export default function App() {
             social={social}
             gameActions={game.actions}
             quizActions={quiz.actions}
+            snakesActions={snakes.actions}
             onSelectGameMode={mode => navigateTo({ mode })}
             onViewProfile={openProfile}
             onOpenAuth={open('auth')}

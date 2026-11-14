@@ -1150,6 +1150,14 @@ function createPrivateRoom(socket, payload = {}, existingLudoRooms = null) {
     if (prevRoom) leaveRoom(socket, payload);
   }
 
+  const groupId = typeof payload?.groupId === 'string' && payload.groupId.trim() ? payload.groupId.trim() : null;
+  if (groupId) {
+    const social = require('../social/store');
+    if (!social.isGroupMember(groupId, user.id)) {
+      return { ok: false, error: 'Kamu bukan anggota grup ini.' };
+    }
+  }
+
   const maxPlayers = Math.min(
     snakesConfig.MAX_PRIVATE_ROOM_PLAYERS,
     Math.max(2, Number(payload.maxPlayers) || snakesConfig.MAX_PRIVATE_ROOM_PLAYERS)
@@ -1163,17 +1171,24 @@ function createPrivateRoom(socket, payload = {}, existingLudoRooms = null) {
   });
 
   const room = createRoomInstance({
-    roomType: payload.groupId ? 'group' : 'private',
+    roomType: groupId ? 'group' : 'private',
     hostUserId: user.id,
     players: [hostPlayer],
     maxPlayers,
-    groupId: payload.groupId || null,
+    groupId,
     existingLudoRooms
   });
 
   if (socket) {
     socket.join(socketRoomName(room.code));
     socket.data.snakesRoom = room.code;
+  }
+
+  if (groupId) {
+    const social = require('../social/store');
+    social.postGroupMatchMessage(groupId, user.id, room.code, 'snakes').catch(err => {
+      console.error('[snakes] postGroupMatchMessage failed:', err.message);
+    });
   }
 
   scheduleLobbyExpiration(room);
@@ -1241,6 +1256,13 @@ function joinPrivateRoom(socket, payload = {}) {
   // Pemain ketiga tidak boleh masuk jika room sudah mulai atau selesai
   if (room.status !== 'waiting') {
     return { ok: false, error: 'Pertandingan di room ini sudah dimulai.' };
+  }
+
+  if (room.groupId) {
+    const social = require('../social/store');
+    if (!social.isGroupMember(room.groupId, user.id)) {
+      return { ok: false, error: 'Match ini khusus untuk anggota grup.' };
+    }
   }
 
   if (room.players.length >= (room.maxPlayers || 2)) {

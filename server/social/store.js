@@ -558,10 +558,16 @@ async function formatMessage(msg) {
     const sepIdx = rawCode.indexOf(':');
     const gameType = sepIdx !== -1 ? rawCode.slice(0, sepIdx) : (msg.matchGameType || 'ludo');
     const cleanCode = sepIdx !== -1 ? rawCode.slice(sepIdx + 1) : rawCode;
+    const cleanGameType = gameType === 'quiz' ? 'quiz' : gameType === 'snakes' ? 'snakes' : 'ludo';
     matchObj = {
       code: cleanCode,
-      gameType: gameType === 'quiz' ? 'quiz' : 'ludo',
-      gameName: gameType === 'quiz' ? 'Monster Quiz Battle' : 'JakLudo'
+      gameType: cleanGameType,
+      gameName:
+        cleanGameType === 'quiz'
+          ? 'Monster Quiz Battle'
+          : cleanGameType === 'snakes'
+          ? 'Ular Tangga'
+          : 'JakLudo'
     };
   }
   return {
@@ -1160,10 +1166,20 @@ async function getGroupMessageAudio(groupId, messageId, userId) {
 async function postGroupMatchMessage(groupId, creatorUserId, roomCode, gameType = 'ludo') {
   if (!state.groups.has(groupId)) return null;
   const creator = db.getUserById(creatorUserId);
-  const cleanGame = gameType === 'quiz' ? 'quiz' : 'ludo';
-  const gameName = cleanGame === 'quiz' ? 'Monster Quiz Battle (Maks 3 Pemain)' : 'JakLudo';
-  const icon = cleanGame === 'quiz' ? '🐉' : '🎲';
-  const storedMatchCode = cleanGame === 'quiz' ? `quiz:${roomCode}` : roomCode;
+  const cleanGame = gameType === 'quiz' ? 'quiz' : gameType === 'snakes' ? 'snakes' : 'ludo';
+  const gameName =
+    cleanGame === 'quiz'
+      ? 'Monster Quiz Battle (Maks 3 Pemain)'
+      : cleanGame === 'snakes'
+      ? 'Ular Tangga (Maks 4 Pemain)'
+      : 'JakLudo';
+  const icon = cleanGame === 'quiz' ? '🐉' : cleanGame === 'snakes' ? '🐍' : '🎲';
+  const storedMatchCode =
+    cleanGame === 'quiz'
+      ? `quiz:${roomCode}`
+      : cleanGame === 'snakes'
+      ? `snakes:${roomCode}`
+      : roomCode;
   const row = appendRawGroupMessage({
     groupId,
     senderId: creatorUserId,
