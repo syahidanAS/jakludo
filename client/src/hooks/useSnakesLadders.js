@@ -501,6 +501,12 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
       }
     };
 
+    const onPlayerAfkOut = payload => {
+      if (payload?.displayName) {
+        showNotice(`${payload.displayName} tidak mengocok dadu 3 kali dan dinyatakan kalah.`, 5000);
+      }
+    };
+
     const onRoomState = nextRoom => {
       if (!nextRoom) return;
       setRoom(nextRoom);
@@ -527,6 +533,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
           durationSeconds: nextRoom.durationSeconds,
           totalTurns: nextRoom.turnNumber,
           rewardCoins: nextRoom.rewardCoins || 0,
+          reason: nextRoom.finishReason || 'reached_100',
           finishedAt: nextRoom.finishedAt
         });
       } else if (nextRoom.status !== 'finished') {
@@ -573,6 +580,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
     socket.on('game.finished', onGameFinished);
     socket.on('game.player_disconnected', onPlayerDisconnected);
     socket.on('game.player_reconnected', onPlayerReconnected);
+    socket.on('game.player_afk_out', onPlayerAfkOut);
     socket.on('snakes:room:state', onRoomState);
     socket.on('snakes:room:closed', onRoomClosed);
     socket.on('snakes:chat_message', onChatMessage);
@@ -592,6 +600,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
       socket.off('game.finished', onGameFinished);
       socket.off('game.player_disconnected', onPlayerDisconnected);
       socket.off('game.player_reconnected', onPlayerReconnected);
+      socket.off('game.player_afk_out', onPlayerAfkOut);
       socket.off('snakes:room:state', onRoomState);
       socket.off('snakes:room:closed', onRoomClosed);
       socket.off('snakes:chat_message', onChatMessage);

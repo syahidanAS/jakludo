@@ -158,6 +158,7 @@ function serializePlayer(p) {
     position: Number(p.position) || 0,
     color: p.color,
     status: p.status || 'active',
+    autoTimeoutCount: Number(p.autoTimeoutCount) || 0,
     ready: Boolean(p.ready),
     connected: p.player_type === 'bot' ? true : Boolean(p.connected),
     disconnectedAt: p.disconnectedAt || null,
@@ -189,6 +190,7 @@ function serializeRoomForUser(room, viewerUserId = null) {
     maxPlayers: room.maxPlayers || snakesConfig.MAX_PLAYERS,
     status: room.status, // 'waiting' | 'playing' | 'finished'
     phase: room.phase,   // 'lobby' | 'playing' | 'finished'
+    finishReason: room.finishReason || null,
     opponentType,
     turnIndex: room.turnIndex,
     turnNumber: room.turnNumber || 0,
@@ -323,6 +325,7 @@ function startGameInRoom(room) {
     p.position = 0;
     p.color = snakesConfig.PLAYER_COLORS[idx % snakesConfig.PLAYER_COLORS.length];
     p.status = 'active';
+    p.autoTimeoutCount = 0;
     p.ready = true;
   });
 
@@ -338,6 +341,8 @@ function startGameInRoom(room) {
   room.winnerPlayerId = null;
   room.winnerUserId = null;
   room.winner = null;
+  room.finishReason = null;
+  room.consecutiveSixes = 0;
   room.lastRoll = null;
   room.moveLog = [];
   room.rematchVotes = new Set();
@@ -467,7 +472,13 @@ function executeBotTurn(room, expectedTurnNumber, isRetry = false) {
 function advanceTurn(room) {
   if (!room || room.status !== 'playing') return;
   room.consecutiveSixes = 0;
-  room.turnIndex = snakesRules.getNextTurnIndex(room.turnIndex, room.players.length);
+  const total = room.players.length;
+  let nextIdx = snakesRules.getNextTurnIndex(room.turnIndex, total);
+  for (let i = 0; i < total; i++) {
+    if (room.players[nextIdx]?.status === 'active') break;
+    nextIdx = snakesRules.getNextTurnIndex(nextIdx, total);
+  }
+  room.turnIndex = nextIdx;
   room.turnNumber = (Number(room.turnNumber) || 1) + 1;
   room.currentTurnPlayerId = room.players[room.turnIndex]?.id || null;
   room.updatedAt = Date.now();
@@ -514,6 +525,45 @@ function executeAuthoritativeRoll(room, actingPlayer, options = {}) {
 
   try {
     const now = Date.now();
+
+    if (options.isAutoTimeout) {
+      currentPlayer.autoTimeoutCount = (Number(currentPlayer.autoTimeoutCount) || 0) + 1;
+      if (currentPlayer.autoTimeoutCount >= 3) {
+        currentPlayer.status = 'eliminated';
+        room.updatedAt = now;
+        emitToRoom(room, 'game.player_afk_out', {
+          roomId: room.id,
+          roomCode: room.code,
+          playerId: currentPlayer.id,
+          userId: currentPlayer.user_id || null,
+          displayName: currentPlayer.username || currentPlayer.display_name,
+          autoTimeoutCount: currentPlayer.autoTimeoutCount,
+          serverNow: now
+        });
+
+        const remainingActive = room.players.filter(p => p.id !== currentPlayer.id && p.status === 'active');
+        room.rollingLock = false;
+        if (remainingActive.length <= 1) {
+          finishGameInRoom(room, remainingActive[0] || null, 'afk_timeout_3');
+          return {
+            ok: true,
+            finished: true,
+            afkOut: true,
+            room: serializeRoomForUser(room, currentPlayer.user_id)
+          };
+        }
+        advanceTurn(room);
+        return {
+          ok: true,
+          finished: false,
+          afkOut: true,
+          room: serializeRoomForUser(room, currentPlayer.user_id)
+        };
+      }
+    } else if (currentPlayer.player_type === 'human') {
+      currentPlayer.autoTimeoutCount = 0;
+    }
+
     const dice = nextDiceValue();
     const outcome = snakesRules.calculateTurnOutcome({
       currentPosition: currentPlayer.position,
@@ -551,6 +601,7 @@ function executeAuthoritativeRoll(room, actingPlayer, options = {}) {
       snake: outcome.snake,
       isWin: outcome.isWin,
       isAutoTimeout: Boolean(options.isAutoTimeout),
+      autoTimeoutCount: Number(currentPlayer.autoTimeoutCount) || 0,
       timestamp: now
     };
 

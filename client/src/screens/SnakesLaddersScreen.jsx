@@ -1059,9 +1059,13 @@ export default function SnakesLaddersScreen({
           icon={didIWin ? '🏆' : '🎲'}
           title={didIWin ? 'Selamat! Kamu Menang!' : 'Pertandingan Selesai'}
           subtitle={
-            didIWin
-              ? 'Bidakmu berhasil mencapai kotak 100 terlebih dahulu!'
-              : `${matchResult?.winner?.display_name || 'Lawan'} mencapai kotak 100 terlebih dahulu.`
+            matchResult?.reason === 'afk_timeout_3'
+              ? didIWin
+                ? 'Lawan tidak mengocok dadu sebanyak 3 kali dan dinyatakan kalah (out).'
+                : 'Kamu tidak mengocok dadu sebanyak 3 kali berturut-turut sehingga dinyatakan kalah.'
+              : didIWin
+                ? 'Bidakmu berhasil mencapai kotak 100 terlebih dahulu!'
+                : `${matchResult?.winner?.username || matchResult?.winner?.display_name || 'Lawan'} mencapai kotak 100 terlebih dahulu.`
           }
         >
           {matchResult && (
@@ -1303,8 +1307,8 @@ export default function SnakesLaddersScreen({
         <div className="snk-rules-strip__item">
           <span className="snk-rules-strip__icon">🎯</span>
           <div>
-            <strong>Pas di Kotak 100 &amp; Bonus Dadu 6</strong>
-            <p className="muted">Dapat 6 berhak kocok lagi (3× berturut-turut dilewati). Harus pas ke kotak 100.</p>
+            <strong>Pas di Kotak 100, Bonus 6 &amp; Batas AFK</strong>
+            <p className="muted">Dapat 6 kocok lagi (3× berturut-turut dilewati). Tidak kocok dadu 3× otomatis out &amp; kalah.</p>
           </div>
         </div>
       </section>

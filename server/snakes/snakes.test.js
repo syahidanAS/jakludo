@@ -327,13 +327,19 @@ test('3. Bot Identity & Behavior: transparent identity, user_id is null, no fake
     });
   });
 
-  // If it is human's turn first, human rolls once so it becomes bot's turn
+  // If it is human's turn first, human rolls until it becomes bot's turn (handles roll-6 extra turn)
   if (botRoom.isMyTurn) {
-    const rollRes = await emitAck(cBotTester, 'snakes:roll', {
-      token: uBotTester.token,
-      roomCode: botRoom.roomCode
-    });
-    assert.equal(rollRes.ok, true);
+    let keepRolling = true;
+    let safety = 0;
+    while (keepRolling && safety < 5) {
+      safety += 1;
+      const rollRes = await emitAck(cBotTester, 'snakes:roll', {
+        token: uBotTester.token,
+        roomCode: botRoom.roomCode
+      });
+      assert.equal(rollRes.ok, true);
+      keepRolling = Boolean(rollRes?.roll?.extraTurn);
+    }
   }
 
   const botRollPayload = await botMovedPromise;
@@ -601,4 +607,97 @@ test('5. Leaderboard & History: bots never appear on leaderboard, bot wins separ
   assert.equal(histBody.stats.botStats.wins, 1, 'Bot practice wins should be 1');
   assert.equal(histBody.history[0].opponentType, 'bot');
   assert.equal(histBody.history[0].opponentName, 'rizky_p');
+});
+
+// ==========================================
+// 6. AFK 3-TIMEOUT AUTO-OUT RULE TEST
+// ==========================================
+
+test('6. AFK Rule: failing to roll dice 3 times eliminates the player and declares opponent winner', async () => {
+  const idlePlayer = await registerUser('afk_idle');
+  const activeOpponent = await registerUser('afk_active');
+
+  const cIdle = await connect();
+  const cOpp = await connect();
+
+  await emitAck(cIdle, 'social:identify', { token: idlePlayer.token });
+  await emitAck(cOpp, 'social:identify', { token: activeOpponent.token });
+
+  snakesEngine.setTimings({
+    turnTimeoutMs: 250,
+    humanSearchTimeoutMs: 12000,
+    botActionDelayMinMs: 20,
+    botActionDelayMaxMs: 40
+  });
+
+  const createAck = await emitAck(cIdle, 'snakes:room:create', {
+    token: idlePlayer.token,
+    maxPlayers: 2
+  });
+  assert.equal(createAck.ok, true);
+  const roomCode = createAck.roomCode;
+
+  const joinAck = await emitAck(cOpp, 'snakes:room:join', {
+    token: activeOpponent.token,
+    code: roomCode
+  });
+  assert.equal(joinAck.ok, true);
+
+  let afkOutEvent = null;
+  cOpp.on('game.player_afk_out', payload => {
+    afkOutEvent = payload;
+  });
+
+  let latestRoomState = null;
+  cOpp.on('snakes:room:state', state => {
+    latestRoomState = state;
+  });
+
+  const finishedPromise = new Promise(resolve => {
+    cOpp.once('game.finished', payload => resolve(payload));
+  });
+
+  // Whenever it's activeOpponent's turn, roll immediately over socket so only idlePlayer accumulates 3 timeouts
+  const rollIfMyTurn = async userId => {
+    if (userId !== activeOpponent.user.id) return;
+    let keepRolling = true;
+    let safety = 0;
+    while (keepRolling && safety < 5) {
+      safety += 1;
+      const res = await emitAck(cOpp, 'snakes:roll', {
+        token: activeOpponent.token,
+        roomCode
+      });
+      keepRolling = Boolean(res?.ok && res?.roll?.extraTurn);
+    }
+  };
+
+  cOpp.on('game.started', payload => {
+    rollIfMyTurn(payload.currentTurnUserId);
+  });
+  cOpp.on('game.turn_changed', payload => {
+    rollIfMyTurn(payload.currentTurnUserId);
+  });
+
+  const startAck = await emitAck(cIdle, 'snakes:room:start', {
+    token: idlePlayer.token,
+    roomCode
+  });
+  assert.equal(startAck.ok, true);
+
+  const finished = await finishedPromise;
+  assert.equal(finished.reason, 'afk_timeout_3');
+  assert.equal(finished.winnerUserId, activeOpponent.user.id);
+  assert.ok(afkOutEvent, 'game.player_afk_out should have been emitted');
+  assert.equal(afkOutEvent.userId, idlePlayer.user.id);
+  assert.equal(afkOutEvent.autoTimeoutCount, 3);
+
+  assert.ok(latestRoomState, 'Room state should have been received');
+  assert.equal(latestRoomState.finishReason, 'afk_timeout_3');
+  const eliminatedPlayer = latestRoomState.players.find(p => p.userId === idlePlayer.user.id);
+  assert.equal(eliminatedPlayer.status, 'eliminated');
+  assert.equal(eliminatedPlayer.autoTimeoutCount, 3);
+
+  cIdle.disconnect();
+  cOpp.disconnect();
 });
