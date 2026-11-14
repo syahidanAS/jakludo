@@ -389,7 +389,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
       }
 
       const steps = Array.isArray(stepPath) && stepPath.length > 0 ? stepPath : [stepTo];
-      const stepInterval = 450;
+      const stepInterval = 420;
 
       steps.forEach((sq, idx) => {
         const t = setTimeout(() => {
@@ -401,7 +401,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
         animTimersRef.current.push(t);
       });
 
-      const afterStepsDelay = diceLandDelay + steps.length * stepInterval + 120;
+      const afterStepsDelay = diceLandDelay + steps.length * stepInterval + 80;
 
       if (ladder) {
         animEndTimeRef.current = Date.now() + afterStepsDelay + 700;

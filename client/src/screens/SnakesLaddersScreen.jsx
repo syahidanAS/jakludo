@@ -776,6 +776,8 @@ export default function SnakesLaddersScreen({
                     const shiftY = sameSquarePlayers.length > 1 ? (offsetIdx === 0 ? -1.4 : 1.4) : 0;
 
                     const hopCount = hopCounters[p.id] || 0;
+                    const hopClass =
+                      hopCount > 0 ? (hopCount % 2 === 1 ? 'is-hopping-a' : 'is-hopping-b') : '';
                     const isTurn = currentTurnPlayer?.id === p.id;
                     return (
                       <div
@@ -787,11 +789,8 @@ export default function SnakesLaddersScreen({
                         }}
                         title={`${p.username || p.display_name} — Kotak ${pos}`}
                       >
-                        <div key={`shadow-${hopCount}`} className={`snk-token__shadow ${hopCount > 0 ? 'is-hopping' : ''}`} />
-                        <div
-                          key={hopCount}
-                          className={`snk-token__pawn ${hopCount > 0 ? 'is-hopping' : ''}`}
-                        >
+                        <div className={`snk-token__shadow ${hopClass}`} />
+                        <div className={`snk-token__pawn ${hopClass}`}>
                           <SnakesPawnSvg color={p.color || 'red'} isTurn={isTurn} idSuffix={String(idx)} />
                         </div>
                       </div>
