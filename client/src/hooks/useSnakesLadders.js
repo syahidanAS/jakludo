@@ -40,7 +40,8 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
   const [diceValue, setDiceValue] = useState(null);
   const [animatingMove, setAnimatingMove] = useState(false);
   const [animatedPositions, setAnimatedPositions] = useState({});
-  const [boardEffect, setBoardEffect] = useState(null); // { type: 'ladder' | 'snake' | 'overshoot', from, to, playerName }
+  const [hopCounters, setHopCounters] = useState({});
+  const [boardEffect, setBoardEffect] = useState(null); // { type: 'ladder' | 'snake' | 'overshoot' | 'three_sixes' | 'extra_turn', from, to, playerName }
 
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -195,14 +196,15 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
     return () => clearInterval(id);
   }, [searching, searchStartedAt]);
 
-  // Aktifkan BGM selama berada di game Ular Tangga (lobby maupun room aktif)
+  // Aktifkan BGM secara otomatis saat permainan Ular Tangga dimulai (status === 'playing')
   useEffect(() => {
     if (!active) return undefined;
-    sound.setInRoom(true);
+    const isPlaying = room?.status === 'playing';
+    sound.setInRoom(isPlaying);
     return () => {
       sound.setInRoom(false);
     };
-  }, [active]);
+  }, [active, room?.status]);
 
   // Reconnect otomatis ke room Ular Tangga aktif saat socket tersambung kembali
   useEffect(() => {
@@ -326,15 +328,33 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
 
     const onPlayerMoved = payload => {
       if (!payload) return;
-      const { playerId, displayName, from, stepTo, to, moved, overshoot, stepPath, ladder, snake } = payload;
+      const { playerId, displayName, from, stepTo, to, moved, overshoot, threeSixesSkip, extraTurn, stepPath, ladder, snake } = payload;
 
-      // Jalankan animasi langkah demi langkah setelah dadu mendarat (~260ms)
+      // Jalankan animasi langkah demi langkah setelah dadu mendarat (~280ms)
       // Catatan: jangan batalkan diceRollTimerRef agar setRolling(false) tetap tereksekusi!
       clearAnimTimers();
       animatingRef.current = true;
       setAnimatingMove(true);
 
       const diceLandDelay = 280;
+
+      if (threeSixesSkip) {
+        animEndTimeRef.current = Date.now() + diceLandDelay + 350;
+        const t = setTimeout(() => {
+          setRolling(false);
+          sound.playMonsterHurt?.() || sound.playClick?.();
+          showBoardEffect({
+            type: 'three_sixes',
+            from,
+            to: from,
+            playerName: displayName
+          }, 2600);
+          animatingRef.current = false;
+          setAnimatingMove(false);
+        }, diceLandDelay);
+        animTimersRef.current.push(t);
+        return;
+      }
 
       if (overshoot || !moved) {
         animEndTimeRef.current = Date.now() + diceLandDelay + 300;
@@ -361,6 +381,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
           if (idx === 0) setRolling(false);
           sound.playStep?.() || sound.playClick?.();
           setAnimatedPositions(prev => ({ ...prev, [playerId]: sq }));
+          setHopCounters(prev => ({ ...prev, [playerId]: (prev[playerId] || 0) + 1 }));
         }, diceLandDelay + idx * stepInterval);
         animTimersRef.current.push(t);
       });
@@ -372,6 +393,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
         const tLadder = setTimeout(() => {
           sound.playCheer?.() || sound.playWin?.();
           setAnimatedPositions(prev => ({ ...prev, [playerId]: ladder.to }));
+          setHopCounters(prev => ({ ...prev, [playerId]: (prev[playerId] || 0) + 1 }));
           showBoardEffect({
             type: 'ladder',
             from: ladder.from,
@@ -389,6 +411,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
         const tSnake = setTimeout(() => {
           sound.playMonsterHurt?.() || sound.playClick?.();
           setAnimatedPositions(prev => ({ ...prev, [playerId]: snake.to }));
+          setHopCounters(prev => ({ ...prev, [playerId]: (prev[playerId] || 0) + 1 }));
           showBoardEffect({
             type: 'snake',
             from: snake.from,
@@ -405,6 +428,14 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
         animEndTimeRef.current = Date.now() + afterStepsDelay;
         const tDone = setTimeout(() => {
           setAnimatedPositions(prev => ({ ...prev, [playerId]: to }));
+          if (extraTurn) {
+            showBoardEffect({
+              type: 'extra_turn',
+              from,
+              to,
+              playerName: displayName
+            }, 1800);
+          }
           animatingRef.current = false;
           setAnimatingMove(false);
         }, afterStepsDelay);
@@ -773,6 +804,7 @@ export function useSnakesLadders({ socket, authToken, currentUser, onUpdateUser,
     diceValue,
     animatingMove,
     animatedPositions,
+    hopCounters,
     boardEffect,
     error,
     notice,

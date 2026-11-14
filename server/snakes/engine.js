@@ -462,7 +462,18 @@ function executeBotTurn(room, expectedTurnNumber, isRetry = false) {
 
 function advanceTurn(room) {
   if (!room || room.status !== 'playing') return;
+  room.consecutiveSixes = 0;
   room.turnIndex = snakesRules.getNextTurnIndex(room.turnIndex, room.players.length);
+  room.turnNumber = (Number(room.turnNumber) || 1) + 1;
+  room.currentTurnPlayerId = room.players[room.turnIndex]?.id || null;
+  room.updatedAt = Date.now();
+  snakesStore.saveRoomAndPlayers(room);
+  scheduleTurnTimerAndBot(room);
+  emitRoomState(room);
+}
+
+function grantExtraTurn(room) {
+  if (!room || room.status !== 'playing') return;
   room.turnNumber = (Number(room.turnNumber) || 1) + 1;
   room.currentTurnPlayerId = room.players[room.turnIndex]?.id || null;
   room.updatedAt = Date.now();
@@ -503,11 +514,13 @@ function executeAuthoritativeRoll(room, actingPlayer, options = {}) {
     const outcome = snakesRules.calculateTurnOutcome({
       currentPosition: currentPlayer.position,
       dice,
+      consecutiveSixes: room.consecutiveSixes || 0,
       ladders: snakesConfig.LADDERS,
       snakes: snakesConfig.SNAKES
     });
 
     currentPlayer.position = outcome.finalPosition;
+    room.consecutiveSixes = outcome.consecutiveSixes;
     room.updatedAt = now;
 
     const rollInfo = {
@@ -524,6 +537,8 @@ function executeAuthoritativeRoll(room, actingPlayer, options = {}) {
       to: outcome.finalPosition,
       moved: outcome.moved,
       overshoot: outcome.overshoot,
+      threeSixesSkip: outcome.threeSixesSkip,
+      extraTurn: outcome.extraTurn,
       stepPath: outcome.stepPath,
       ladder: outcome.ladder,
       snake: outcome.snake,
@@ -564,6 +579,8 @@ function executeAuthoritativeRoll(room, actingPlayer, options = {}) {
       to: outcome.finalPosition,
       moved: outcome.moved,
       overshoot: outcome.overshoot,
+      threeSixesSkip: outcome.threeSixesSkip,
+      extraTurn: outcome.extraTurn,
       stepPath: outcome.stepPath,
       ladder: outcome.ladder,
       snake: outcome.snake,
@@ -610,7 +627,11 @@ function executeAuthoritativeRoll(room, actingPlayer, options = {}) {
     }
 
     room.rollingLock = false;
-    advanceTurn(room);
+    if (outcome.extraTurn) {
+      grantExtraTurn(room);
+    } else {
+      advanceTurn(room);
+    }
 
     return {
       ok: true,

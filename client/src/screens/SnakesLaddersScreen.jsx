@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Icon from '../components/Icon';
 import Modal from '../components/Modal';
 import PlayerAvatar from '../components/PlayerAvatar';
@@ -349,6 +349,7 @@ export default function SnakesLaddersScreen({
     diceValue,
     animatingMove,
     animatedPositions,
+    hopCounters,
     boardEffect,
     error,
     notice,
@@ -365,21 +366,6 @@ export default function SnakesLaddersScreen({
 
   const [copiedCode, setCopiedCode] = useState(false);
   const [showMobileHistory, setShowMobileHistory] = useState(false);
-  const [audioState, setAudioState] = useState(() => sound.getState());
-
-  useEffect(() => sound.subscribe(state => setAudioState({ ...state })), []);
-
-  const isBgmActive = Boolean(audioState.bgmEnabled && !audioState.bgmMuted);
-  const toggleBgmDirect = () => {
-    sound.unlockFromGesture?.();
-    sound.playClick?.();
-    if (isBgmActive) {
-      sound.toggleBgmMute();
-    } else {
-      if (audioState.bgmMuted) sound.toggleBgmMute();
-      sound.playBgm();
-    }
-  };
 
   const ladders = room?.boardConfig?.ladders || DEFAULT_LADDERS;
   const snakesMap = room?.boardConfig?.snakes || DEFAULT_SNAKES;
@@ -563,17 +549,19 @@ export default function SnakesLaddersScreen({
     const statusDescription = rolling
       ? 'Mengocok dadu...'
       : animatingMove
-      ? 'Bidak sedang melangkah...'
+      ? 'Bidak sedang melompat...'
       : room.lastRoll
-      ? `${room.lastRoll.displayName} dapat 🎲 ${room.lastRoll.dice}: kotak ${room.lastRoll.from} → ${room.lastRoll.to}${
-          room.lastRoll.ladder
-            ? ' (🪜 Naik tangga!)'
-            : room.lastRoll.snake
-            ? ' (🐍 Turun ular!)'
-            : room.lastRoll.overshoot
-            ? ` (Lewat 100, tetap di ${room.lastRoll.from})`
-            : ''
-        }`
+      ? room.lastRoll.threeSixesSkip
+        ? `${room.lastRoll.displayName} dapat dadu 6 ke-3 berturut-turut! Giliran dilewati ke lawan.`
+        : `${room.lastRoll.displayName} dapat 🎲 ${room.lastRoll.dice}: kotak ${room.lastRoll.from} → ${room.lastRoll.to}${
+            room.lastRoll.ladder
+              ? ' (🪜 Naik tangga!)'
+              : room.lastRoll.snake
+              ? ' (🐍 Turun ular!)'
+              : room.lastRoll.overshoot
+              ? ` (Lewat 100, tetap di ${room.lastRoll.from})`
+              : ''
+          }${room.lastRoll.extraTurn ? ' · 🎉 Kocok lagi!' : ''}`
       : 'Lempar dadu untuk mulai melangkah dari posisi 0!';
 
     return (
@@ -593,26 +581,6 @@ export default function SnakesLaddersScreen({
             </div>
           </div>
           <div className="snk-game-topbar__right">
-            <button
-              type="button"
-              className={`btn btn--sm ${isBgmActive ? 'btn--primary' : 'btn--secondary'}`}
-              onClick={toggleBgmDirect}
-              title={isBgmActive ? 'Matikan Musik Latar' : 'Nyalakan Musik Latar'}
-              aria-pressed={isBgmActive}
-            >
-              {isBgmActive ? '🔊' : '🔇'} <span className="show-desktop">{isBgmActive ? 'Musik ON' : 'Musik OFF'}</span>
-            </button>
-            {onOpenAudio && (
-              <button
-                type="button"
-                className="btn btn--secondary btn--sm"
-                onClick={onOpenAudio}
-                title="Pengaturan Musik & Suara"
-                aria-label="Pengaturan Musik dan Suara"
-              >
-                🎚️
-              </button>
-            )}
             <button
               type="button"
               className="btn btn--secondary btn--sm hide-desktop"
@@ -753,6 +721,7 @@ export default function SnakesLaddersScreen({
                     const shiftX = sameSquarePlayers.length > 1 ? (offsetIdx === 0 ? -1.8 : 1.8) : 0;
                     const shiftY = sameSquarePlayers.length > 1 ? (offsetIdx === 0 ? -1.4 : 1.4) : 0;
 
+                    const hopCount = hopCounters[p.id] || 0;
                     return (
                       <div
                         key={p.id}
@@ -765,9 +734,14 @@ export default function SnakesLaddersScreen({
                         }}
                         title={`${p.display_name} — Kotak ${pos}`}
                       >
-                        <span className="snk-token__inner">
-                          {p.player_type === 'bot' ? '🤖' : p.display_name?.slice(0, 1).toUpperCase() || (idx + 1)}
-                        </span>
+                        <div
+                          key={hopCount}
+                          className={`snk-token__body ${hopCount > 0 ? 'is-hopping' : ''}`}
+                        >
+                          <span className="snk-token__inner">
+                            {p.player_type === 'bot' ? '🤖' : p.display_name?.slice(0, 1).toUpperCase() || (idx + 1)}
+                          </span>
+                        </div>
                       </div>
                     );
                   })}
@@ -800,6 +774,24 @@ export default function SnakesLaddersScreen({
                         <div>
                           <strong>Melewati Kotak 100!</strong>
                           <p>{boardEffect.playerName} tetap di kotak {boardEffect.from} (butuh angka pas ke 100).</p>
+                        </div>
+                      </>
+                    )}
+                    {boardEffect.type === 'three_sixes' && (
+                      <>
+                        <span className="snk-board-effect__icon">⚠️</span>
+                        <div>
+                          <strong>Dadu 6 Tiga Kali Berturut-turut!</strong>
+                          <p>Giliran {boardEffect.playerName} dilewati ke lawan.</p>
+                        </div>
+                      </>
+                    )}
+                    {boardEffect.type === 'extra_turn' && (
+                      <>
+                        <span className="snk-board-effect__icon">🎲✨</span>
+                        <div>
+                          <strong>Dapat Angka 6!</strong>
+                          <p>{boardEffect.playerName} berhak mengocok dadu lagi!</p>
                         </div>
                       </>
                     )}
@@ -943,12 +935,15 @@ export default function SnakesLaddersScreen({
                       <span className={`snk-color-dot color-${item.color}`} />
                       <span className="snk-log-item__text">
                         <strong>{item.displayName}</strong> 🎲<strong>{item.dice}</strong>:{' '}
-                        {item.overshoot ? (
-                          <span>tetap di #{item.from} (&gt;100)</span>
+                        {item.threeSixesSkip ? (
+                          <span>dadu 6 ke-3 berturut-turut, giliran dilewati ⚠️</span>
+                        ) : item.overshoot ? (
+                          <span>tetap di #{item.from} (&gt;100){item.extraTurn ? ' · kocok lagi!' : ''}</span>
                         ) : (
                           <span>
                             {item.from} → {item.stepTo}
                             {item.ladder ? ` 🪜 naik ke ${item.to}` : item.snake ? ` 🐍 turun ke ${item.to}` : ''}
+                            {item.extraTurn ? ' · kocok lagi!' : ''}
                           </span>
                         )}
                       </span>
@@ -1111,28 +1106,7 @@ export default function SnakesLaddersScreen({
           <Icon name="arrow-left" size={16} />
           <span>Daftar Game PlayGo</span>
         </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button
-            type="button"
-            className={`btn btn--sm ${isBgmActive ? 'btn--primary' : 'btn--secondary'}`}
-            onClick={toggleBgmDirect}
-            title={isBgmActive ? 'Matikan Musik Latar' : 'Nyalakan Musik Latar'}
-            aria-pressed={isBgmActive}
-          >
-            {isBgmActive ? '🔊 Musik' : '🔇 Musik'}
-          </button>
-          {onOpenAudio && (
-            <button
-              type="button"
-              className="btn btn--secondary btn--sm"
-              onClick={onOpenAudio}
-              title="Pengaturan Musik & Suara"
-            >
-              🎚️
-            </button>
-          )}
-          <span className="badge badge--brand">Board Game · Ular Tangga</span>
-        </div>
+        <span className="badge badge--brand">Board Game · Ular Tangga</span>
       </div>
 
       {/* Hero Card Ringkas & Modern (Setara Chess Master) */}
@@ -1314,8 +1288,8 @@ export default function SnakesLaddersScreen({
         <div className="snk-rules-strip__item">
           <span className="snk-rules-strip__icon">🎯</span>
           <div>
-            <strong>Pas di Kotak 100</strong>
-            <p className="muted">Jika angka dadu melewati 100, bidak tetap di tempat. Angka 6 tidak memberi giliran ekstra.</p>
+            <strong>Pas di Kotak 100 &amp; Bonus Dadu 6</strong>
+            <p className="muted">Dapat 6 berhak kocok lagi (3× berturut-turut dilewati). Harus pas ke kotak 100.</p>
           </div>
         </div>
       </section>

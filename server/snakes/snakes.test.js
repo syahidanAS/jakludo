@@ -69,7 +69,7 @@ async function registerUser(prefix = 'sl') {
 // 1. GAME RULES & BOARD CONFIGURATION TESTS
 // ==========================================
 
-test('1. Game Rules: board configuration, zig-zag coordinates, ladders, snakes, exact 100, overshoot, no extra turn on 6', () => {
+test('1. Game Rules: board configuration, zig-zag coordinates, ladders, snakes, exact 100, overshoot, extra turn on 6 & 3x6 skip', () => {
   // Board configuration validation
   const validation = snakesConfig.validateBoardConfiguration();
   assert.equal(validation.valid, true, `Board config errors: ${validation.errors.join(', ')}`);
@@ -147,11 +147,24 @@ test('1. Game Rules: board configuration, zig-zag coordinates, ladders, snakes, 
   assert.equal(at98Roll4.overshoot, true);
   assert.equal(at98Roll4.finalPosition, 98);
 
-  // Rule 8: Rolling 6 does NOT grant an extra turn
-  const rollSix = snakesRules.calculateTurnOutcome({ currentPosition: 10, dice: 6 });
-  assert.equal(rollSix.dice, 6);
-  assert.equal(rollSix.finalPosition, 16);
-  assert.equal(rollSix.extraTurn, false);
+  // Rule 8: Rolling 6 grants an extra turn (1st & 2nd), but 3 consecutive 6s skip turn to opponent
+  const rollSix1 = snakesRules.calculateTurnOutcome({ currentPosition: 10, dice: 6, consecutiveSixes: 0 });
+  assert.equal(rollSix1.dice, 6);
+  assert.equal(rollSix1.finalPosition, 16);
+  assert.equal(rollSix1.extraTurn, true);
+  assert.equal(rollSix1.consecutiveSixes, 1);
+
+  const rollSix2 = snakesRules.calculateTurnOutcome({ currentPosition: 16, dice: 6, consecutiveSixes: 1 });
+  assert.equal(rollSix2.finalPosition, 22);
+  assert.equal(rollSix2.extraTurn, true);
+  assert.equal(rollSix2.consecutiveSixes, 2);
+
+  const rollSix3 = snakesRules.calculateTurnOutcome({ currentPosition: 22, dice: 6, consecutiveSixes: 2 });
+  assert.equal(rollSix3.finalPosition, 22);
+  assert.equal(rollSix3.moved, false);
+  assert.equal(rollSix3.threeSixesSkip, true);
+  assert.equal(rollSix3.extraTurn, false);
+  assert.equal(rollSix3.consecutiveSixes, 0);
 
   // Turn advancement
   assert.equal(snakesRules.getNextTurnIndex(0, 2), 1);
