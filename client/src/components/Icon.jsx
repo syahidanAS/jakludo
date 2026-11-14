@@ -41,7 +41,11 @@ const EMOJI_TO_ICON = {
   '💡': 'bulb',
   '❤️': 'heart',
   '✏️': 'edit',
-  '🚪': 'logout'
+  '🚪': 'logout',
+  '♟️': 'chess',
+  '♞': 'chess',
+  '🏳️': 'flag',
+  '⏱️': 'clock'
 };
 
 export function resolveIconName(nameOrEmoji) {
@@ -512,6 +516,42 @@ export default function Icon({ name, size = 20, className = '', label }) {
             fill="var(--brand-soft)"
           />
           <path d="M12 8v3" />
+        </svg>
+      );
+
+    case 'chess':
+    case 'knight':
+      return (
+        <svg {...common}>
+          <path
+            d="M7 20h10M8 17h8l-1-4.5c1.8-.8 3-2.5 3-4.8 0-2.6-2.1-4.7-4.7-4.7-.8 0-1.5.2-2.2.6L9.5 2.5 8 5.2C6.5 6.4 6 8.2 6 9.8l2.5 1.2L7 13.5 9.5 14 8 17Z"
+            fill="var(--brand-soft)"
+          />
+          <circle cx="11.5" cy="7.5" r="0.9" fill="currentColor" stroke="none" />
+        </svg>
+      );
+
+    case 'flag':
+      return (
+        <svg {...common}>
+          <path d="M5 21V4" />
+          <path d="M5 4h12l-2.5 4.5L17 13H5" fill="var(--brand-soft)" />
+        </svg>
+      );
+
+    case 'clock':
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="8.5" fill="var(--brand-soft)" />
+          <path d="M12 7.5V12l3 2" />
+        </svg>
+      );
+
+    case 'download':
+      return (
+        <svg {...common}>
+          <path d="M12 3v12m0 0-4-4m4 4 4-4" />
+          <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
         </svg>
       );
 

@@ -23,6 +23,13 @@ const SEO_CONFIGS = {
     image: '/playgo-logo.jpg',
     query: '?game=monster-quiz'
   },
+  chess: {
+    title: 'Chess Master (Catur Online Multiplayer) · PlayGo Strategy',
+    description:
+      'Master the Board. Rule the Game. Challenge your friends in classic online chess di PlayGo! Rating Elo resmi, Bullet, Blitz, Rapid, Private Room, dan analisis PGN.',
+    image: '/playgo-logo.jpg',
+    query: '?game=chess-master'
+  },
   shop: {
     title: 'Toko Item & Hints Jawaban · PlayGo Multiplayer',
     description:
@@ -61,6 +68,7 @@ export function getInitialGameModeFromUrl() {
   const game = String(params.get('game') || '').toLowerCase();
   if (game === 'jakludo' || game === 'ludo') return 'ludo';
   if (game === 'monster-quiz' || game === 'quiz') return 'quiz';
+  if (game === 'chess-master' || game === 'chess') return 'chess';
   return 'hub';
 }
 
@@ -77,8 +85,13 @@ export function applySeo({ gameMode = 'hub', modal = null, roomCode = null }) {
   const cfg = SEO_CONFIGS[key] || SEO_CONFIGS.hub;
 
   let title = cfg.title;
-  if (roomCode && (gameMode === 'ludo' || gameMode === 'quiz')) {
-    const gameLabel = gameMode === 'quiz' ? 'Monster Quiz Battle' : 'JakLudo';
+  if (roomCode && (gameMode === 'ludo' || gameMode === 'quiz' || gameMode === 'chess')) {
+    const gameLabel =
+      gameMode === 'quiz'
+        ? 'Monster Quiz Battle'
+        : gameMode === 'chess'
+        ? 'Chess Master'
+        : 'JakLudo';
     title = `Room ${roomCode} · ${gameLabel} — PlayGo`;
   }
 

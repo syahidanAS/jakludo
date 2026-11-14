@@ -10,12 +10,13 @@
     "start": "node server/index.js",
     "db:migrate": "node server/migrate.js",
     "db:status": "node server/migrate.js --status",
-    "test": "node --test --test-concurrency=1 server/game/rules.test.js server/items/items.test.js server/server.test.js server/migrate.test.js server/social/social.test.js server/quiz/quiz.test.js",
+    "test": "node --test --test-concurrency=1 server/game/rules.test.js server/items/items.test.js server/server.test.js server/migrate.test.js server/social/social.test.js server/quiz/quiz.test.js server/chess/chess.test.js",
     "backup": "node server/backup.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1165.0",
     "@aws-sdk/s3-request-presigner": "^3.1165.0",
+    "chess.js": "^1.0.0-beta.8",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "multer": "^2.5.0",

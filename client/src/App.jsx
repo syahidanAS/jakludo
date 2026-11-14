@@ -12,12 +12,14 @@ import HomeScreen from './screens/HomeScreen';
 import LobbyScreen from './screens/LobbyScreen';
 import GameScreen from './screens/GameScreen';
 import MonsterQuizScreen from './screens/MonsterQuizScreen';
+import ChessMasterScreen from './screens/ChessMasterScreen';
 import AudioSettingsModal from './AudioSettingsModal';
 import PlayerProfileModal from './social/PlayerProfileModal';
 import { useAuth } from './hooks/useAuth';
 import { useGameRoom } from './hooks/useGameRoom';
 import { useSocial } from './hooks/useSocial';
 import { useMonsterQuiz } from './hooks/useMonsterQuiz';
+import { useChessMaster } from './hooks/useChessMaster';
 import { useActiveRooms } from './hooks/useActiveRooms';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useTheme } from './hooks/useTheme';
@@ -112,6 +114,14 @@ export default function App() {
     onNeedLogin: () => navigateTo({ modal: 'auth' }),
     active: gameMode === 'quiz'
   });
+  const chess = useChessMaster({
+    socket: game.socket,
+    authToken: auth.authToken,
+    currentUser: auth.currentUser,
+    onUpdateUser: auth.setCurrentUser,
+    onNeedLogin: () => navigateTo({ modal: 'auth' }),
+    active: gameMode === 'chess'
+  });
   const social = useSocial({
     socket: game.socket,
     authToken: auth.authToken,
@@ -149,10 +159,16 @@ export default function App() {
     }
   }, [quiz.room?.code, game.screen]);
   useEffect(() => {
+    if (chess.room?.code && game.screen === 'home') {
+      setGameMode('chess');
+      if (window.history.state?.playgo) window.history.replaceState({ ...window.history.state, mode: 'chess' }, '');
+    }
+  }, [chess.room?.code, game.screen]);
+  useEffect(() => {
     const activeMode = game.screen === 'room' ? 'ludo' : gameMode;
-    const activeCode = game.room?.code || quiz.room?.code || null;
+    const activeCode = game.room?.code || quiz.room?.code || chess.room?.code || null;
     applySeo({ gameMode: activeMode, modal, roomCode: activeCode });
-  }, [gameMode, game.screen, game.room?.code, quiz.room?.code, modal]);
+  }, [gameMode, game.screen, game.room?.code, quiz.room?.code, chess.room?.code, modal]);
 
   useEffect(() => {
     const st = window.history.state?.playgo ? window.history.state : {};
@@ -190,15 +206,16 @@ export default function App() {
         apply(st);
         return;
       }
-      if (r.inGame || r.inQuizBattle) {
+      if (r.inGame || r.inQuizBattle || r.inChessBattle) {
         restore(r.currentUrl);
         if (r.inGame) setLeaveRequest(n => n + 1);
         return;
       }
-      if (r.inLobby || r.inQuizRoom) {
+      if (r.inLobby || r.inQuizRoom || r.inChessRoom) {
         // Back dari lobby = keluar room, tetap di halaman game yang sama
         if (r.inLobby) r.leaveLudo();
-        else r.leaveQuiz();
+        else if (r.inQuizRoom) r.leaveQuiz();
+        else r.leaveChess();
         restore(gameModeUrl(cur.mode));
         return;
       }
@@ -242,20 +259,27 @@ export default function App() {
   const isMobileFeaturePage =
     isMobileView && !inGame && (modal === 'friends' || modal === 'groups' || modal === 'shop');
   const quizRoom = quiz.room;
+  const chessRoom = chess.room;
   roomRef.current = {
     inRoom: game.screen === 'room',
     inGame,
     inLobby: game.screen === 'room' && !inGame,
     inQuizRoom: !!quizRoom,
     inQuizBattle: !!quizRoom && quizRoom.phase !== 'lobby' && quizRoom.phase !== 'finished',
+    inChessRoom: !!chessRoom,
+    inChessBattle: !!chessRoom && chessRoom.phase === 'playing',
     currentUrl: window.location.pathname + window.location.search,
     profileOpen: !!profileUserId,
     closeProfile: () => setProfileUserId(''),
     leaveLudo: game.actions.leaveRoom,
-    leaveQuiz: quiz.actions.leaveRoom
+    leaveQuiz: quiz.actions.leaveRoom,
+    leaveChess: chess.actions.leaveRoom
   };
 
-  const showBottomNav = !inGame && !(gameMode === 'quiz' && quiz.room && quiz.room.phase !== 'lobby');
+  const showBottomNav =
+    !inGame &&
+    !(gameMode === 'quiz' && quiz.room && quiz.room.phase !== 'lobby') &&
+    !(gameMode === 'chess' && chess.room && chess.room.phase !== 'lobby');
 
   return (
     <div className={`app ${inGame ? 'app--game' : ''} ${showBottomNav ? 'app--bottom-nav' : ''}`}>
@@ -317,6 +341,9 @@ export default function App() {
           if (inviteGameType === 'quiz') {
             navigateTo({ mode: 'quiz' });
             quiz.actions.joinRoomByCode(targetCode);
+          } else if (inviteGameType === 'chess') {
+            navigateTo({ mode: 'chess' });
+            chess.actions.joinRoomByCode(targetCode);
           } else {
             navigateTo({ mode: 'ludo' });
             game.actions.joinRoom(targetCode);
@@ -407,6 +434,19 @@ export default function App() {
           onOpenAudio={openAudio}
           onViewProfile={openProfile}
         />
+      ) : gameMode === 'chess' ? (
+        <ChessMasterScreen
+          chess={chess}
+          currentUser={auth.currentUser}
+          onBackToMenu={() => {
+            sound.playClick();
+            navigateTo({ mode: 'hub' });
+          }}
+          onOpenAuth={open('auth')}
+          onOpenShop={open('shop')}
+          onOpenAudio={openAudio}
+          onViewProfile={openProfile}
+        />
       ) : (
         <HomeScreen
           user={auth.currentUser}
@@ -416,6 +456,7 @@ export default function App() {
           error={game.error}
           activeRooms={activeRooms}
           activeQuizRoom={quiz.room}
+          activeChessRoom={chess.room}
           isInstalled={pwa.isInstalled}
           actions={game.actions}
           friendBadgeCount={social.friendBadgeCount}
@@ -480,7 +521,7 @@ export default function App() {
             currentUser={auth.currentUser}
             socket={game.socket}
             onViewProfile={openProfile}
-            initialTab={gameMode === 'quiz' ? 'quiz' : 'ludo'}
+            initialTab={gameMode === 'quiz' ? 'quiz' : gameMode === 'chess' ? 'chess' : 'ludo'}
           />
         )}
         {!isMobileFeaturePage && modal === 'shop' && (

@@ -6,6 +6,8 @@ const engine = require('../game/engine');
 const social = require('../social/store');
 const quizEngine = require('../quiz/engine');
 const quizStore = require('../quiz/store');
+const chessEngine = require('../chess/engine');
+const chessStore = require('../chess/store');
 const { createLimiter } = require('../lib/limiter');
 const { EMOJIS, MAX_CHATS } = require('../game/config');
 
@@ -15,6 +17,8 @@ const quizActionLimiter = createLimiter({ windowMs: 3000, max: 12 });
 // Aksi selama bermain (jawab, siap, hint, pilih monster, dll.). Pemain normal hanya 1–3 aksi per ronde
 // 15 detik; batas ini cukup longgar untuk itu tapi memotong spam event dari klien nakal.
 const quizPlayLimiter = createLimiter({ windowMs: 3000, max: 15 });
+const chessActionLimiter = createLimiter({ windowMs: 3000, max: 12 });
+const chessPlayLimiter = createLimiter({ windowMs: 3000, max: 25 });
 const QUIZ_RATE_ERROR = { ok: false, error: 'Terlalu banyak aksi dalam waktu singkat.' };
 
 // Tolak event bila socket melewati batas; balas callback dengan error yang sama
@@ -101,9 +105,43 @@ function registerSocketHandlers(io) {
       const reply = payload => { if (typeof cb === 'function') cb(payload); };
       const r = currentRoom();
       const qr = !r && socket.data.quizRoom ? quizEngine.quizRooms.get(socket.data.quizRoom) : null;
+      const cr = !r && !qr && socket.data.chessRoom ? chessEngine.chessRooms.get(socket.data.chessRoom) : null;
 
-      if (!r && !qr) {
+      if (!r && !qr && !cr) {
         return reply({ ok: false, error: 'Room tidak tersedia atau permainan sudah dimulai.' });
+      }
+
+      if (cr) {
+        if (cr.phase !== 'lobby') {
+          return reply({ ok: false, error: 'Pertandingan Chess Master sudah dimulai.' });
+        }
+        if (cr.players.length >= 2) {
+          return reply({ ok: false, error: 'Room Chess Master sudah penuh (maksimal 2 pemain).' });
+        }
+        const mePlayer = cr.players.find(p => p.socketId === socket.id || p.userId === socket.data.userId);
+        const senderUserId = socket.data.userId || mePlayer?.userId;
+        if (!senderUserId) return reply({ ok: false, error: 'Silakan login terlebih dahulu.' });
+        if (!targetUserId || targetUserId === senderUserId) return reply({ ok: false, error: 'Target undangan tidak valid.' });
+        if (cr.players.some(p => p.userId === targetUserId)) {
+          return reply({ ok: false, error: 'Pemain tersebut sudah berada di dalam room.' });
+        }
+        if (cr.groupId) {
+          if (!social.isGroupMember(cr.groupId, targetUserId)) {
+            return reply({ ok: false, error: 'Hanya anggota grup yang dapat diundang ke match grup ini.' });
+          }
+        } else if (!social.areFriends(senderUserId, targetUserId)) {
+          return reply({ ok: false, error: 'Kamu hanya dapat mengundang pemain yang sudah menjadi teman.' });
+        }
+        if (!social.isUserOnline(targetUserId)) {
+          return reply({ ok: false, error: 'Teman sedang offline.' });
+        }
+        social.emitToUser(targetUserId, 'room:invite', {
+          code: cr.code,
+          gameType: 'chess',
+          from: social.userSummary(senderUserId),
+          group: cr.groupId ? social.getGroupBasic(cr.groupId) : null
+        });
+        return reply({ ok: true });
       }
 
       if (qr) {
@@ -356,6 +394,94 @@ function registerSocketHandlers(io) {
       if (cb) cb({ ok: true, leaderboard: lb });
     });
 
+    // ==========================================
+    // CHESS MASTER SOCKET EVENTS
+    // ==========================================
+
+    on(socket, 'chess:matchmaking:join', (payload, cb) => {
+      if (!allowQuiz(chessActionLimiter, socket, cb)) return;
+      const res = chessEngine.joinMatchmaking(socket, payload, store.rooms);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'chess:matchmaking:leave', (payload, cb) => {
+      if (!allowQuiz(chessPlayLimiter, socket, cb)) return;
+      const res = chessEngine.leaveMatchmaking(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'chess:room:create', (payload, cb) => {
+      if (!allowQuiz(chessActionLimiter, socket, cb)) return;
+      const res = chessEngine.createRoom(socket, payload, store.rooms);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'chess:room:join', (payload, cb) => {
+      if (!allowQuiz(chessActionLimiter, socket, cb)) return;
+      const res = chessEngine.joinRoom(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'chess:room:config', (payload, cb) => {
+      if (!allowQuiz(chessPlayLimiter, socket, cb)) return;
+      const res = chessEngine.configureRoom(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'chess:player:ready', (payload, cb) => {
+      if (!allowQuiz(chessPlayLimiter, socket, cb)) return;
+      const res = chessEngine.setPlayerReady(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'chess:move', (payload, cb) => {
+      if (!allowQuiz(chessPlayLimiter, socket, cb)) return;
+      const res = chessEngine.submitMove(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'chess:draw:offer', (payload, cb) => {
+      if (!allowQuiz(chessPlayLimiter, socket, cb)) return;
+      const res = chessEngine.offerDraw(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'chess:draw:accept', (payload, cb) => {
+      if (!allowQuiz(chessPlayLimiter, socket, cb)) return;
+      const res = chessEngine.acceptDraw(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'chess:draw:decline', (payload, cb) => {
+      if (!allowQuiz(chessPlayLimiter, socket, cb)) return;
+      const res = chessEngine.declineDraw(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'chess:resign', (payload, cb) => {
+      if (!allowQuiz(chessPlayLimiter, socket, cb)) return;
+      const res = chessEngine.resignMatch(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'chess:rematch', (payload, cb) => {
+      if (!allowQuiz(chessPlayLimiter, socket, cb)) return;
+      const res = chessEngine.requestRematch(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'chess:room:leave', (payload, cb) => {
+      const res = chessEngine.leaveRoom(socket, payload);
+      if (cb) cb(res);
+    });
+
+    on(socket, 'chess:leaderboard:get', (payload, cb) => {
+      if (!allowQuiz(chessPlayLimiter, socket, cb)) return;
+      const lb = chessStore.getChessLeaderboard(payload || {});
+      socket.emit('chess:leaderboard:update', lb);
+      if (cb) cb({ ok: true, leaderboard: lb });
+    });
+
     socket.on('disconnect', reason => {
       logConnection(socket, 'disconnect', ` reason="${reason}" after=${Math.round((Date.now() - connectedAt) / 1000)}s`);
       social.detachSocket(socket);
@@ -363,6 +489,11 @@ function registerSocketHandlers(io) {
         quizEngine.handleDisconnect(socket);
       } catch (err) {
         console.error('[quiz disconnect]', err);
+      }
+      try {
+        chessEngine.handleDisconnect(socket);
+      } catch (err) {
+        console.error('[chess disconnect]', err);
       }
       try {
         const r = currentRoom();

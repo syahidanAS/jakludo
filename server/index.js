@@ -16,6 +16,7 @@ const db = require('./db');
 const store = require('./game/store');
 const engine = require('./game/engine');
 const quizEngine = require('./quiz/engine');
+const chessEngine = require('./chess/engine');
 const { createApiRouter } = require('./http/routes');
 const { registerSocketHandlers } = require('./realtime/socket');
 
@@ -51,9 +52,16 @@ const io = new Server(server, {
 
 store.init(io);
 quizEngine.init(io);
+chessEngine.init(io);
 registerSocketHandlers(io);
 
-app.get('/health', (_, res) => res.json({ ok: true, rooms: store.rooms.size, quizRooms: quizEngine.quizRooms.size, db: db.getStatus().engine }));
+app.get('/health', (_, res) => res.json({
+  ok: true,
+  rooms: store.rooms.size,
+  quizRooms: quizEngine.quizRooms.size,
+  chessRooms: chessEngine.chessRooms.size,
+  db: db.getStatus().engine
+}));
 app.use('/api', createApiRouter());
 
 app.use((err, req, res, next) => {
@@ -94,6 +102,7 @@ app.get('/robots.txt', (req, res) => {
       'Allow: /',
       'Allow: /?game=jakludo',
       'Allow: /?game=monster-quiz',
+      'Allow: /?game=chess-master',
       'Disallow: /api/',
       'Disallow: /socket.io/',
       '',
@@ -129,6 +138,12 @@ app.get('/sitemap.xml', (req, res) => {
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
+  <url>
+    <loc>${origin}/?game=chess-master</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
 </urlset>`
   );
 });
@@ -156,6 +171,12 @@ const GAME_SSR_META = {
     description:
       'Adu cepat pengetahuan umum & matematika di Monster Quiz Battle PlayGo! Pilih monster andalanmu, gunakan Hints Jawaban (50:50), serang monster lawan, dan raih +10 Coins setiap menang!',
     query: '?game=monster-quiz'
+  },
+  'chess-master': {
+    title: 'Chess Master (Catur Online Multiplayer) · PlayGo Strategy',
+    description:
+      'Master the Board. Rule the Game. Challenge your friends in classic online chess di PlayGo! Rating Elo resmi, Bullet, Blitz, Rapid, Private Room, dan analisis PGN.',
+    query: '?game=chess-master'
   }
 };
 
@@ -174,6 +195,8 @@ app.get('*', (req, res) => {
       ? 'jakludo'
       : rawGame === 'monster-quiz' || rawGame === 'quiz'
       ? 'monster-quiz'
+      : rawGame === 'chess-master' || rawGame === 'chess'
+      ? 'chess-master'
       : null;
   const gameMeta = gameKey ? GAME_SSR_META[gameKey] : null;
   const canonicalUrl = escapeHtml(`${origin}/${gameMeta ? gameMeta.query : ''}`);
@@ -234,6 +257,8 @@ function shutdown() {
   store.stopAllTimers();
   quizEngine.closeAllRoomsForShutdown();
   quizEngine.stopAllTimers();
+  chessEngine.closeAllRoomsForShutdown();
+  chessEngine.stopAllTimers();
   store.flushRooms();
   return db.close();
 }

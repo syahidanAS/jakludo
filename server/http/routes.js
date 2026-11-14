@@ -9,6 +9,7 @@ const { verifyGoogleIdToken, exchangeGoogleAuthCode } = require('../lib/googleAu
 const { loadDotEnv } = require('../migrate');
 const { registerSocialRoutes } = require('../social/routes');
 const { registerQuizRoutes } = require('../quiz/routes');
+const { registerChessRoutes } = require('../chess/routes');
 const quizEngine = require('../quiz/engine');
 const social = require('../social/store');
 const duitku = require('../lib/duitku');
@@ -446,6 +447,7 @@ function createApiRouter() {
 
   registerSocialRoutes(api);
   registerQuizRoutes(api);
+  registerChessRoutes(api);
 
   api.use((req, res) => res.status(404).json({ success: false, error: 'Endpoint tidak ditemukan.' }));
 

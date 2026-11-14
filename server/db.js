@@ -583,6 +583,7 @@ async function init(options = {}) {
       await hydrateFromPostgres(pool);
       await require('./social/store').hydrateFromPostgres();
       await require('./quiz/store').hydrateFromPostgres();
+      await require('./chess/store').hydrateFromPostgres();
       console.log(`[PG] Terhubung ke PostgreSQL (${state.usersById.size} user, ${state.leaderboard.size} leaderboard, ${state.rooms.size} room aktif).`);
     } else {
       console.warn('[DB] DATABASE_URL belum diset; berjalan dengan penyimpanan lokal di', DATA_DIR);
