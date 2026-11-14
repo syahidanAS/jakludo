@@ -20,6 +20,7 @@ export function useChessMaster({ socket, authToken, currentUser, onUpdateUser, o
   const [joinCode, setJoinCode] = useState('');
   const [timeControl, setTimeControl] = useState('5+0');
   const [preferredSide, setPreferredSide] = useState('random');
+  const [botDifficulty, setBotDifficulty] = useState('medium');
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -447,6 +448,30 @@ export function useChessMaster({ socket, authToken, currentUser, onUpdateUser, o
     }
   }, [socket, authToken]);
 
+  const playVsBot = useCallback(
+    opts => {
+      const token = ensureAuth();
+      if (!token || !socket) return;
+      sound.playClick();
+      setError('');
+      setSearching(false);
+      const tc = opts?.timeControl || timeControl || '5+0';
+      const side = opts?.preferredSide || preferredSide || 'random';
+      const diff = opts?.difficulty || botDifficulty || 'medium';
+      const fromQueue = Boolean(opts?.fromQueue);
+      socket.emit(
+        'chess:bot:play',
+        { token, timeControl: tc, preferredSide: side, difficulty: diff, fromQueue },
+        res => {
+          if (!res?.ok) {
+            showError(res?.error || 'Gagal memulai pertandingan melawan Bot.');
+          }
+        }
+      );
+    },
+    [ensureAuth, socket, timeControl, preferredSide, botDifficulty, showError]
+  );
+
   const createRoom = useCallback(
     opts => {
       const token = ensureAuth();
@@ -654,6 +679,8 @@ export function useChessMaster({ socket, authToken, currentUser, onUpdateUser, o
     setTimeControl,
     preferredSide,
     setPreferredSide,
+    botDifficulty,
+    setBotDifficulty,
     searching,
     error,
     notice,
@@ -673,6 +700,7 @@ export function useChessMaster({ socket, authToken, currentUser, onUpdateUser, o
     actions: {
       startMatchmaking,
       cancelMatchmaking,
+      playVsBot,
       createRoom,
       joinRoomByCode,
       updateRoomConfig,

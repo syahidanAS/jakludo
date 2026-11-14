@@ -140,6 +140,19 @@ function registerChessRoutes(api) {
     res.json({ success: true, ...result });
   });
 
+  // Main langsung melawan Bot (AI)
+  api.post('/chess/bot', (req, res) => {
+    const user = requireUser(req, res);
+    if (!user) return;
+    if (!chessActionLimiter(user.id)) {
+      return res.status(429).json({ success: false, error: 'Terlalu banyak permintaan dalam waktu singkat.' });
+    }
+    const token = bearerToken(req) || req.body?.token;
+    const result = chessEngine.playVsBot(null, { ...req.body, token }, store.rooms);
+    if (!result.ok) return res.status(400).json({ success: false, error: result.error });
+    res.json({ success: true, ...result });
+  });
+
   // Buat Private Room
   api.post('/chess/rooms', (req, res) => {
     const user = requireUser(req, res);

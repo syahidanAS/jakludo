@@ -3,6 +3,15 @@
 const fs = require('fs');
 const path = require('path');
 const db = require('../db');
+const { isBotUserId, getBotProfile } = require('./bot');
+
+function resolveUserOrBot(userId, fallbackRating = DEFAULT_RATING) {
+  if (!userId) return null;
+  if (isBotUserId(userId)) {
+    return getBotProfile(userId, fallbackRating);
+  }
+  return db.getUserById(userId);
+}
 
 const LOCAL_CHESS_FILE = path.join(db.DATA_DIR, 'jakludo-chess.json');
 const MAX_LOCAL_MATCHES = 300;
@@ -266,7 +275,7 @@ function calculateEloChanges(whiteRating, blackRating, resultString, kFactor = D
 }
 
 function ensureProfile(userId) {
-  if (!userId) return null;
+  if (!userId || isBotUserId(userId)) return null;
   let prof = state.profiles.get(userId);
   if (!prof) {
     const now = Date.now();
@@ -296,6 +305,26 @@ function ensureProfile(userId) {
 
 function getPlayerProfile(userId) {
   if (!userId) return null;
+  if (isBotUserId(userId)) {
+    const bot = getBotProfile(userId);
+    return {
+      userId: bot.id,
+      username: bot.username,
+      name: bot.name,
+      avatar: bot.avatar || '🤖',
+      rating: bot.rating || DEFAULT_RATING,
+      highestRating: bot.rating || DEFAULT_RATING,
+      totalGames: 0,
+      matchesPlayed: 0,
+      wins: 0,
+      losses: 0,
+      draws: 0,
+      winRate: 50,
+      currentStreak: 0,
+      rank: null,
+      isBot: true
+    };
+  }
   const user = db.getUserById(userId);
   const prof = state.profiles.get(userId) || {
     userId,
@@ -443,6 +472,8 @@ function createMatchRecord({
   id,
   whitePlayerId,
   blackPlayerId,
+  whiteBotRating = null,
+  blackBotRating = null,
   roomCode = null,
   groupId = null,
   matchType = 'quick',
@@ -457,6 +488,8 @@ function createMatchRecord({
   const now = Date.now();
   const wProf = ensureProfile(whitePlayerId);
   const bProf = ensureProfile(blackPlayerId);
+  const wBot = isBotUserId(whitePlayerId) ? getBotProfile(whitePlayerId, whiteBotRating) : null;
+  const bBot = isBotUserId(blackPlayerId) ? getBotProfile(blackPlayerId, blackBotRating) : null;
 
   const match = {
     id,
@@ -479,10 +512,10 @@ function createMatchRecord({
     winnerUserId: null,
     terminationReason: null,
     pgn: '',
-    whiteRatingBefore: wProf ? wProf.rating : DEFAULT_RATING,
+    whiteRatingBefore: wProf ? wProf.rating : wBot ? wBot.rating : DEFAULT_RATING,
     whiteRatingAfter: null,
     whiteRatingChange: 0,
-    blackRatingBefore: bProf ? bProf.rating : DEFAULT_RATING,
+    blackRatingBefore: bProf ? bProf.rating : bBot ? bBot.rating : DEFAULT_RATING,
     blackRatingAfter: null,
     blackRatingChange: 0,
     startedAt,
@@ -494,6 +527,9 @@ function createMatchRecord({
   state.matches.set(id, match);
   state.movesByMatch.set(id, []);
   persistLocalChess();
+
+  const pgWhiteId = isBotUserId(whitePlayerId) ? null : whitePlayerId;
+  const pgBlackId = isBotUserId(blackPlayerId) ? null : blackPlayerId;
 
   db.execPg(
     `INSERT INTO chess_matches (
@@ -510,11 +546,11 @@ function createMatchRecord({
      ON CONFLICT (id) DO NOTHING`,
     [
       id,
-      whitePlayerId,
-      blackPlayerId,
+      pgWhiteId,
+      pgBlackId,
       roomCode,
       groupId,
-      matchType,
+      matchType === 'bot' ? 'quick' : matchType,
       timeControl,
       initialFen,
       whiteRemainingTimeMs,
@@ -646,8 +682,8 @@ function finalizeMatchRecord({
   if (match.status === 'completed') return match;
 
   const now = Date.now();
-  const whiteUser = db.getUserById(match.whitePlayerId);
-  const blackUser = db.getUserById(match.blackPlayerId);
+  const whiteUser = resolveUserOrBot(match.whitePlayerId, match.whiteRatingBefore);
+  const blackUser = resolveUserOrBot(match.blackPlayerId, match.blackRatingBefore);
   const wProf = ensureProfile(match.whitePlayerId);
   const bProf = ensureProfile(match.blackPlayerId);
 
@@ -712,38 +748,46 @@ function finalizeMatchRecord({
   match.updatedAt = now;
   match.pgn = generatePgn({ match, whiteUser, blackUser, moves });
 
-  state.ratingHistories.unshift(
-    {
+  if (wProf) {
+    state.ratingHistories.unshift({
       userId: match.whitePlayerId,
       matchId,
       ratingBefore: elo.whiteBefore,
       ratingAfter: elo.whiteAfter,
       ratingChange: elo.whiteChange,
       createdAt: now
-    },
-    {
+    });
+  }
+  if (bProf) {
+    state.ratingHistories.unshift({
       userId: match.blackPlayerId,
       matchId,
       ratingBefore: elo.blackBefore,
       ratingAfter: elo.blackAfter,
       ratingChange: elo.blackChange,
       createdAt: now
-    }
-  );
+    });
+  }
 
-  // Berikan hadiah Coins PlayGo untuk pemenang
+  // Berikan hadiah Coins PlayGo untuk pemenang manusia
   let rewardCoins = 0;
-  if (winnerUserId) {
+  if (winnerUserId && !isBotUserId(winnerUserId)) {
     rewardCoins = WIN_REWARD_COINS;
     db.awardUserPoints(winnerUserId, WIN_REWARD_COINS);
   } else if (result === '1/2-1/2' && moves.length >= 6) {
     rewardCoins = DRAW_REWARD_COINS;
-    if (match.whitePlayerId) db.awardUserPoints(match.whitePlayerId, DRAW_REWARD_COINS);
-    if (match.blackPlayerId) db.awardUserPoints(match.blackPlayerId, DRAW_REWARD_COINS);
+    if (match.whitePlayerId && !isBotUserId(match.whitePlayerId)) {
+      db.awardUserPoints(match.whitePlayerId, DRAW_REWARD_COINS);
+    }
+    if (match.blackPlayerId && !isBotUserId(match.blackPlayerId)) {
+      db.awardUserPoints(match.blackPlayerId, DRAW_REWARD_COINS);
+    }
   }
   match.rewardCoins = rewardCoins;
 
   persistLocalChess();
+
+  const pgWinnerId = winnerUserId && !isBotUserId(winnerUserId) ? winnerUserId : null;
 
   db.execPgTransaction(async client => {
     await client.query(
@@ -767,7 +811,7 @@ function finalizeMatchRecord({
        WHERE id = $15`,
       [
         result,
-        winnerUserId,
+        pgWinnerId,
         terminationReason,
         match.whiteRemainingTimeMs,
         match.blackRemainingTimeMs,
@@ -851,8 +895,8 @@ function cancelMatchRecord(matchId, reason = 'cancelled') {
 
 function decorateMatchSummary(m, viewerUserId = null) {
   if (!m) return null;
-  const wUser = db.getUserById(m.whitePlayerId);
-  const bUser = db.getUserById(m.blackPlayerId);
+  const wUser = resolveUserOrBot(m.whitePlayerId, m.whiteRatingBefore);
+  const bUser = resolveUserOrBot(m.blackPlayerId, m.blackRatingBefore);
   const moves = state.movesByMatch.get(m.id) || [];
 
   const isWhite = viewerUserId && m.whitePlayerId === viewerUserId;
@@ -961,8 +1005,8 @@ function getMatchDetail(matchId, viewerUserId = null) {
     ...summary,
     pgn: m.pgn || generatePgn({
       match: m,
-      whiteUser: db.getUserById(m.whitePlayerId),
-      blackUser: db.getUserById(m.blackPlayerId),
+      whiteUser: resolveUserOrBot(m.whitePlayerId, m.whiteRatingBefore),
+      blackUser: resolveUserOrBot(m.blackPlayerId, m.blackRatingBefore),
       moves
     }),
     moves

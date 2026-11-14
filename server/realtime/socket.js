@@ -475,6 +475,12 @@ function registerSocketHandlers(io) {
       if (cb) cb(res);
     });
 
+    on(socket, 'chess:bot:play', (payload, cb) => {
+      if (!allowQuiz(chessPlayLimiter, socket, cb)) return;
+      const res = chessEngine.playVsBot(socket, payload, store.rooms);
+      if (cb) cb(res);
+    });
+
     on(socket, 'chess:leaderboard:get', (payload, cb) => {
       if (!allowQuiz(chessPlayLimiter, socket, cb)) return;
       const lb = chessStore.getChessLeaderboard(payload || {});

@@ -350,3 +350,94 @@ test('Quick Matchmaking, Draw Offer/Accept, Resign & Rematch flow', async () => 
   assert.equal(roomObj.match.winnerId, u2.user.id);
 });
 
+// ==========================================
+// 5. AI BOT MATCHMAKING FALLBACK & DIRECT BOT PLAY TESTS
+// ==========================================
+
+test('AI Bot: automatic bot fallback when no human in queue + direct Play vs Bot with automatic AI moves & rematch', async () => {
+  chessEngine.setTimings({
+    botMatchmakingDelayMs: 80,
+    botMoveDelayMinMs: 25,
+    botMoveDelayMaxMs: 35
+  });
+
+  try {
+    // Part A: Automatic Bot fallback when no human player is in the queue
+    const uSolo = await registerUser('solo');
+    const cSolo = await connect();
+
+    const matchFoundPromise = new Promise(resolve => {
+      cSolo.once('MatchFound', payload => resolve(payload));
+    });
+
+    const qRes = await emitAck(cSolo, 'chess:matchmaking:join', {
+      token: uSolo.token,
+      timeControl: '5+0'
+    });
+    assert.equal(qRes.ok, true);
+    assert.equal(qRes.searching, true);
+
+    const foundPayload = await matchFoundPromise;
+    assert.equal(foundPayload.vsBot, true);
+    assert.ok(foundPayload.roomCode);
+
+    const soloRoom = chessEngine.chessRooms.get(foundPayload.roomCode);
+    assert.ok(soloRoom);
+    assert.equal(soloRoom.players.some(p => p.isBot), true);
+
+    await emitAck(cSolo, 'chess:room:leave', { roomCode: foundPayload.roomCode, token: uSolo.token });
+
+    // Part B: Direct Play vs Bot where human plays White and Bot (Black) automatically replies
+    const uBotPlayer = await registerUser('vsbot');
+    const cBotPlayer = await connect();
+
+    const botStartRes = await emitAck(cBotPlayer, 'chess:bot:play', {
+      token: uBotPlayer.token,
+      timeControl: '5+0',
+      preferredSide: 'w',
+      difficulty: 'medium'
+    });
+    assert.equal(botStartRes.ok, true);
+    assert.equal(botStartRes.vsBot, true);
+    const botRoomCode = botStartRes.roomCode;
+    const botMatchId = botStartRes.matchId;
+
+    // Wait for Bot's reply after human plays 1. e4
+    const botMovePromise = new Promise(resolve => {
+      const handler = payload => {
+        if (payload?.roomCode === botRoomCode && payload?.move?.color === 'b') {
+          cBotPlayer.off('ChessMoveMade', handler);
+          resolve(payload);
+        }
+      };
+      cBotPlayer.on('ChessMoveMade', handler);
+    });
+
+    const humanMove = await emitAck(cBotPlayer, 'chess:move', {
+      code: botRoomCode,
+      matchId: botMatchId,
+      token: uBotPlayer.token,
+      from: 'e2',
+      to: 'e4',
+      moveVersion: 0
+    });
+    assert.equal(humanMove.ok, true);
+    assert.equal(humanMove.move.san, 'e4');
+
+    const botReply = await botMovePromise;
+    assert.ok(botReply.move?.san);
+    assert.equal(botReply.move.color, 'b');
+    assert.equal(botReply.currentTurn, 'w');
+
+    // Resign and verify Bot auto-accepts Rematch immediately
+    await emitAck(cBotPlayer, 'chess:resign', { code: botRoomCode, token: uBotPlayer.token });
+    const remRes = await emitAck(cBotPlayer, 'chess:rematch', { code: botRoomCode, token: uBotPlayer.token });
+    assert.equal(remRes.ok, true);
+    assert.equal(remRes.started, true);
+    assert.notEqual(remRes.newMatchId, botMatchId);
+  } finally {
+    chessEngine.setTimings();
+  }
+});
+
+

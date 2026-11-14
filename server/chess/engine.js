@@ -5,11 +5,33 @@ const crypto = require('crypto');
 const { Chess } = require('chess.js');
 const db = require('../db');
 const chessStore = require('./store');
+const {
+  isBotUserId,
+  getBotProfile,
+  buildQuickMatchBotForRating,
+  evaluateBoard,
+  chooseBotMove
+} = require('./bot');
 
 const DISCONNECT_GRACE_MS = Number(process.env.CHESS_DISCONNECT_GRACE_MS || 60_000);
 const LOBBY_EXPIRE_MS = Number(process.env.CHESS_LOBBY_EXPIRE_MS || 5 * 60 * 1000);
 const DRAW_OFFER_EXPIRE_MS = 30_000;
 const CLOCK_TICK_MS = 250;
+
+const DEFAULT_TIMINGS = {
+  botMatchmakingDelayMs: 5000,
+  botMoveDelayMinMs: 450,
+  botMoveDelayMaxMs: 950
+};
+let timings = { ...DEFAULT_TIMINGS };
+
+function setTimings(overrides = {}) {
+  timings = { ...DEFAULT_TIMINGS, ...overrides };
+}
+
+function getTimings() {
+  return { ...timings };
+}
 
 let ioInstance = null;
 
@@ -18,6 +40,15 @@ const chessRooms = new Map();        // roomCode -> RoomObject
 const roomsByMatchId = new Map();    // matchId -> RoomObject
 const userActiveRoom = new Map();    // userId -> roomCode
 const matchmakingQueue = new Map();  // userId -> { userId, socketId, rating, timeControl, joinedAt }
+const matchmakingTimers = new Map(); // userId -> Timeout
+
+function clearMatchmakingTimer(userId) {
+  const t = matchmakingTimers.get(userId);
+  if (t) {
+    clearTimeout(t);
+    matchmakingTimers.delete(userId);
+  }
+}
 
 function init(io) {
   ioInstance = io;
@@ -116,14 +147,16 @@ function serializeRoomForUser(room, viewerUserId = null) {
   }
 
   const players = room.players.map(p => {
-    const prof = chessStore.getPlayerProfile(p.userId);
+    const prof = p.isBot ? null : chessStore.getPlayerProfile(p.userId);
     return {
       userId: p.userId,
       username: p.username,
       name: p.name,
       avatar: p.avatar || '🎯',
-      rating: prof?.rating || chessStore.DEFAULT_RATING,
+      rating: p.isBot ? p.rating || chessStore.DEFAULT_RATING : prof?.rating || chessStore.DEFAULT_RATING,
       color: p.color || null,
+      isBot: Boolean(p.isBot),
+      difficulty: p.difficulty || null,
       ready: Boolean(p.ready),
       connected: Boolean(p.connected),
       disconnectedAt: p.disconnectedAt || null,
@@ -250,6 +283,14 @@ function clearRoomTimers(room) {
     clearTimeout(room.lobbyExpireTimer);
     room.lobbyExpireTimer = null;
   }
+  if (room.botMoveTimer) {
+    clearTimeout(room.botMoveTimer);
+    room.botMoveTimer = null;
+  }
+  if (room.botDrawTimer) {
+    clearTimeout(room.botDrawTimer);
+    room.botDrawTimer = null;
+  }
   for (const p of room.players || []) {
     if (p.disconnectTimer) {
       clearTimeout(p.disconnectTimer);
@@ -343,6 +384,8 @@ function startMatchInRoom(room, { matchType = 'quick', swapColors = false, custo
     id: matchId,
     whitePlayerId: whitePlayer.userId,
     blackPlayerId: blackPlayer.userId,
+    whiteBotRating: whitePlayer.isBot ? whitePlayer.rating : null,
+    blackBotRating: blackPlayer.isBot ? blackPlayer.rating : null,
     roomCode: room.code,
     groupId: room.groupId || null,
     matchType,
@@ -356,8 +399,8 @@ function startMatchInRoom(room, { matchType = 'quick', swapColors = false, custo
   });
 
   room.phase = 'playing';
-  const wProfile = chessStore.getPlayerProfile(whitePlayer.userId);
-  const bProfile = chessStore.getPlayerProfile(blackPlayer.userId);
+  const wProfile = whitePlayer.isBot ? null : chessStore.getPlayerProfile(whitePlayer.userId);
+  const bProfile = blackPlayer.isBot ? null : chessStore.getPlayerProfile(blackPlayer.userId);
   room.match = {
     ...dbRecord,
     whitePlayer: {
@@ -365,14 +408,18 @@ function startMatchInRoom(room, { matchType = 'quick', swapColors = false, custo
       username: whitePlayer.username,
       name: whitePlayer.name,
       avatar: whitePlayer.avatar || '🎯',
-      rating: wProfile?.rating || chessStore.DEFAULT_RATING
+      isBot: Boolean(whitePlayer.isBot),
+      difficulty: whitePlayer.difficulty || null,
+      rating: whitePlayer.isBot ? whitePlayer.rating || chessStore.DEFAULT_RATING : wProfile?.rating || chessStore.DEFAULT_RATING
     },
     blackPlayer: {
       userId: blackPlayer.userId,
       username: blackPlayer.username,
       name: blackPlayer.name,
       avatar: blackPlayer.avatar || '🎯',
-      rating: bProfile?.rating || chessStore.DEFAULT_RATING
+      isBot: Boolean(blackPlayer.isBot),
+      difficulty: blackPlayer.difficulty || null,
+      rating: blackPlayer.isBot ? blackPlayer.rating || chessStore.DEFAULT_RATING : bProfile?.rating || chessStore.DEFAULT_RATING
     },
     winnerId: null,
     resultReason: null,
@@ -404,6 +451,7 @@ function startMatchInRoom(room, { matchType = 'quick', swapColors = false, custo
 
   emitToRoom(room, 'MatchStarted', startedPayload);
   emitRoomState(room);
+  scheduleBotMoveIfNeeded(room);
   return room.match;
 }
 
@@ -450,6 +498,14 @@ function completeMatch(room, { result, winnerUserId = null, terminationReason = 
   if (room.clockTimer) {
     clearInterval(room.clockTimer);
     room.clockTimer = null;
+  }
+  if (room.botMoveTimer) {
+    clearTimeout(room.botMoveTimer);
+    room.botMoveTimer = null;
+  }
+  if (room.botDrawTimer) {
+    clearTimeout(room.botDrawTimer);
+    room.botDrawTimer = null;
   }
 
   for (const p of room.players) {
@@ -513,8 +569,209 @@ function completeMatch(room, { result, winnerUserId = null, terminationReason = 
 }
 
 // ==========================================
-// QUICK MATCHMAKING SERVICE
+// QUICK MATCHMAKING & BOT MATCHING SERVICE
 // ==========================================
+
+function matchUserWithBot(userId, timeControlId = '5+0', existingLudoRooms = null) {
+  clearMatchmakingTimer(userId);
+  const qEntry = matchmakingQueue.get(userId);
+  matchmakingQueue.delete(userId);
+
+  // Pastikan user belum masuk ke room lain
+  if (userActiveRoom.has(userId)) return null;
+
+  const user = db.getUserById(userId);
+  if (!user) return null;
+
+  const sock = findPlayerSocket(userId);
+  if (!sock || !sock.connected) return null;
+
+  const tc = chessStore.getTimeControl(qEntry?.timeControl || timeControlId || '5+0');
+  const prof = chessStore.getPlayerProfile(user.id);
+  const myRating = prof?.rating || chessStore.DEFAULT_RATING;
+  const botInfo = buildQuickMatchBotForRating(myRating);
+
+  const code = generateRoomCode(existingLudoRooms);
+  const now = Date.now();
+  const room = {
+    id: `croom_${now}_${crypto.randomBytes(3).toString('hex')}`,
+    code,
+    groupId: null,
+    hostUserId: user.id,
+    source: 'quick',
+    phase: 'lobby',
+    timeControl: tc.id,
+    colorPreference: 'random',
+    players: [
+      {
+        userId: user.id,
+        username: user.username,
+        name: user.name || user.username,
+        avatar: user.avatar || '🎯',
+        isBot: false,
+        difficulty: null,
+        color: null,
+        ready: true,
+        connected: true,
+        disconnectedAt: null,
+        graceEndsAt: null
+      },
+      {
+        userId: botInfo.userId,
+        username: botInfo.username,
+        name: botInfo.name,
+        avatar: botInfo.avatar,
+        rating: botInfo.rating,
+        isBot: true,
+        difficulty: botInfo.difficulty,
+        color: null,
+        ready: true,
+        connected: true,
+        disconnectedAt: null,
+        graceEndsAt: null
+      }
+    ],
+    match: null,
+    createdAt: now
+  };
+
+  chessRooms.set(code, room);
+  userActiveRoom.set(user.id, code);
+  sock.join(socketRoomName(code));
+
+  startMatchInRoom(room, { matchType: 'quick' });
+
+  const matchFoundPayload = {
+    roomCode: code,
+    matchId: room.match.id,
+    timeControl: tc.id,
+    whitePlayerId: room.match.whitePlayerId,
+    blackPlayerId: room.match.blackPlayerId,
+    vsBot: true
+  };
+
+  emitToRoom(room, 'MatchFound', matchFoundPayload);
+  emitRoomState(room);
+  return room;
+}
+
+function playVsBot(socket, payload = {}, existingLudoRooms = null) {
+  const user = resolveUser(socket, payload);
+  if (!user) return { ok: false, error: 'Silakan login terlebih dahulu untuk bermain Chess Master.' };
+
+  clearMatchmakingTimer(user.id);
+  matchmakingQueue.delete(user.id);
+
+  // Jika masih di room lama yang sudah selesai, keluarkan dulu
+  const prevCode = userActiveRoom.get(user.id);
+  if (prevCode) {
+    const prevRoom = chessRooms.get(prevCode);
+    if (prevRoom && prevRoom.phase !== 'playing') {
+      leaveRoom(socket, { token: payload.token });
+    } else if (prevRoom && prevRoom.phase === 'playing') {
+      if (socket) socket.join(socketRoomName(prevRoom.code));
+      return {
+        ok: true,
+        matched: true,
+        reconnected: true,
+        roomCode: prevRoom.code,
+        room: serializeRoomForUser(prevRoom, user.id)
+      };
+    }
+  }
+
+  const tc = chessStore.getTimeControl(payload.timeControl || '5+0');
+  const rawPref = payload.preferredSide || payload.colorPreference;
+  const pref = ['random', 'w', 'b'].includes(rawPref) ? rawPref : 'random';
+  const prof = chessStore.getPlayerProfile(user.id);
+  const myRating = prof?.rating || chessStore.DEFAULT_RATING;
+
+  const botInfo = payload.fromQueue
+    ? buildQuickMatchBotForRating(myRating)
+    : (() => {
+        const bp = getBotProfile(`bot_chess_${payload.difficulty || 'medium'}`) || getBotProfile('bot_chess_medium');
+        return {
+          userId: bp.id,
+          username: bp.username,
+          name: bp.name,
+          avatar: bp.avatar,
+          rating: bp.rating,
+          difficulty: bp.difficulty,
+          isBot: true
+        };
+      })();
+
+  const code = generateRoomCode(existingLudoRooms);
+  const now = Date.now();
+  const room = {
+    id: `croom_${now}_${crypto.randomBytes(3).toString('hex')}`,
+    code,
+    groupId: null,
+    hostUserId: user.id,
+    source: payload.fromQueue ? 'quick' : 'bot',
+    phase: 'lobby',
+    timeControl: tc.id,
+    colorPreference: pref,
+    players: [
+      {
+        userId: user.id,
+        username: user.username,
+        name: user.name || user.username,
+        avatar: user.avatar || '🎯',
+        isBot: false,
+        difficulty: null,
+        color: null,
+        ready: true,
+        connected: true,
+        disconnectedAt: null,
+        graceEndsAt: null
+      },
+      {
+        userId: botInfo.userId,
+        username: botInfo.username,
+        name: botInfo.name,
+        avatar: botInfo.avatar,
+        rating: botInfo.rating,
+        isBot: true,
+        difficulty: botInfo.difficulty,
+        color: null,
+        ready: true,
+        connected: true,
+        disconnectedAt: null,
+        graceEndsAt: null
+      }
+    ],
+    match: null,
+    createdAt: now
+  };
+
+  chessRooms.set(code, room);
+  userActiveRoom.set(user.id, code);
+  if (socket) socket.join(socketRoomName(code));
+
+  startMatchInRoom(room, { matchType: payload.fromQueue ? 'quick' : 'bot' });
+
+  const matchFoundPayload = {
+    roomCode: code,
+    matchId: room.match.id,
+    timeControl: tc.id,
+    whitePlayerId: room.match.whitePlayerId,
+    blackPlayerId: room.match.blackPlayerId,
+    vsBot: true
+  };
+
+  emitToRoom(room, 'MatchFound', matchFoundPayload);
+  emitRoomState(room);
+
+  return {
+    ok: true,
+    matched: true,
+    vsBot: true,
+    roomCode: code,
+    matchId: room.match.id,
+    room: serializeRoomForUser(room, user.id)
+  };
+}
 
 function joinMatchmaking(socket, payload = {}, existingLudoRooms = null) {
   const user = resolveUser(socket, payload);
@@ -542,15 +799,16 @@ function joinMatchmaking(socket, payload = {}, existingLudoRooms = null) {
   const myRating = prof?.rating || chessStore.DEFAULT_RATING;
 
   // Bersihkan entri antrean yang sudah putus koneksi
-  for (const [qUserId, entry] of matchmakingQueue.entries()) {
+  for (const [qUserId] of matchmakingQueue.entries()) {
     if (qUserId === user.id) continue;
     const sock = findPlayerSocket(qUserId);
     if (!sock || !sock.connected) {
+      clearMatchmakingTimer(qUserId);
       matchmakingQueue.delete(qUserId);
     }
   }
 
-  // Cari lawan dengan timeControl yang sama dan rating terdekat
+  // Prioritas 1: Cari akun orang sungguhan (human) dengan timeControl yang sama dan rating terdekat
   let bestCandidate = null;
   let bestDiff = Infinity;
   for (const [qUserId, entry] of matchmakingQueue.entries()) {
@@ -563,12 +821,27 @@ function joinMatchmaking(socket, payload = {}, existingLudoRooms = null) {
     }
   }
 
+  // Prioritas 2: Jika tidak ada yang timeControl-nya persis sama, tetap prioritaskan akun orang sungguhan yang sedang mengantre
+  if (!bestCandidate) {
+    for (const [qUserId, entry] of matchmakingQueue.entries()) {
+      if (qUserId === user.id) continue;
+      const diff = Math.abs((entry.rating || chessStore.DEFAULT_RATING) - myRating);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestCandidate = entry;
+      }
+    }
+  }
+
   if (bestCandidate) {
+    clearMatchmakingTimer(bestCandidate.userId);
+    clearMatchmakingTimer(user.id);
     matchmakingQueue.delete(bestCandidate.userId);
     matchmakingQueue.delete(user.id);
 
     const otherUser = db.getUserById(bestCandidate.userId);
     const otherSock = findPlayerSocket(bestCandidate.userId);
+    const activeTc = chessStore.getTimeControl(bestCandidate.timeControl || tc.id);
 
     if (otherUser) {
       const code = generateRoomCode(existingLudoRooms);
@@ -580,7 +853,7 @@ function joinMatchmaking(socket, payload = {}, existingLudoRooms = null) {
         hostUserId: otherUser.id,
         source: 'quick',
         phase: 'lobby',
-        timeControl: tc.id,
+        timeControl: activeTc.id,
         colorPreference: 'random',
         players: [
           {
@@ -588,6 +861,8 @@ function joinMatchmaking(socket, payload = {}, existingLudoRooms = null) {
             username: otherUser.username,
             name: otherUser.name || otherUser.username,
             avatar: otherUser.avatar || '🎯',
+            isBot: false,
+            difficulty: null,
             color: null,
             ready: true,
             connected: Boolean(otherSock?.connected),
@@ -599,6 +874,8 @@ function joinMatchmaking(socket, payload = {}, existingLudoRooms = null) {
             username: user.username,
             name: user.name || user.username,
             avatar: user.avatar || '🎯',
+            isBot: false,
+            difficulty: null,
             color: null,
             ready: true,
             connected: true,
@@ -622,9 +899,10 @@ function joinMatchmaking(socket, payload = {}, existingLudoRooms = null) {
       const matchFoundPayload = {
         roomCode: code,
         matchId: room.match.id,
-        timeControl: tc.id,
+        timeControl: activeTc.id,
         whitePlayerId: room.match.whitePlayerId,
-        blackPlayerId: room.match.blackPlayerId
+        blackPlayerId: room.match.blackPlayerId,
+        vsBot: false
       };
 
       emitToRoom(room, 'MatchFound', matchFoundPayload);
@@ -633,6 +911,7 @@ function joinMatchmaking(socket, payload = {}, existingLudoRooms = null) {
       return {
         ok: true,
         matched: true,
+        vsBot: false,
         roomCode: code,
         matchId: room.match.id,
         room: serializeRoomForUser(room, user.id)
@@ -640,7 +919,8 @@ function joinMatchmaking(socket, payload = {}, existingLudoRooms = null) {
     }
   }
 
-  // Belum ada lawan: masukkan ke antrean
+  // Belum ada lawan manusia saat ini: masukkan ke antrean & pasang timer fallback ke Bot
+  clearMatchmakingTimer(user.id);
   matchmakingQueue.set(user.id, {
     userId: user.id,
     socketId: socket?.id || null,
@@ -649,19 +929,32 @@ function joinMatchmaking(socket, payload = {}, existingLudoRooms = null) {
     joinedAt: Date.now()
   });
 
+  if (timings.botMatchmakingDelayMs > 0) {
+    const botTimer = setTimeout(() => {
+      matchmakingTimers.delete(user.id);
+      if (matchmakingQueue.has(user.id)) {
+        matchUserWithBot(user.id, tc.id, existingLudoRooms);
+      }
+    }, timings.botMatchmakingDelayMs);
+    if (botTimer.unref) botTimer.unref();
+    matchmakingTimers.set(user.id, botTimer);
+  }
+
   return {
     ok: true,
     matched: false,
     queued: true,
     searching: true,
     timeControl: tc.id,
-    rating: myRating
+    rating: myRating,
+    botFallbackMs: timings.botMatchmakingDelayMs
   };
 }
 
 function leaveMatchmaking(socket, payload = {}) {
   const user = resolveUser(socket, payload);
   if (!user) return { ok: false, error: 'Silakan login terlebih dahulu.' };
+  clearMatchmakingTimer(user.id);
   const removed = matchmakingQueue.delete(user.id);
   return { ok: true, removed };
 }
@@ -936,11 +1229,45 @@ function detectTerminalCondition(chess) {
   return { ended: false };
 }
 
-function submitMove(socket, payload = {}) {
-  const user = resolveUser(socket, payload);
-  if (!user) return { ok: false, error: 'Silakan login terlebih dahulu.' };
+function scheduleBotMoveIfNeeded(room) {
+  if (!room || room.phase !== 'playing' || !room.match || room.match.status !== 'active') return;
+  const m = room.match;
+  const activeTurn = m.chess.turn();
+  const activePlayer = room.players.find(p => p.color === activeTurn);
+  if (!activePlayer || !activePlayer.isBot) return;
 
-  const room = resolveRoomForAction(user, payload);
+  if (room.botMoveTimer) {
+    clearTimeout(room.botMoveTimer);
+    room.botMoveTimer = null;
+  }
+
+  const minMs = Math.max(20, Number(timings.botMoveDelayMinMs ?? 450));
+  const maxMs = Math.max(minMs, Number(timings.botMoveDelayMaxMs ?? 950));
+  const delayMs = minMs === maxMs ? minMs : crypto.randomInt(minMs, maxMs + 1);
+  const expectedMatchId = m.id;
+  const expectedMoveVersion = m.moveVersion;
+
+  room.botMoveTimer = setTimeout(() => {
+    room.botMoveTimer = null;
+    if (!room.match || room.match.id !== expectedMatchId || room.match.status !== 'active') return;
+    if (room.match.moveVersion !== expectedMoveVersion) return;
+    if (room.match.chess.turn() !== activePlayer.color) return;
+
+    const chosen = chooseBotMove(room.match.currentFen, activePlayer.difficulty || 'medium');
+    if (!chosen) return;
+
+    executeMoveForPlayer(room, activePlayer, {
+      from: chosen.from,
+      to: chosen.to,
+      promotion: chosen.promotion || 'q',
+      moveVersion: expectedMoveVersion
+    });
+  }, delayMs);
+
+  if (room.botMoveTimer.unref) room.botMoveTimer.unref();
+}
+
+function executeMoveForPlayer(room, player, payload = {}) {
   if (!room || !room.match) {
     return { ok: false, error: 'Pertandingan tidak ditemukan.' };
   }
@@ -950,7 +1277,6 @@ function submitMove(socket, payload = {}) {
     return { ok: false, error: 'Pertandingan sudah berakhir atau belum aktif.' };
   }
 
-  const player = room.players.find(p => p.userId === user.id);
   if (!player) {
     return { ok: false, error: 'Akses ditolak: kamu bukan peserta dalam pertandingan ini.' };
   }
@@ -1032,7 +1358,7 @@ function submitMove(socket, payload = {}) {
   const recordedMove = chessStore.recordMove({
     matchId: m.id,
     moveNumber,
-    playerId: user.id,
+    playerId: player.userId,
     color: activeTurn,
     from: moveResult.from,
     to: moveResult.to,
@@ -1112,6 +1438,7 @@ function submitMove(socket, payload = {}) {
     });
   } else {
     emitRoomState(room);
+    scheduleBotMoveIfNeeded(room);
   }
 
   return {
@@ -1124,8 +1451,25 @@ function submitMove(socket, payload = {}) {
     status: m.status,
     result: m.result,
     terminationReason: m.terminationReason,
-    room: serializeRoomForUser(room, user.id)
+    room: serializeRoomForUser(room, player.userId)
   };
+}
+
+function submitMove(socket, payload = {}) {
+  const user = resolveUser(socket, payload);
+  if (!user) return { ok: false, error: 'Silakan login terlebih dahulu.' };
+
+  const room = resolveRoomForAction(user, payload);
+  if (!room || !room.match) {
+    return { ok: false, error: 'Pertandingan tidak ditemukan.' };
+  }
+
+  const player = room.players.find(p => p.userId === user.id);
+  if (!player) {
+    return { ok: false, error: 'Akses ditolak: kamu bukan peserta dalam pertandingan ini.' };
+  }
+
+  return executeMoveForPlayer(room, player, payload);
 }
 
 // ==========================================
@@ -1170,6 +1514,43 @@ function offerDraw(socket, payload = {}) {
     serverNow: now
   });
   emitRoomState(room);
+
+  // Jika lawan adalah Bot, Bot merespons tawaran remis secara otomatis
+  const opponent = room.players.find(p => p.userId !== user.id);
+  if (opponent && opponent.isBot) {
+    if (room.botDrawTimer) clearTimeout(room.botDrawTimer);
+    room.botDrawTimer = setTimeout(() => {
+      room.botDrawTimer = null;
+      if (!room.match || room.match.status !== 'active' || !room.match.drawOffer) return;
+      const whiteScore = evaluateBoard(room.match.chess);
+      const botScore = opponent.color === 'w' ? whiteScore : -whiteScore;
+      // Bot menerima remis bila tertinggal cukup jauh atau langkah sudah panjang & seimbang
+      if (botScore <= -250 || (room.match.moves.length >= 50 && Math.abs(botScore) <= 100)) {
+        const clocks = computeLiveClocks(room, Date.now());
+        room.match.whiteRemainingTimeMs = clocks.whiteRemainingTimeMs;
+        room.match.blackRemainingTimeMs = clocks.blackRemainingTimeMs;
+        emitToRoom(room, 'DrawAccepted', {
+          roomCode: room.code,
+          matchId: room.match.id,
+          acceptedByUserId: opponent.userId
+        });
+        completeMatch(room, {
+          result: '1/2-1/2',
+          winnerUserId: null,
+          terminationReason: 'draw_agreement'
+        });
+      } else {
+        room.match.drawOffer = null;
+        emitToRoom(room, 'DrawDeclined', {
+          roomCode: room.code,
+          matchId: room.match.id,
+          declinedByUserId: opponent.userId
+        });
+        emitRoomState(room);
+      }
+    }, 350);
+    if (room.botDrawTimer.unref) room.botDrawTimer.unref();
+  }
 
   return { ok: true, drawOffer: m.drawOffer };
 }
@@ -1303,6 +1684,9 @@ function requestRematch(socket, payload = {}) {
   }
 
   m.rematchRequests.add(user.id);
+  for (const p of room.players) {
+    if (p.isBot) m.rematchRequests.add(p.userId);
+  }
 
   emitToRoom(room, 'RematchRequested', {
     roomCode: room.code,
@@ -1346,6 +1730,7 @@ function leaveRoom(socket, payload = {}) {
   const user = resolveUser(socket, payload);
   if (!user) return { ok: false, error: 'Silakan login terlebih dahulu.' };
 
+  clearMatchmakingTimer(user.id);
   matchmakingQueue.delete(user.id);
   const code = String(payload.roomCode || userActiveRoom.get(user.id) || '').toUpperCase();
   const room = chessRooms.get(code);
@@ -1364,7 +1749,7 @@ function leaveRoom(socket, payload = {}) {
 
   room.players = room.players.filter(p => p.userId !== user.id);
 
-  if (room.players.length === 0) {
+  if (room.players.length === 0 || room.players.every(p => p.isBot)) {
     closeRoom(room, 'Semua pemain telah keluar.');
   } else {
     if (room.hostUserId === user.id) {
@@ -1381,6 +1766,7 @@ function handleDisconnect(socket) {
   if (!userId) return;
 
   // Hapus dari antrean matchmaking bila sedang mengantre
+  clearMatchmakingTimer(userId);
   matchmakingQueue.delete(userId);
 
   const code = userActiveRoom.get(userId);
@@ -1457,12 +1843,20 @@ function getRoomByMatchId(matchId, viewerUserId = null) {
 }
 
 function stopAllTimers() {
+  for (const t of matchmakingTimers.values()) {
+    clearTimeout(t);
+  }
+  matchmakingTimers.clear();
   for (const room of chessRooms.values()) {
     clearRoomTimers(room);
   }
 }
 
 function closeAllRoomsForShutdown() {
+  for (const t of matchmakingTimers.values()) {
+    clearTimeout(t);
+  }
+  matchmakingTimers.clear();
   for (const room of Array.from(chessRooms.values())) {
     closeRoom(room, 'Server sedang dimuat ulang.');
   }
@@ -1475,8 +1869,11 @@ module.exports = {
   roomsByMatchId,
   matchmakingQueue,
   init,
+  setTimings,
+  getTimings,
   joinMatchmaking,
   leaveMatchmaking,
+  playVsBot,
   createRoom,
   joinRoom,
   configureRoom,
