@@ -341,7 +341,7 @@ function SnakesPlayerBadge({ player, isCurrentTurn, isMe, animatedPos, turnClock
           <PlayerAvatar
             avatar={player.avatar}
             name={displayUsername}
-            size={36}
+            size={30}
             className="avatar"
           />
           <span className={`snk-color-dot color-${player.color || 'red'}`} aria-hidden="true" />
@@ -390,11 +390,13 @@ function SnakesPlayerBadge({ player, isCurrentTurn, isMe, animatedPos, turnClock
         />
       </div>
 
-      {isCurrentTurn && turnClock && (
-        <div className="snk-player-card__timer">
+      <div className="snk-player-card__timer">
+        {isCurrentTurn && turnClock ? (
           <TurnTimer clock={turnClock} isMine={isMe} />
-        </div>
-      )}
+        ) : (
+          <span className="snk-player-card__timer-idle" aria-hidden="true" />
+        )}
+      </div>
     </div>
   );
 }
