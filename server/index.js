@@ -124,6 +124,8 @@ app.get('/robots.txt', (req, res) => {
       'Allow: /?hl=id',
       'Disallow: /api/',
       'Disallow: /socket.io/',
+      'Disallow: /admin',
+      'Disallow: /admin.html',
       '',
       `Sitemap: ${origin}/sitemap.xml`,
       ''
@@ -168,6 +170,18 @@ ${urlNodes}
 // File di /assets punya hash di namanya, jadi aman di-cache selamanya. HTML, sw.js, dan manifest
 // harus selalu dicek ulang agar update langsung sampai; file publik lain (musik, ikon) cukup sehari.
 app.use('/assets', express.static(path.join(dist, 'assets'), { immutable: true, maxAge: '1y', fallthrough: false }));
+
+// Panel Admin CMS terpisah (Vite MPA entry: dist/admin.html)
+app.get(['/admin', '/admin/*', '/admin.html'], (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  const adminHtmlPath = path.join(dist, 'admin.html');
+  if (!fs.existsSync(adminHtmlPath)) {
+    return res.status(404).send('Build Admin CMS belum tersedia.');
+  }
+  res.sendFile(adminHtmlPath);
+});
+
 app.use(express.static(dist, {
   index: false,
   setHeaders(res, filePath) {

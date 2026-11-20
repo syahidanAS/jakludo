@@ -1776,9 +1776,24 @@ function getActiveRoomForUser(userId) {
   return serializeRoomForUser(room, userId);
 }
 
+function adminCloseRoom(code, reason = 'Room ditutup oleh admin.') {
+  const cleanCode = String(code || '').trim().toUpperCase();
+  const room = quizRooms.get(cleanCode);
+  if (!room) {
+    return { ok: false, error: 'Room Monster Quiz tidak ditemukan.' };
+  }
+  emitToRoom(room, 'quiz:room:closed', { roomCode: room.code, reason });
+  if (ioInstance) {
+    ioInstance.in(socketRoomName(room.code)).socketsLeave(socketRoomName(room.code));
+  }
+  closeAndDeleteRoom(room);
+  return { ok: true, code: room.code };
+}
+
 module.exports = {
   init,
   quizRooms,
+  matchmakingQueue,
   WIN_REWARD_POINTS,
   setTimings,
   getTimings,
@@ -1800,6 +1815,7 @@ module.exports = {
   handleDisconnect,
   getActiveRoomForUser,
   closeAllRoomsForShutdown,
+  adminCloseRoom,
   serializeRoomForUser
 };
 

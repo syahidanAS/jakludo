@@ -1,4 +1,4 @@
-const CACHE_NAME = 'jakludo-pwa-v8';
+const CACHE_NAME = 'jakludo-pwa-v9';
 
 const STATIC_ASSETS = [
   '/',
@@ -68,8 +68,13 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Jangan intersep request API dinamis (biarkan live network)
-  if (url.pathname.startsWith('/api')) {
+  // Jangan intersep request API dinamis atau halaman Admin CMS terpisah
+  if (
+    url.pathname.startsWith('/api') ||
+    url.pathname === '/admin' ||
+    url.pathname.startsWith('/admin/') ||
+    url.pathname === '/admin.html'
+  ) {
     return;
   }
 

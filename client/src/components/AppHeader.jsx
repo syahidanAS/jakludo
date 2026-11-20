@@ -221,6 +221,17 @@ function AccountMenu({
               <Icon name="trophy" size={17} /> Peringkat pemain
             </span>
           </button>
+          {(user.isAdmin || user.role === 'admin') && (
+            <a
+              href="/admin"
+              className="account__item"
+              style={{ textDecoration: 'none', color: 'var(--brand-text)', fontWeight: 800 }}
+            >
+              <span className="account__item-label">
+                <Icon name="crown" size={17} /> Admin CMS
+              </span>
+            </a>
+          )}
           <button type="button" className="account__item account__item--danger" onClick={pick(onLogout)}>
             <span className="account__item-label">
               <Icon name="logout" size={17} /> Keluar akun

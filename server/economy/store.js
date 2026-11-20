@@ -2238,6 +2238,95 @@ function getAdminOverview({ limit = 50, txType = '' } = {}) {
   };
 }
 
+function getOrderById(orderId) {
+  if (!orderId) return null;
+  const order = state.paymentOrders.get(orderId);
+  return order ? enrichOrderFields(order) : null;
+}
+
+function listAllPaymentOrders() {
+  return Array.from(state.paymentOrders.values())
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+    .map(enrichOrderFields);
+}
+
+function listAllDiamondTransactions() {
+  return state.diamondTransactions.slice().reverse();
+}
+
+function listCallbackLogs() {
+  return state.callbackLogs.slice().reverse();
+}
+
+async function adminApproveOrder({ orderId, reason, adminUser }) {
+  const order = state.paymentOrders.get(orderId);
+  if (!order) throw makeError(404, 'Order top-up tidak ditemukan.');
+  const cleanReason = String(reason || '').trim();
+  if (!cleanReason) {
+    throw makeError(400, 'Alasan approval manual wajib diisi untuk audit.');
+  }
+
+  return withOrderLock(orderId, async () => {
+    if (order.status === 'PAID') {
+      return {
+        success: true,
+        alreadyCredited: true,
+        order: enrichOrderFields(order),
+        wallet: formatWalletResponse(order.userId)
+      };
+    }
+    if (order.status !== 'PENDING') {
+      throw makeError(400, `Hanya order berstatus PENDING yang dapat disetujui manual (status saat ini: ${order.status}).`);
+    }
+    const label = `admin_manual:${adminUser?.username || 'admin'}:${cleanReason.slice(0, 80)}`;
+    const creditRes = await applyOrderPaidCredit(order, label);
+    return {
+      success: true,
+      ...creditRes,
+      order: enrichOrderFields(creditRes.order)
+    };
+  });
+}
+
+async function adminCancelOrder({ orderId, reason, adminUser }) {
+  const order = state.paymentOrders.get(orderId);
+  if (!order) throw makeError(404, 'Order top-up tidak ditemukan.');
+
+  return withOrderLock(orderId, async () => {
+    if (order.status === 'PAID') {
+      throw makeError(400, 'Order yang sudah PAID tidak dapat dibatalkan.');
+    }
+    if (order.status !== 'PENDING') {
+      throw makeError(400, `Order sudah berstatus ${order.status}.`);
+    }
+    const cleanReason = String(reason || 'Manual cancel dari Admin CMS').trim();
+    await markOrderNonPaidStatus(order, 'CANCELLED', `Dibatalkan admin (${adminUser?.username || 'admin'}): ${cleanReason}`);
+    return {
+      success: true,
+      order: enrichOrderFields(order)
+    };
+  });
+}
+
+function purgeUserInMemory(userId) {
+  if (!userId) return;
+  state.wallets.delete(userId);
+  state.ownedSkins.delete(userId);
+  state.equippedSkins.delete(userId);
+  for (const [oid, ord] of state.paymentOrders.entries()) {
+    if (ord.userId === userId) state.paymentOrders.delete(oid);
+  }
+  state.diamondTransactions = state.diamondTransactions.filter(tx => {
+    if (tx.userId === userId) {
+      if (tx.idempotencyKey) state.idempotencyIndex.delete(tx.idempotencyKey);
+      return false;
+    }
+    return true;
+  });
+  state.coinConversions = state.coinConversions.filter(cv => cv.userId !== userId);
+  persistLocalFallback();
+}
+
 module.exports = {
   hydrateFromPostgres,
   resetForTests,
@@ -2249,6 +2338,10 @@ module.exports = {
   formatWalletResponse,
   listUserTransactions,
   listPaymentOrdersForUser,
+  getOrderById,
+  listAllPaymentOrders,
+  listAllDiamondTransactions,
+  listCallbackLogs,
   convertCoinsToDiamonds,
   convertDiamondsToCoins,
   listDiamondPackages,
@@ -2257,6 +2350,9 @@ module.exports = {
   handlePaymentGatewayCallback: handleDuitkuDiamondCallback,
   getAndVerifyOrderStatus,
   cancelPendingOrder,
+  adminApproveOrder,
+  adminCancelOrder,
+  purgeUserInMemory,
   listLudoSkins,
   getUserSkinInventory,
   purchaseLudoSkin,

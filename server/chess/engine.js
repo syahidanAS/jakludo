@@ -1994,6 +1994,16 @@ function closeAllRoomsForShutdown() {
   userActiveRoom.clear();
 }
 
+function adminCloseRoom(code, reason = 'Room ditutup oleh admin.') {
+  const cleanCode = String(code || '').trim().toUpperCase();
+  const room = chessRooms.get(cleanCode);
+  if (!room) {
+    return { ok: false, error: 'Room Chess Master tidak ditemukan.' };
+  }
+  closeRoom(room, reason);
+  return { ok: true, code: room.code };
+}
+
 module.exports = {
   chessRooms,
   roomsByMatchId,
@@ -2024,5 +2034,6 @@ module.exports = {
   serializeRoomForUser,
   startMatchInRoom,
   stopAllTimers,
-  closeAllRoomsForShutdown
+  closeAllRoomsForShutdown,
+  adminCloseRoom
 };

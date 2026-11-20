@@ -1678,6 +1678,16 @@ function stopAllTimers() {
   }
 }
 
+function adminCloseRoom(code, reason = 'Room ditutup oleh admin.') {
+  const cleanCode = String(code || '').trim().toUpperCase();
+  const room = snakesRooms.get(cleanCode) || roomsById.get(String(code || '').trim());
+  if (!room) {
+    return { ok: false, error: 'Room Ular Tangga tidak ditemukan.' };
+  }
+  closeRoom(room, reason);
+  return { ok: true, code: room.code };
+}
+
 module.exports = {
   init,
   snakesRooms,
@@ -1701,5 +1711,6 @@ module.exports = {
   getRoomStateForUser,
   getActiveRoomForUser,
   closeAllRoomsForShutdown,
+  adminCloseRoom,
   stopAllTimers
 };

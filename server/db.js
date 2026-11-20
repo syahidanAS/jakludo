@@ -1560,6 +1560,341 @@ async function updateUserProfile(userId, { name, username, email, currentPasswor
   return { success: true, user: sanitizeUser(findUserById(userId)) };
 }
 
+function countUserSessions(userId) {
+  if (!userId) return 0;
+  const now = Date.now();
+  let count = 0;
+  for (const s of state.sessions.values()) {
+    if (s.userId === userId && s.expiresAt > now) count++;
+  }
+  return count;
+}
+
+async function revokeUserSessions(userId) {
+  if (!userId) return { revokedCount: 0 };
+  let revokedCount = 0;
+  for (const [tokenHash, s] of state.sessions.entries()) {
+    if (s.userId === userId) {
+      state.sessions.delete(tokenHash);
+      revokedCount++;
+    }
+  }
+  if (pool && !closed) {
+    const res = await pool.query('DELETE FROM sessions WHERE user_id = $1', [userId]);
+    if (typeof res?.rowCount === 'number') {
+      revokedCount = Math.max(revokedCount, res.rowCount);
+    }
+  }
+  persistLocalFallback();
+  return { revokedCount };
+}
+
+function listAllUsers() {
+  const result = [];
+  for (const row of state.usersById.values()) {
+    const sanitized = sanitizeUser(row);
+    const lb = state.leaderboard.get(row.id);
+    result.push({
+      ...sanitized,
+      createdAt: row.createdAt || null,
+      wins: lb ? Number(lb.wins || 0) : 0,
+      matchesPlayed: lb ? Number(lb.matchesPlayed || 0) : 0,
+      googleLinked: Boolean(row.googleId),
+      hasPassword: Boolean(row.passwordHash),
+      activeSessionsCount: countUserSessions(row.id)
+    });
+  }
+  return result;
+}
+
+async function adminCreateUser({ username, password, name, email = null, role = 'player', points = STARTER_POINTS } = {}) {
+  const userValid = validateUsername(username);
+  if (!userValid.valid) return { error: userValid.message, status: 400 };
+
+  const passValid = validatePassword(password);
+  if (!passValid.valid) return { error: passValid.message, status: 400 };
+
+  if (findUserByUsername(userValid.cleanUsername)) {
+    return { error: 'Username sudah digunakan, silakan pilih username lain.', status: 400 };
+  }
+
+  let cleanEmail = null;
+  if (email !== undefined && email !== null && String(email).trim() !== '') {
+    cleanEmail = String(email).trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      return { error: 'Format email tidak valid.', status: 400 };
+    }
+    if (findUserByEmail(cleanEmail)) {
+      return { error: 'Email sudah digunakan oleh akun lain.', status: 400 };
+    }
+  }
+
+  const parsedPoints = points === undefined || points === null || points === '' ? STARTER_POINTS : Number(points);
+  if (!Number.isInteger(parsedPoints) || parsedPoints < 0 || parsedPoints > 100000000) {
+    return { error: 'Saldo Coins awal harus bilangan bulat antara 0 dan 100.000.000.', status: 400 };
+  }
+
+  const requestedRole = role === 'admin' ? 'admin' : 'player';
+  const resolvedRole = resolveUserRole(requestedRole, userValid.cleanUsername);
+  const passwordHash = await hashPassword(password);
+
+  // Cek ulang setelah proses scrypt async selesai
+  if (findUserByUsername(userValid.cleanUsername)) {
+    return { error: 'Username sudah digunakan, silakan pilih username lain.', status: 400 };
+  }
+  if (cleanEmail && findUserByEmail(cleanEmail)) {
+    return { error: 'Email sudah digunakan oleh akun lain.', status: 400 };
+  }
+
+  const displayName = (typeof name === 'string' ? name.trim().slice(0, 30) : '') || userValid.cleanUsername;
+  const id = 'user_' + crypto.randomUUID();
+  const createdAt = new Date().toISOString();
+  const myReferralCode = generateUniqueReferralCode();
+
+  if (pool && !closed) {
+    try {
+      await execPgTransaction(async client => {
+        await client.query(
+          `INSERT INTO users (id, username, name, password_hash, auth_type, avatar, email, role, created_at, referral_code, referred_by)
+           VALUES ($1, $2, $3, $4, 'password', '🎯', $5, $6, $7, $8, NULL)`,
+          [id, userValid.cleanUsername, displayName, passwordHash, cleanEmail, resolvedRole, createdAt, myReferralCode]
+        );
+        await client.query(
+          `INSERT INTO leaderboard (user_id, username, name, avatar, wins, matches_played, points, auth_type)
+           VALUES ($1, $2, $3, '🎯', 0, 0, $4, 'password')
+           ON CONFLICT (user_id) DO UPDATE SET points = EXCLUDED.points`,
+          [id, userValid.cleanUsername, displayName, parsedPoints]
+        );
+      });
+    } catch (err) {
+      if (String(err.code) === '23505' || String(err.message).includes('unique')) {
+        return { error: 'Username atau email sudah digunakan.', status: 400 };
+      }
+      throw err;
+    }
+  }
+
+  setUserInState({
+    id,
+    username: userValid.cleanUsername,
+    name: displayName,
+    passwordHash,
+    authType: 'password',
+    avatar: '🎯',
+    email: cleanEmail,
+    role: resolvedRole,
+    createdAt,
+    referralCode: myReferralCode,
+    referredBy: null
+  });
+  state.leaderboard.set(id, {
+    userId: id,
+    username: userValid.cleanUsername,
+    name: displayName,
+    avatar: '🎯',
+    wins: 0,
+    matchesPlayed: 0,
+    points: parsedPoints,
+    authType: 'password'
+  });
+
+  persistLocalFallback();
+  return { success: true, user: sanitizeUser(findUserById(id)) };
+}
+
+async function adminUpdateUser(userId, { name, username, email, role, newPassword, points, authType } = {}) {
+  const row = state.usersById.get(userId);
+  if (!row) return { error: 'Pengguna tidak ditemukan.', status: 404 };
+
+  let nextName = row.name;
+  if (name !== undefined) {
+    if (typeof name !== 'string') return { error: 'Format nama tidak valid.', status: 400 };
+    const cleanName = name.trim().slice(0, 30);
+    if (!cleanName) return { error: 'Nama tampilan tidak boleh kosong.', status: 400 };
+    nextName = cleanName;
+  }
+
+  let nextUsername = row.username;
+  if (username !== undefined && String(username).trim() !== row.username) {
+    const userValid = validateUsername(username);
+    if (!userValid.valid) return { error: userValid.message, status: 400 };
+    const cleanUsername = userValid.cleanUsername;
+    if (cleanUsername.toLowerCase() !== row.username.toLowerCase()) {
+      const existing = findUserByUsername(cleanUsername);
+      if (existing && existing.id !== userId) {
+        return { error: 'Username sudah digunakan oleh akun lain.', status: 400 };
+      }
+    }
+    nextUsername = cleanUsername;
+  }
+
+  let nextEmail = row.email || null;
+  if (email !== undefined) {
+    if (email === null || String(email).trim() === '') {
+      nextEmail = null;
+    } else {
+      if (typeof email !== 'string') return { error: 'Format email tidak valid.', status: 400 };
+      const cleanEmail = email.trim().toLowerCase();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(cleanEmail)) {
+        return { error: 'Format email tidak valid.', status: 400 };
+      }
+      const existing = findUserByEmail(cleanEmail);
+      if (existing && existing.id !== userId) {
+        return { error: 'Email sudah digunakan oleh akun lain.', status: 400 };
+      }
+      nextEmail = cleanEmail;
+    }
+  }
+
+  let nextAuthType = row.authType || 'password';
+  if (authType !== undefined) {
+    if (authType !== 'password' && authType !== 'google') {
+      return { error: 'Tipe autentikasi tidak valid.', status: 400 };
+    }
+    nextAuthType = authType;
+  }
+
+  let nextRole = row.role || 'player';
+  if (role !== undefined) {
+    if (role !== 'admin' && role !== 'player') {
+      return { error: 'Role tidak valid (harus admin atau player).', status: 400 };
+    }
+    if (role === 'player' && getAdminUsernameSet().has(nextUsername.toLowerCase())) {
+      return {
+        error: `Username "${nextUsername}" terdaftar di ADMIN_USERNAMES (.env) sehingga role-nya tidak dapat diturunkan lewat CMS.`,
+        status: 400
+      };
+    }
+    nextRole = resolveUserRole(role, nextUsername);
+  } else {
+    nextRole = resolveUserRole(nextRole, nextUsername);
+  }
+
+  let nextPasswordHash = row.passwordHash;
+  if (newPassword !== undefined && newPassword !== null && String(newPassword) !== '') {
+    const passValid = validatePassword(newPassword);
+    if (!passValid.valid) return { error: passValid.message, status: 400 };
+    nextPasswordHash = await hashPassword(newPassword);
+  }
+
+  const curEntry = ensureLeaderboardEntry(row);
+  let nextPoints = Number(curEntry.points || 0);
+  if (points !== undefined && points !== null && points !== '') {
+    const parsedPoints = Number(points);
+    if (!Number.isInteger(parsedPoints) || parsedPoints < 0 || parsedPoints > 100000000) {
+      return { error: 'Coins harus bilangan bulat antara 0 dan 100.000.000.', status: 400 };
+    }
+    nextPoints = parsedPoints;
+  }
+
+  if (pool && !closed) {
+    try {
+      await execPgTransaction(async client => {
+        await client.query(
+          `UPDATE users
+           SET name = $1, username = $2, email = $3, password_hash = $4, role = $5, auth_type = $6
+           WHERE id = $7`,
+          [nextName, nextUsername, nextEmail, nextPasswordHash, nextRole, nextAuthType, userId]
+        );
+        await ensureGlobalLeaderboardRow(client, {
+          ...row,
+          name: nextName,
+          username: nextUsername,
+          authType: nextAuthType
+        });
+        await client.query(
+          `UPDATE leaderboard
+           SET name = $1, username = $2, auth_type = $3, points = $4
+           WHERE user_id = $5`,
+          [nextName, nextUsername, nextAuthType, nextPoints, userId]
+        );
+      });
+    } catch (err) {
+      if (String(err.code) === '23505' || String(err.message).includes('unique')) {
+        return { error: 'Username atau email sudah digunakan oleh akun lain.', status: 400 };
+      }
+      throw err;
+    }
+  }
+
+  const prevUsername = row.username;
+  const prevEmail = row.email;
+
+  if (prevUsername.toLowerCase() !== nextUsername.toLowerCase()) {
+    state.usersByUsername.delete(prevUsername.toLowerCase());
+    state.usersByUsername.set(nextUsername.toLowerCase(), userId);
+  }
+  if (prevEmail && (!nextEmail || prevEmail.toLowerCase() !== nextEmail.toLowerCase())) {
+    state.usersByEmail.delete(prevEmail.toLowerCase());
+  }
+  if (nextEmail) {
+    state.usersByEmail.set(nextEmail.toLowerCase(), userId);
+  }
+
+  row.name = nextName;
+  row.username = nextUsername;
+  row.email = nextEmail;
+  row.passwordHash = nextPasswordHash;
+  row.role = nextRole;
+  row.authType = nextAuthType;
+
+  curEntry.name = nextName;
+  curEntry.username = nextUsername;
+  curEntry.authType = nextAuthType;
+  curEntry.points = nextPoints;
+
+  persistLocalFallback();
+  return { success: true, user: sanitizeUser(findUserById(userId)) };
+}
+
+async function adminDeleteUser(userId) {
+  const row = state.usersById.get(userId);
+  if (!row) return { error: 'Pengguna tidak ditemukan.', status: 404 };
+
+  if (pool && !closed) {
+    await execPgTransaction(async client => {
+      await client.query('DELETE FROM leaderboard WHERE user_id = $1', [userId]);
+      await client.query('DELETE FROM users WHERE id = $1', [userId]);
+    });
+  }
+
+  state.usersById.delete(userId);
+  if (row.username) state.usersByUsername.delete(row.username.toLowerCase());
+  if (row.googleId) state.usersByGoogleId.delete(String(row.googleId));
+  if (row.email) state.usersByEmail.delete(String(row.email).toLowerCase());
+  if (row.referralCode) state.usersByReferralCode.delete(String(row.referralCode).toUpperCase());
+  state.userItems.delete(userId);
+  state.leaderboard.delete(userId);
+
+  for (const [tokenHash, s] of state.sessions.entries()) {
+    if (s.userId === userId) state.sessions.delete(tokenHash);
+  }
+  for (const [orderId, ord] of state.topupOrders.entries()) {
+    if (ord.userId === userId) state.topupOrders.delete(orderId);
+  }
+  const purchasePrefix = `${userId}|`;
+  for (const key of state.itemPurchases.keys()) {
+    if (key.startsWith(purchasePrefix)) state.itemPurchases.delete(key);
+  }
+  state.referralsByReferrer.delete(userId);
+  for (const [refId, ref] of state.referrals.entries()) {
+    if (ref.referrerId === userId || ref.referredUserId === userId) {
+      state.referrals.delete(refId);
+    }
+  }
+  for (const [referrerId, arr] of state.referralsByReferrer.entries()) {
+    state.referralsByReferrer.set(
+      referrerId,
+      arr.filter(r => r.referredUserId !== userId && r.referrerId !== userId)
+    );
+  }
+
+  persistLocalFallback();
+  return { success: true, deletedUserId: userId, username: row.username };
+}
+
 // ==========================================
 // SESSION MANAGEMENT (TOKEN)
 // ==========================================
@@ -1996,6 +2331,42 @@ async function setUserPoints(userId, points) {
   return entry.points;
 }
 
+// Admin: ubah saldo Coins berdasarkan delta (+ / -) dengan atomic lock PostgreSQL
+async function adjustUserPoints(userId, delta) {
+  const amt = Math.trunc(Number(delta));
+  if (!Number.isInteger(amt) || amt === 0) {
+    return { error: 'Jumlah penyesuaian Coins harus bilangan bulat bukan nol.', status: 400 };
+  }
+  const user = findUserById(userId);
+  if (!user) return { error: 'Pengguna tidak ditemukan.', status: 404 };
+
+  const entry = ensureLeaderboardEntry(user);
+  const previous = Number(entry.points || 0);
+  const next = previous + amt;
+  if (next < 0) {
+    return { error: `Saldo Coins tidak boleh negatif (saldo saat ini: ${previous}).`, status: 400 };
+  }
+
+  if (pool && !closed) {
+    await execPgTransaction(async client => {
+      await ensureGlobalLeaderboardRow(client, user);
+      const res = await client.query('SELECT points FROM leaderboard WHERE user_id = $1 FOR UPDATE', [user.id]);
+      const pgPrev = Number(res.rows[0]?.points || 0);
+      const pgNext = pgPrev + amt;
+      if (pgNext < 0) {
+        const err = new Error(`Saldo Coins tidak mencukupi di database (saldo saat ini: ${pgPrev}).`);
+        err.status = 400;
+        throw err;
+      }
+      await client.query('UPDATE leaderboard SET points = $1 WHERE user_id = $2', [pgNext, user.id]);
+    });
+  }
+
+  entry.points = next;
+  persistLocalFallback();
+  return { success: true, previous, current: next, user: sanitizeUser(findUserById(user.id)) };
+}
+
 // Tambah poin PlayGo ke saldo pemain (mis. hadiah +10 poin menang Monster Quiz Battle)
 function awardUserPoints(userId, deltaPoints = 0) {
   const amount = Math.floor(Number(deltaPoints) || 0);
@@ -2265,6 +2636,71 @@ async function cancelTopupOrder(orderId, userId) {
   return { success: true, order };
 }
 
+function formatTopupOrderRecord(o) {
+  const details = o.paymentDetails && typeof o.paymentDetails === 'object' ? o.paymentDetails : {};
+  const u = findUserById(o.userId);
+  return {
+    orderId: o.orderId,
+    id: o.orderId,
+    userId: o.userId,
+    username: u?.username || o.userId,
+    playerName: u?.name || u?.username || o.userId,
+    packageId: o.packageId,
+    packageName: `${Number(o.diamonds || 0).toLocaleString('id-ID')} Coins`,
+    coins: Number(o.diamonds || 0),
+    diamonds: Number(o.diamonds || 0),
+    grossAmount: Number(o.grossAmount || 0),
+    amountIdr: Number(o.grossAmount || 0),
+    status: o.status || 'pending',
+    reference: o.snapToken || details.reference || null,
+    paymentMethod: o.paymentType || details.paymentMethod || null,
+    paymentMethodName: details.paymentMethodName || null,
+    paymentCategory: details.paymentCategory || null,
+    bank: details.bank || null,
+    vaNumber: details.vaNumber || null,
+    qrString: details.qrString || null,
+    qrCodeUrl: details.qrCodeUrl || null,
+    paymentUrl: details.paymentUrl || null,
+    gateway: details.gateway || null,
+    failureReason: details.cancelReason || details.failureReason || null,
+    createdAt: o.createdAt,
+    updatedAt: o.updatedAt
+  };
+}
+
+function listAllTopupOrders() {
+  return Array.from(state.topupOrders.values())
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+    .map(formatTopupOrderRecord);
+}
+
+async function adminCancelTopupOrder(orderId, reason = '') {
+  if (!orderId) return { error: 'Order ID wajib diisi.', status: 400 };
+  const order = await getTopupOrder(orderId);
+  if (!order) return { error: 'Order topup tidak ditemukan.', status: 404 };
+  if (order.status === 'success') return { error: 'Order yang sudah dibayar tidak dapat dibatalkan.', status: 400 };
+
+  if (order.status === 'pending') {
+    const now = new Date().toISOString();
+    const nextDetails = {
+      ...(order.paymentDetails && typeof order.paymentDetails === 'object' ? order.paymentDetails : {}),
+      cancelReason: String(reason || 'Dibatalkan oleh admin.').trim()
+    };
+    if (pool && !closed) {
+      await pool.query(
+        "UPDATE topup_orders SET status = 'cancelled', payment_details = $1, updated_at = $2 WHERE order_id = $3 AND status = 'pending'",
+        [JSON.stringify(nextDetails), now, orderId]
+      );
+    }
+    order.status = 'cancelled';
+    order.paymentDetails = nextDetails;
+    order.updatedAt = now;
+    state.topupOrders.set(orderId, order);
+    persistLocalFallback();
+  }
+  return { success: true, order: formatTopupOrderRecord(order) };
+}
+
 
 // ==========================================
 // SNAPSHOT ROOM
@@ -2344,6 +2780,12 @@ module.exports = {
   getUserById: findUserById,
   deleteSession,
   pruneExpiredSessions,
+  countUserSessions,
+  revokeUserSessions,
+  listAllUsers,
+  adminCreateUser,
+  adminUpdateUser,
+  adminDeleteUser,
   recordMatchResult,
   rankPoints,
   getLeaderboard,
@@ -2366,11 +2808,14 @@ module.exports = {
   consumeUserItem,
   setUserItemQuantities,
   setUserPoints,
+  adjustUserPoints,
   awardUserPoints,
   createTopupOrder,
   getTopupOrder,
   listUserTopupOrders,
+  listAllTopupOrders,
   cancelTopupOrder,
+  adminCancelTopupOrder,
   completeTopupOrder,
   saveRoom,
   getPool,

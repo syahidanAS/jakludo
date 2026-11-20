@@ -12,6 +12,7 @@ const { registerQuizRoutes } = require('../quiz/routes');
 const { registerChessRoutes } = require('../chess/routes');
 const { registerSnakesRoutes } = require('../snakes/routes');
 const { registerEconomyRoutes } = require('../economy/routes');
+const { registerAdminRoutes } = require('../admin/routes');
 const quizEngine = require('../quiz/engine');
 const social = require('../social/store');
 const paymentGateway = require('../lib/paymentGateway');
@@ -655,6 +656,7 @@ function createApiRouter() {
   registerChessRoutes(api);
   registerSnakesRoutes(api);
   registerEconomyRoutes(api);
+  registerAdminRoutes(api);
 
   api.use((req, res) => res.status(404).json({ success: false, error: 'Endpoint tidak ditemukan.' }));
 
