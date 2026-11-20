@@ -377,3 +377,25 @@ test('admin menghapus item lewat endpoint: stok di room aktif ikut hilang tanpa 
     else process.env.ADMIN_USERNAMES = prevAdmins;
   }
 });
+
+test('batas pembelian item: maksimal 10 per item per bulan, pembelian ke-11 ditolak tanpa memotong Coins', async () => {
+  const u = await register();
+  db.awardUserPoints(u.user.id, 5000);
+  for (let i = 1; i <= db.MONTHLY_ITEM_PURCHASE_LIMIT; i++) {
+    const res = await buy(u.token, 'blackholeShield');
+    assert.equal(res.success, true, `pembelian ke-${i}: ${res.error}`);
+    assert.equal(res.user.itemPurchasesThisMonth.blackholeShield, i);
+  }
+  const coinsBefore = db.sanitizeUser(db.getUserById(u.user.id)).points;
+  const over = await buy(u.token, 'blackholeShield');
+  assert.equal(over.success, false);
+  assert.match(over.error, /Batas pembelian/);
+  assert.equal(db.sanitizeUser(db.getUserById(u.user.id)).points, coinsBefore, 'Coins tidak terpotong');
+  assert.equal(db.getUserItems(u.user.id).blackholeShield, db.MONTHLY_ITEM_PURCHASE_LIMIT, 'stok tidak bertambah');
+
+  // Batas dihitung per item: item lain tetap bisa dibeli
+  const other = await buy(u.token, 'forceReturn');
+  assert.equal(other.success, true);
+  assert.equal(other.user.itemPurchaseLimit, db.MONTHLY_ITEM_PURCHASE_LIMIT);
+});
+

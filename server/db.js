@@ -31,6 +31,11 @@ const REFERRAL_REWARD_COINS = 50; // Hadiah 50 coins saat kode referral digunaka
 const DAILY_BONUS_POINTS = 5;
 const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 const todayWib = (now = Date.now()) => new Date(now + WIB_OFFSET_MS).toISOString().slice(0, 10);
+const monthWib = (now = Date.now()) => todayWib(now).slice(0, 7); // 'YYYY-MM'
+
+// Batas pembelian item toko per pemain, per item, per bulan (WIB) agar unsur pay-to-win terkendali.
+// Skin kosmetik tidak termasuk (dibeli lewat jalur ekonomi terpisah).
+const MONTHLY_ITEM_PURCHASE_LIMIT = Math.max(1, Number(process.env.MONTHLY_ITEM_PURCHASE_LIMIT) || 10);
 
 const RANK_POINTS = {
   2: [30, 5],
@@ -229,6 +234,7 @@ const DEFAULT_SHOP_ITEMS = [
 ];
 
 const state = {
+  itemPurchases: new Map(),   // `${userId}|${itemId}` -> { period: 'YYYY-MM', count } (pembelian bulan berjalan)
   usersById: new Map(),       // id -> { id, username, name, passwordHash, authType, avatar, email, googleId, createdAt, referralCode, referredBy }
   usersByUsername: new Map(), // lower(username) -> id
   usersByGoogleId: new Map(), // googleId -> id
@@ -296,7 +302,8 @@ function persistLocalFallback() {
       sessions: Array.from(state.sessions.values()),
       leaderboard: Array.from(state.leaderboard.values()),
       rooms: Array.from(state.rooms.values()),
-      referrals: Array.from(state.referrals.values())
+      referrals: Array.from(state.referrals.values()),
+      itemPurchases: Array.from(state.itemPurchases.entries())
     };
     fs.writeFileSync(LOCAL_STATE_FILE, JSON.stringify(dump));
   } catch (err) {
@@ -396,6 +403,23 @@ function setUserInState(u) {
   }
 }
 
+// Jumlah pembelian item di bulan berjalan; data bulan lalu otomatis dianggap 0
+function getMonthlyPurchaseCount(userId, itemId, now = Date.now()) {
+  const rec = state.itemPurchases.get(`${userId}|${itemId}`);
+  return rec && rec.period === monthWib(now) ? rec.count : 0;
+}
+
+function getMonthlyPurchases(userId, now = Date.now()) {
+  const period = monthWib(now);
+  const out = {};
+  for (const [key, rec] of state.itemPurchases) {
+    if (rec.period !== period) continue;
+    const [uid, itemId] = key.split('|');
+    if (uid === userId) out[itemId] = rec.count;
+  }
+  return out;
+}
+
 function setItemInState(userId, itemId, quantity) {
   const qty = Number(quantity || 0);
   if (!state.userItems.has(userId)) state.userItems.set(userId, {});
@@ -426,6 +450,7 @@ function bootstrapLocalState() {
       for (const e of dump.leaderboard || []) state.leaderboard.set(e.userId, e);
       for (const r of dump.rooms || []) state.rooms.set(r.code, r);
       for (const ref of dump.referrals || []) recordReferralInState(ref);
+      for (const [key, rec] of dump.itemPurchases || []) state.itemPurchases.set(key, rec);
     } catch {
       // Abaikan jika gagal dibaca
     }
@@ -541,6 +566,15 @@ async function hydrateFromPostgres(activePool) {
   state.leaderboard.clear();
   state.rooms.clear();
   state.topupOrders.clear();
+  state.itemPurchases.clear();
+
+  const currentMonth = monthWib();
+  const purchasesRes = await activePool
+    .query('SELECT user_id, item_id, period, count FROM item_purchase_monthly WHERE period = $1', [currentMonth])
+    .catch(() => ({ rows: [] }));
+  for (const r of purchasesRes.rows) {
+    state.itemPurchases.set(`${r.user_id}|${r.item_id}`, { period: r.period, count: Number(r.count) });
+  }
 
   const [usersRes, itemsRes, sessionsRes, lbRes, roomsRes, topupRes, refRes] = await Promise.all([
     activePool.query('SELECT * FROM users'),
@@ -1248,7 +1282,9 @@ function sanitizeUser(u) {
     referralBonusCoins,
     equippedLudoSkin,
     ownedLudoSkins,
-    inventory: { ...u.inventory }
+    inventory: { ...u.inventory },
+    itemPurchaseLimit: MONTHLY_ITEM_PURCHASE_LIMIT,
+    itemPurchasesThisMonth: getMonthlyPurchases(u.id)
   };
 }
 
@@ -1831,6 +1867,13 @@ function purchaseItem({ userId, itemId }) {
       return { error: 'Harga item toko tidak valid.' };
     }
 
+    const limitMsg = `Batas pembelian ${item.name} bulan ini sudah tercapai (${MONTHLY_ITEM_PURCHASE_LIMIT}x per bulan). Coba lagi bulan depan.`;
+    const now = Date.now();
+    const period = monthWib(now);
+    if (getMonthlyPurchaseCount(user.id, itemId, now) >= MONTHLY_ITEM_PURCHASE_LIMIT) {
+      return { error: limitMsg, limitReached: true };
+    }
+
     const entry = ensureLeaderboardEntry(user);
     if (entry.points < price) {
       return { error: `Poin tidak mencukupi. Diperlukan ${price} poin, kamu memiliki ${entry.points} poin.` };
@@ -1838,10 +1881,28 @@ function purchaseItem({ userId, itemId }) {
 
     let pgPointsAfter = null;
     let pgQtyAfter = null;
+    let pgMonthlyAfter = null;
     if (pool && !closed) {
       let txErr = null;
       await execPgTransaction(async client => {
         try {
+          // Kuota bulanan dinaikkan lebih dulu dengan syarat masih di bawah batas (atomik),
+          // jadi pembelian paralel tidak bisa menembus batas. Gagal = seluruh transaksi dibatalkan.
+          const quotaRes = await client.query(
+            `INSERT INTO item_purchase_monthly (user_id, item_id, period, count, updated_at)
+             VALUES ($1, $2, $3, 1, $5)
+             ON CONFLICT (user_id, item_id, period) DO UPDATE
+               SET count = item_purchase_monthly.count + 1, updated_at = EXCLUDED.updated_at
+               WHERE item_purchase_monthly.count < $4
+             RETURNING count`,
+            [user.id, itemId, period, MONTHLY_ITEM_PURCHASE_LIMIT, now]
+          );
+          if (quotaRes.rowCount === 0) {
+            const limitErr = new Error(limitMsg);
+            limitErr.limitReached = true;
+            throw limitErr;
+          }
+          pgMonthlyAfter = Number(quotaRes.rows[0].count);
           await ensureGlobalLeaderboardRow(client, user);
           const updateRes = await client.query(
             'UPDATE leaderboard SET points = points - $1 WHERE user_id = $2 AND points >= $1 RETURNING points',
@@ -1864,10 +1925,19 @@ function purchaseItem({ userId, itemId }) {
         }
       });
       if (txErr) {
+        if (txErr.limitReached) {
+          // Database lebih tahu (mis. pembelian dari instance lain): samakan cache dengan batas
+          state.itemPurchases.set(`${user.id}|${itemId}`, { period, count: MONTHLY_ITEM_PURCHASE_LIMIT });
+          return { error: limitMsg, limitReached: true };
+        }
         return { error: txErr.message || 'Gagal memproses pembelian item di database.' };
       }
     }
 
+    state.itemPurchases.set(`${user.id}|${itemId}`, {
+      period,
+      count: pgMonthlyAfter !== null ? pgMonthlyAfter : getMonthlyPurchaseCount(user.id, itemId, now) + 1
+    });
     entry.points = pgPointsAfter !== null ? pgPointsAfter : entry.points - price;
     const currentQty = getUserItems(user.id)[itemId] || 0;
     setItemInState(user.id, itemId, pgQtyAfter !== null ? pgQtyAfter : currentQty + 1);
@@ -2291,6 +2361,8 @@ module.exports = {
   queryCoinPackages: queryDiamondPackages,
   getCoinPackageById: getDiamondPackageById,
   purchaseItem,
+  MONTHLY_ITEM_PURCHASE_LIMIT,
+  getMonthlyPurchases,
   consumeUserItem,
   setUserItemQuantities,
   setUserPoints,

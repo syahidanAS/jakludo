@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import Icon from '../components/Icon';
 import Modal from '../components/Modal';
+import LeaveMatchConfirm from '../components/game/LeaveMatchConfirm';
 import PlayerAvatar from '../components/PlayerAvatar';
 import Dice3D from '../Dice3D';
 import TurnTimer from '../components/game/TurnTimer';
@@ -448,6 +449,7 @@ export default function SnakesLaddersScreen({
 
   const [copiedCode, setCopiedCode] = useState(false);
   const [showMobileHistory, setShowMobileHistory] = useState(false);
+  const [confirmLeaveMatch, setConfirmLeaveMatch] = useState(false);
 
   const ladders = room?.boardConfig?.ladders || DEFAULT_LADDERS;
   const snakesMap = room?.boardConfig?.snakes || DEFAULT_SNAKES;
@@ -656,10 +658,22 @@ export default function SnakesLaddersScreen({
 
     return (
       <main className="snk-game-layout" id="main">
+        <LeaveMatchConfirm
+          isOpen={confirmLeaveMatch && room.status === 'playing'}
+          onCancel={() => setConfirmLeaveMatch(false)}
+          onConfirm={() => {
+            setConfirmLeaveMatch(false);
+            actions.leaveRoom();
+          }}
+        />
         {/* Top Bar Ringkas */}
         <header className="snk-game-topbar card">
           <div className="snk-game-topbar__left">
-            <button type="button" className="btn btn--secondary btn--sm" onClick={actions.leaveRoom}>
+            <button
+              type="button"
+              className="btn btn--secondary btn--sm"
+              onClick={() => (room.status === 'playing' ? setConfirmLeaveMatch(true) : actions.leaveRoom())}
+            >
               <Icon name="arrow-left" size={16} />
               <span>Keluar</span>
             </button>

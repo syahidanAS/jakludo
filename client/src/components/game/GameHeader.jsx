@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Modal from '../Modal';
 import Icon from '../Icon';
 import ThemeToggle from '../ThemeToggle';
@@ -8,12 +8,19 @@ import { sound } from '../../sound';
 // Header ringkas saat bermain: kode room, sinyal, toko, suara, dan keluar (dengan konfirmasi)
 export default function GameHeader({ room, isOut = false, audio, network, theme, onOpenShop, onOpenAudio, onLeave, leaveRequest = 0 }) {
   const [confirmLeave, setConfirmLeave] = useState(false);
-  // Tombol Back browser/HP saat bermain membuka konfirmasi (atau langsung keluar jika sudah OUT menonton)
+  // Tombol Back browser/HP saat bermain membuka konfirmasi (atau langsung keluar jika sudah OUT menonton).
+  // Tiap permintaan (nomor leaveRequest) diproses tepat sekali. Dimulai dari nilai saat komponen dipasang
+  // supaya permintaan lama tidak terulang saat masuk ulang ke room. onLeave lewat ref: fungsinya dibuat
+  // ulang tiap render App, dan bila jadi dependensi efek, popup akan terbuka lagi di setiap render.
+  const handledLeaveRequest = useRef(leaveRequest);
+  const onLeaveRef = useRef(onLeave);
+  onLeaveRef.current = onLeave;
   useEffect(() => {
-    if (!leaveRequest) return;
-    if (isOut) onLeave();
+    if (!leaveRequest || leaveRequest === handledLeaveRequest.current) return;
+    handledLeaveRequest.current = leaveRequest;
+    if (isOut) onLeaveRef.current();
     else setConfirmLeave(true);
-  }, [leaveRequest, isOut, onLeave]);
+  }, [leaveRequest, isOut]);
   const muted = audio.bgmMuted && audio.sfxMuted;
 
   return (

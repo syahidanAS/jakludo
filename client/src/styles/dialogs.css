@@ -2100,3 +2100,15 @@
     text-align: left;
   }
 }
+
+/* Sisa kuota pembelian item per bulan */
+.shop-item__quota {
+  margin: 4px 0 0;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+.shop-item__quota.is-empty {
+  color: var(--danger);
+}

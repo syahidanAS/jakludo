@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Icon from '../components/Icon';
 import Modal from '../components/Modal';
+import LeaveMatchConfirm from '../components/game/LeaveMatchConfirm';
 import PlayerAvatar from '../components/PlayerAvatar';
 import ChatPanel from '../components/game/ChatPanel';
 import MonsterSprite from '../quiz/MonsterSprite';
@@ -133,6 +134,7 @@ export default function MonsterQuizScreen({
   onOpenAudio,
   onViewProfile
 }) {
+  const [confirmLeaveMatch, setConfirmLeaveMatch] = useState(false);
   const [hubTab, setHubTab] = useState('leaderboard'); // 'leaderboard' | 'history'
   const [copied, setCopied] = useState(false);
 
@@ -785,11 +787,24 @@ export default function MonsterQuizScreen({
               <Icon name="volume-on" size={18} />
             </button>
           )}
-          <button type="button" className="btn btn--secondary" onClick={actions.leaveRoom}>
+          <button
+            type="button"
+            className="btn btn--secondary"
+            onClick={() => (room.phase === 'finished' ? actions.leaveRoom() : setConfirmLeaveMatch(true))}
+          >
             Keluar
           </button>
         </div>
       </header>
+
+      <LeaveMatchConfirm
+        isOpen={confirmLeaveMatch && room.phase !== 'finished' && room.phase !== 'lobby'}
+        onCancel={() => setConfirmLeaveMatch(false)}
+        onConfirm={() => {
+          setConfirmLeaveMatch(false);
+          actions.leaveRoom();
+        }}
+      />
 
       {error && <p className="alert alert--error" role="alert">{error}</p>}
       {notice && <p className="alert alert--info" role="status">{notice}</p>}

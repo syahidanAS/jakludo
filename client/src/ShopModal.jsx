@@ -347,7 +347,12 @@ function DuitkuPaymentPanel({
 function LegacyShopItemCard({ item, points, ownedCount, currentUser, buyingId, onBuy }) {
   const canAfford = points >= item.price;
   const isBusy = buyingId === item.id;
-  const disabled = !currentUser || !canAfford || isBusy;
+  // Batas pembelian per item per bulan (dihitung server, dikirim di objek user)
+  const monthlyLimit = Number(currentUser?.itemPurchaseLimit || 0);
+  const boughtThisMonth = Number(currentUser?.itemPurchasesThisMonth?.[item.id] || 0);
+  const remainingThisMonth = monthlyLimit ? Math.max(0, monthlyLimit - boughtThisMonth) : null;
+  const limitReached = remainingThisMonth === 0;
+  const disabled = !currentUser || !canAfford || isBusy || limitReached;
 
   return (
     <li className={`shop-item card mp-product-card shop-item--${item.game || 'ludo'}`}>
@@ -370,6 +375,13 @@ function LegacyShopItemCard({ item, points, ownedCount, currentUser, buyingId, o
 
       <p className="shop-item__desc">{item.description}</p>
       {item.highlight && <p className="shop-item__highlight muted">{item.highlight}</p>}
+      {currentUser && remainingThisMonth !== null && (
+        <p className={`shop-item__quota ${limitReached ? 'is-empty' : ''}`}>
+          {limitReached
+            ? `Batas bulan ini tercapai (${monthlyLimit}/${monthlyLimit}). Bisa dibeli lagi bulan depan.`
+            : `Sisa pembelian bulan ini: ${remainingThisMonth}/${monthlyLimit}`}
+        </p>
+      )}
 
       <div className="shop-item__foot">
         <span className="shop-item__price">
@@ -377,11 +389,19 @@ function LegacyShopItemCard({ item, points, ownedCount, currentUser, buyingId, o
         </span>
         <button
           type="button"
-          className={`btn btn--sm ${canAfford && currentUser ? 'btn--primary' : 'btn--secondary'}`}
+          className={`btn btn--sm ${canAfford && currentUser && !limitReached ? 'btn--primary' : 'btn--secondary'}`}
           disabled={disabled}
           onClick={() => onBuy(item)}
         >
-          {isBusy ? 'Membeli...' : !currentUser ? 'Perlu Login' : !canAfford ? 'Coins Kurang' : 'Beli Item'}
+          {isBusy
+            ? 'Membeli...'
+            : !currentUser
+            ? 'Perlu Login'
+            : limitReached
+            ? 'Batas Bulanan'
+            : !canAfford
+            ? 'Coins Kurang'
+            : 'Beli Item'}
         </button>
       </div>
     </li>
