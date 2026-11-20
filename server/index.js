@@ -18,6 +18,7 @@ const engine = require('./game/engine');
 const quizEngine = require('./quiz/engine');
 const chessEngine = require('./chess/engine');
 const snakesEngine = require('./snakes/engine');
+const adminSpectator = require('./admin/spectator');
 const { createApiRouter } = require('./http/routes');
 const { registerSocketHandlers } = require('./realtime/socket');
 
@@ -56,6 +57,7 @@ store.init(io);
 quizEngine.init(io);
 chessEngine.init(io);
 snakesEngine.init(io);
+adminSpectator.init(io);
 registerSocketHandlers(io);
 
 app.get('/health', (_, res) => res.json({

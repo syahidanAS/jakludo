@@ -3,6 +3,7 @@ import { adminApi } from '../api';
 import AdminIcon from '../components/AdminIcons';
 import AdminModal from '../components/AdminModal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import LiveRoomSpectatorModal from '../components/LiveRoomSpectatorModal';
 import KpiCard from '../components/KpiCard';
 import Badge, { gameBadgeTone, statusBadgeTone } from '../components/Badge';
 import { formatDateTime, formatDuration, formatNumber, formatRelativeTime } from '../utils/format';
@@ -17,6 +18,7 @@ export default function RoomsModule({ onToast }) {
 
   const [inspectRoom, setInspectRoom] = useState(null);
   const [inspectLoading, setInspectLoading] = useState(false);
+  const [watchRoom, setWatchRoom] = useState(null);
 
   const [closeTarget, setCloseTarget] = useState(null);
   const [closeBusy, setCloseBusy] = useState(false);
@@ -260,6 +262,15 @@ export default function RoomsModule({ onToast }) {
                       <div className="adm-row-actions adm-row-actions--end">
                         <button
                           type="button"
+                          className="adm-btn adm-btn--primary adm-btn--xs"
+                          title="Masuk & pantau permainan realtime secara senyap"
+                          onClick={() => setWatchRoom(r)}
+                        >
+                          <AdminIcon name="radio" size={14} />
+                          <span>Pantau Live</span>
+                        </button>
+                        <button
+                          type="button"
                           className="adm-btn adm-btn--secondary adm-btn--xs"
                           onClick={() => handleInspect(r)}
                         >
@@ -358,6 +369,18 @@ export default function RoomsModule({ onToast }) {
               <div className="adm-row-actions adm-row-actions--end">
                 <button
                   type="button"
+                  className="adm-btn adm-btn--primary"
+                  onClick={() => {
+                    const target = inspectRoom;
+                    setInspectRoom(null);
+                    setWatchRoom(target);
+                  }}
+                >
+                  <AdminIcon name="radio" size={16} />
+                  <span>Pantau Live (Senyap)</span>
+                </button>
+                <button
+                  type="button"
                   className="adm-btn adm-btn--danger"
                   onClick={() => setCloseTarget(inspectRoom)}
                 >
@@ -369,6 +392,14 @@ export default function RoomsModule({ onToast }) {
           )
         )}
       </AdminModal>
+
+      {/* Modal Pantau Live Realtime (Mode Senyap) */}
+      <LiveRoomSpectatorModal
+        room={watchRoom}
+        onClose={() => setWatchRoom(null)}
+        onToast={onToast}
+        onRequestCloseRoom={target => setCloseTarget(target)}
+      />
 
       {/* Dialog Tutup Paksa Room */}
       <ConfirmDialog

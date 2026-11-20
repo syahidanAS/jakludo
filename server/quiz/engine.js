@@ -8,6 +8,7 @@ const quizStore = require('./store');
 const social = require('../social/store');
 const { INITIAL_HP, ATTACK_DAMAGE, getMonster, listMonsters, BOT_PROFILES } = require('./monsters');
 const { buildRoundQuestionPayload } = require('./questions');
+const adminSpectator = require('../admin/spectator');
 
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 3;
@@ -182,7 +183,7 @@ function closeAllRoomsForShutdown() {
   const reason = 'Server sedang diperbarui. Pertandingan kuis dibatalkan dan tidak dihitung, silakan mulai lagi.';
   for (const room of Array.from(quizRooms.values())) {
     emitToRoom(room, 'quiz:room:closed', { roomCode: room.code, reason });
-    closeAndDeleteRoom(room);
+    closeAndDeleteRoom(room, reason);
   }
 }
 
@@ -286,6 +287,31 @@ function serializeRoomForUser(room, viewerUserId = null) {
   };
 }
 
+// Snapshot lengkap khusus mode pantau senyap admin (menyertakan kunci jawaban & pilihan pemain real-time)
+function serializeRoomForAdmin(room) {
+  const base = serializeRoomForUser(room, null);
+  if (!base) return null;
+  const round = room.match?.currentRound || null;
+  if (base.match && round) {
+    const answers = {};
+    for (const [uid, ans] of (round.answers || new Map()).entries()) {
+      answers[uid] = {
+        selectedIndex: ans.selectedIndex,
+        isCorrect: Boolean(ans.isCorrect),
+        responseMs: ans.responseMs
+      };
+    }
+    base.match.adminRound = {
+      correctIndex: round.shuffledCorrectIndex,
+      deadlineAt: round.deadlineAt || null,
+      startedAt: round.startedAt || null,
+      resolved: Boolean(round.resolved),
+      answers
+    };
+  }
+  return base;
+}
+
 function emitToRoom(room, event, payload) {
   if (!ioInstance || !room) return;
   ioInstance.to(socketRoomName(room.code)).emit(event, payload);
@@ -300,6 +326,9 @@ function emitRoomState(room) {
         sock.emit('quiz:room:state', serializeRoomForUser(room, p.userId));
       }
     }
+  }
+  if (adminSpectator.hasWatchers('quiz', room.code)) {
+    adminSpectator.notifyState('quiz', room.code, serializeRoomForAdmin(room));
   }
 }
 
@@ -1548,9 +1577,10 @@ function finishMatch(room, endReason = 'knockout', forcedWinnerUserId = null) {
 // DISCONNECT GRACE PERIOD (30 DETIK), RECONNECT & LEAVE
 // ==========================================
 
-function closeAndDeleteRoom(room) {
+function closeAndDeleteRoom(room, reason = 'Room Monster Quiz telah ditutup.') {
   if (!room) return;
   clearRoomTimers(room);
+  adminSpectator.notifyClosed('quiz', room.code, reason);
   for (const p of room.players) {
     clearPlayerDisconnectTimer(p);
     if (userRoomMap.get(p.userId) === room.code) {
@@ -1713,6 +1743,7 @@ function sendReaction(socket, payload = {}) {
     emoji
   };
   emitToRoom(room, 'room:reaction', reactionPayload);
+  adminSpectator.notifyReaction('quiz', room.code, reactionPayload);
   return { ok: true };
 }
 
@@ -1761,6 +1792,7 @@ function sendChat(socket, payload = {}) {
   room.chats.push(chatMsg);
   if (room.chats.length > MAX_QUIZ_CHATS) room.chats.shift();
   emitToRoom(room, 'quiz:chat_message', chatMsg);
+  adminSpectator.notifyChat('quiz', room.code, chatMsg);
   return { ok: true, message: chatMsg };
 }
 
@@ -1786,7 +1818,7 @@ function adminCloseRoom(code, reason = 'Room ditutup oleh admin.') {
   if (ioInstance) {
     ioInstance.in(socketRoomName(room.code)).socketsLeave(socketRoomName(room.code));
   }
-  closeAndDeleteRoom(room);
+  closeAndDeleteRoom(room, reason);
   return { ok: true, code: room.code };
 }
 
@@ -1816,6 +1848,7 @@ module.exports = {
   getActiveRoomForUser,
   closeAllRoomsForShutdown,
   adminCloseRoom,
-  serializeRoomForUser
+  serializeRoomForUser,
+  serializeRoomForAdmin
 };
 

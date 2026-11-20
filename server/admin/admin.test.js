@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { io: ioClient } = require('socket.io-client');
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'playgo-admin-test-'));
 process.env.JAKLUDO_DATA_DIR = dataDir;
@@ -614,5 +615,256 @@ test('Akun role admin (db role & ADMIN_USERNAMES) tidak ditampilkan di seluruh l
   } finally {
     if (prevAdminUsernames === undefined) delete process.env.ADMIN_USERNAMES;
     else process.env.ADMIN_USERNAMES = prevAdminUsernames;
+  }
+});
+
+test('Admin stealth live room spectator memantau 4 game realtime tanpa diketahui pemain', async () => {
+  const sockets = [];
+  const connectSocket = () =>
+    new Promise((resolve, reject) => {
+      const s = ioClient(url, { forceNew: true, transports: ['websocket'] });
+      sockets.push(s);
+      s.once('connect', () => resolve(s));
+      s.once('connect_error', reject);
+    });
+  const emitAck = (s, ev, payload) => new Promise(resolve => s.emit(ev, payload, res => resolve(res)));
+  const onceEvent = (s, ev, timeoutMs = 4000) =>
+    new Promise((resolve, reject) => {
+      const t = setTimeout(() => {
+        s.off(ev, handler);
+        reject(new Error(`Timeout menunggu event ${ev}`));
+      }, timeoutMs);
+      const handler = data => {
+        clearTimeout(t);
+        resolve(data);
+      };
+      s.once(ev, handler);
+    });
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+
+  try {
+    const adminAuth = await registerPlayer('stealth_admin');
+    await db.setUserRole(adminAuth.user.id, 'admin');
+    const p1 = await registerPlayer('stealth_p1');
+    const p2 = await registerPlayer('stealth_p2');
+
+    // 1. Tolak socket tanpa token & non-admin
+    const unauthSock = await connectSocket();
+    const unauthJoin = await emitAck(unauthSock, 'admin:watch:join', { game: 'ludo', code: 'ZZZZZ' });
+    assert.equal(unauthJoin.ok, false);
+
+    const playerWatchSock = await connectSocket();
+    const playerWatchJoin = await emitAck(playerWatchSock, 'admin:watch:join', {
+      token: p1.token,
+      game: 'ludo',
+      code: 'ZZZZZ'
+    });
+    assert.equal(playerWatchJoin.ok, false);
+
+    // 2. JakLudo: 2 pemain main, admin masuk mode senyap -> pemain tidak menerima event apa pun
+    const s1 = await connectSocket();
+    const s2 = await connectSocket();
+
+    const p1Created = onceEvent(s1, 'room:joined');
+    const p1InitUpdate = onceEvent(s1, 'room:update');
+    s1.emit('room:create', { token: p1.token });
+    const ludoJoined1 = await p1Created;
+    await p1InitUpdate;
+    const ludoCode = ludoJoined1.code;
+
+    const p2Joined = onceEvent(s2, 'room:joined');
+    const p1SawP2 = onceEvent(s1, 'room:update');
+    const p2InitUpdate = onceEvent(s2, 'room:update');
+    s2.emit('room:join', { code: ludoCode, token: p2.token });
+    await Promise.all([p2Joined, p1SawP2, p2InitUpdate]);
+    await wait(30);
+
+    const p1EventsAfterWatch = [];
+    const p2EventsAfterWatch = [];
+    s1.onAny((ev, data) => p1EventsAfterWatch.push({ ev, data }));
+    s2.onAny((ev, data) => p2EventsAfterWatch.push({ ev, data }));
+
+    const adminSock = await connectSocket();
+    const ludoWatchRes = await emitAck(adminSock, 'admin:watch:join', {
+      token: adminAuth.token,
+      game: 'ludo',
+      code: ludoCode
+    });
+    assert.equal(ludoWatchRes.ok, true);
+    assert.equal(ludoWatchRes.state.code, ludoCode);
+    assert.equal(ludoWatchRes.state.players.length, 2);
+
+    await wait(120);
+    // Tidak boleh ada notifikasi/member_joined/room:update ke pemain akibat admin masuk
+    assert.equal(p1EventsAfterWatch.length, 0);
+    assert.equal(p2EventsAfterWatch.length, 0);
+
+    // Pemain mulai main, kirim chat, dan kirim reaksi -> admin menerima live
+    const watchStatePromise = onceEvent(adminSock, 'admin:watch:state');
+    s1.emit('game:start');
+    const ludoStartedUpdate = await watchStatePromise;
+    assert.equal(ludoStartedUpdate.game, 'ludo');
+    assert.equal(ludoStartedUpdate.code, ludoCode);
+    assert.equal(ludoStartedUpdate.state.started, true);
+
+    const watchChatPromise = onceEvent(adminSock, 'admin:watch:chat');
+    s1.emit('room:chat', { text: 'Halo sesama pemain' });
+    const ludoWatchChat = await watchChatPromise;
+    assert.equal(ludoWatchChat.message.text, 'Halo sesama pemain');
+
+    const watchReactionPromise = onceEvent(adminSock, 'admin:watch:reaction');
+    s2.emit('game:reaction', { emoji: '🔥' });
+    const ludoWatchReaction = await watchReactionPromise;
+    assert.equal(ludoWatchReaction.reaction.emoji, '🔥');
+
+    // Admin keluar dari mode pantau -> pemain tidak mendapat event apa pun & room tetap berjalan
+    p1EventsAfterWatch.length = 0;
+    p2EventsAfterWatch.length = 0;
+    const leaveWatchRes = await emitAck(adminSock, 'admin:watch:leave', {});
+    assert.equal(leaveWatchRes.ok, true);
+    await wait(80);
+    assert.equal(p1EventsAfterWatch.length, 0);
+    assert.equal(p2EventsAfterWatch.length, 0);
+    assert.equal(store.rooms.get(ludoCode)?.started, true);
+
+    // Bersihkan room Ludo
+    s1.emit('room:leave', { code: ludoCode });
+    s2.emit('room:leave', { code: ludoCode });
+    await wait(80);
+
+    // 3. Chess Master: 2 pemain main, admin memantau move & chat secara senyap
+    const cs1 = await connectSocket();
+    const cs2 = await connectSocket();
+    const chessCreate = await emitAck(cs1, 'chess:room:create', {
+      token: p1.token,
+      timeControl: '5+0',
+      colorPreference: 'w'
+    });
+    assert.equal(chessCreate.ok, true);
+    const chessCode = chessCreate.room.code;
+
+    const chessJoin = await emitAck(cs2, 'chess:room:join', { code: chessCode, token: p2.token });
+    assert.equal(chessJoin.ok, true);
+    await emitAck(cs1, 'chess:player:ready', { code: chessCode, token: p1.token, ready: true });
+    const chessStart = await emitAck(cs2, 'chess:player:ready', { code: chessCode, token: p2.token, ready: true });
+    assert.equal(chessStart.ok, true);
+    const chessMatchId = chessEngine.chessRooms.get(chessCode)?.match?.id;
+    assert.ok(chessMatchId);
+    await wait(30);
+
+    const chessPlayerEvents = [];
+    cs1.onAny((ev, data) => chessPlayerEvents.push({ ev, data }));
+
+    const chessWatchRes = await emitAck(adminSock, 'admin:watch:join', {
+      token: adminAuth.token,
+      game: 'chess',
+      code: chessCode
+    });
+    assert.equal(chessWatchRes.ok, true);
+    assert.equal(chessWatchRes.state.phase, 'playing');
+
+    await wait(80);
+    assert.equal(chessPlayerEvents.length, 0);
+
+    const chessMoveWatch = onceEvent(adminSock, 'admin:watch:state');
+    const moveRes = await emitAck(cs1, 'chess:move', {
+      code: chessCode,
+      matchId: chessMatchId,
+      token: p1.token,
+      from: 'e2',
+      to: 'e4',
+      moveVersion: 0
+    });
+    assert.equal(moveRes.ok, true);
+    const chessUpdate = await chessMoveWatch;
+    assert.equal(chessUpdate.state.match.moves.length, 1);
+    assert.equal(chessUpdate.state.match.moves[0].san, 'e4');
+
+    const chessChatWatch = onceEvent(adminSock, 'admin:watch:chat');
+    const chessChatAck = await emitAck(cs1, 'chess:chat', { code: chessCode, token: p1.token, text: 'GG catur' });
+    assert.equal(chessChatAck.ok, true);
+    const chessChatEvt = await chessChatWatch;
+    assert.equal(chessChatEvt.message.text, 'GG catur');
+
+    chessEngine.adminCloseRoom(chessCode, 'Selesai uji stealth chess');
+
+    // 4. Snakes & Ladders: admin memantau lemparan dadu & chat secara senyap
+    const ss1 = await connectSocket();
+    const ss2 = await connectSocket();
+    const snakesCreate = await emitAck(ss1, 'snakes:room:create', { token: p1.token, maxPlayers: 2 });
+    assert.equal(snakesCreate.ok, true);
+    const snakesCode = snakesCreate.room.roomCode;
+
+    const snakesJoin = await emitAck(ss2, 'snakes:room:join', { token: p2.token, code: snakesCode });
+    assert.equal(snakesJoin.ok, true);
+    const snakesStart = await emitAck(ss1, 'snakes:room:start', { token: p1.token, roomCode: snakesCode });
+    assert.equal(snakesStart.ok, true);
+    await wait(30);
+
+    const snakesPlayerEvents = [];
+    ss1.onAny((ev, data) => snakesPlayerEvents.push({ ev, data }));
+
+    const snakesWatchRes = await emitAck(adminSock, 'admin:watch:join', {
+      token: adminAuth.token,
+      game: 'snakes',
+      code: snakesCode
+    });
+    assert.equal(snakesWatchRes.ok, true);
+    assert.equal(snakesWatchRes.state.status, 'playing');
+    await wait(80);
+    assert.equal(snakesPlayerEvents.length, 0);
+
+    const snakesRollWatch = onceEvent(adminSock, 'admin:watch:state');
+    const rollAck = await emitAck(ss1, 'snakes:roll', { token: p1.token, roomCode: snakesCode });
+    assert.equal(rollAck.ok, true);
+    const snakesStateUpdate = await snakesRollWatch;
+    assert.ok(snakesStateUpdate.state.turnNumber >= 1);
+
+    const snakesChatWatch = onceEvent(adminSock, 'admin:watch:chat');
+    const snakesChatAck = await emitAck(ss1, 'snakes:chat', { token: p1.token, roomCode: snakesCode, text: 'Naik tangga!' });
+    assert.equal(snakesChatAck.ok, true);
+    const snakesChatEvt = await snakesChatWatch;
+    assert.equal(snakesChatEvt.message.text, 'Naik tangga!');
+
+    snakesEngine.adminCloseRoom(snakesCode, 'Selesai uji stealth snakes');
+
+    // 5. Monster Quiz: admin memantau live chat & menerima event admin:watch:closed saat room ditutup
+    const qs1 = await connectSocket();
+    const quizCreate = await emitAck(qs1, 'quiz:room:create', { token: p1.token, monsterId: 'emberon' });
+    assert.equal(quizCreate.ok, true);
+    const quizCode = quizCreate.code || quizCreate.room?.code;
+    assert.ok(quizCode);
+
+    const quizWatchRes = await emitAck(adminSock, 'admin:watch:join', {
+      token: adminAuth.token,
+      game: 'quiz',
+      code: quizCode
+    });
+    assert.equal(quizWatchRes.ok, true);
+    assert.equal(quizWatchRes.state.code, quizCode);
+
+    const quizChatWatch = onceEvent(adminSock, 'admin:watch:chat');
+    const quizChatAck = await emitAck(qs1, 'quiz:chat', { token: p1.token, code: quizCode, text: 'Siap duel kuis' });
+    assert.equal(quizChatAck.ok, true);
+    const quizChatEvt = await quizChatWatch;
+    assert.equal(quizChatEvt.message.text, 'Siap duel kuis');
+
+    const closedWatchPromise = onceEvent(adminSock, 'admin:watch:closed');
+    const closeApiRes = await apiJson(`/api/admin/rooms/quiz/${quizCode}/close`, {
+      method: 'POST',
+      token: adminAuth.token,
+      body: { reason: 'Tutup setelah inspeksi live' }
+    });
+    assert.equal(closeApiRes.status, 200);
+    const closedWatchEvt = await closedWatchPromise;
+    assert.equal(closedWatchEvt.game, 'quiz');
+    assert.equal(closedWatchEvt.code, quizCode);
+    assert.equal(closedWatchEvt.reason, 'Tutup setelah inspeksi live');
+  } finally {
+    for (const s of sockets) {
+      try {
+        s.close();
+      } catch {}
+    }
   }
 });

@@ -11,6 +11,7 @@ const { EMOJIS, MAX_CHATS } = require('../game/config');
 const snakesConfig = require('./config');
 const snakesRules = require('./rules');
 const snakesStore = require('./store');
+const adminSpectator = require('../admin/spectator');
 
 const DEFAULT_TIMINGS = {
   humanSearchTimeoutMs: snakesConfig.HUMAN_SEARCH_TIMEOUT_MS,
@@ -266,6 +267,9 @@ function emitRoomState(room) {
       sock.emit('snakes:room:state', serializeRoomForUser(room, p.user_id));
     }
   }
+  if (adminSpectator.hasWatchers('snakes', room.code)) {
+    adminSpectator.notifyState('snakes', room.code, serializeRoomForUser(room, null));
+  }
 }
 
 function clearRoomTimers(room) {
@@ -309,6 +313,7 @@ function closeRoom(room, reason = 'Room ditutup.') {
   if (!room) return;
   clearRoomTimers(room);
   emitToRoom(room, 'snakes:room:closed', { roomId: room.id, roomCode: room.code, reason });
+  adminSpectator.notifyClosed('snakes', room.code, reason);
   for (const p of room.players || []) {
     if (p.player_type === 'human' && p.user_id) {
       if (userActiveRoom.get(p.user_id) === room.code) {
@@ -1601,6 +1606,7 @@ function sendChat(socket, payload = {}) {
   if (room.chats.length > (MAX_CHATS || 50)) room.chats.shift();
 
   emitToRoom(room, 'snakes:chat_message', chatMsg);
+  adminSpectator.notifyChat('snakes', room.code, chatMsg);
   return { ok: true, message: chatMsg };
 }
 
@@ -1627,6 +1633,7 @@ function sendReaction(socket, payload = {}) {
   };
 
   emitToRoom(room, 'room:reaction', reactionPayload);
+  adminSpectator.notifyReaction('snakes', room.code, reactionPayload);
   return { ok: true };
 }
 
@@ -1709,6 +1716,7 @@ module.exports = {
   sendChat,
   sendReaction,
   getRoomStateForUser,
+  serializeRoomForUser,
   getActiveRoomForUser,
   closeAllRoomsForShutdown,
   adminCloseRoom,

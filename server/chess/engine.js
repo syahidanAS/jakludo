@@ -12,6 +12,7 @@ const {
   evaluateBoard
 } = require('./bot');
 const { chooseBotMoveAsync } = require('./botPool');
+const adminSpectator = require('../admin/spectator');
 
 const DISCONNECT_GRACE_MS = Number(process.env.CHESS_DISCONNECT_GRACE_MS || 60_000);
 const LOBBY_EXPIRE_MS = Number(process.env.CHESS_LOBBY_EXPIRE_MS || 5 * 60 * 1000);
@@ -271,6 +272,9 @@ function emitRoomState(room) {
       sock.emit('chess:room:state', serializeRoomForUser(room, p.userId));
     }
   }
+  if (adminSpectator.hasWatchers('chess', room.code)) {
+    adminSpectator.notifyState('chess', room.code, serializeRoomForUser(room, null));
+  }
 }
 
 function clearRoomTimers(room) {
@@ -314,6 +318,7 @@ function closeRoom(room, reason = 'Room ditutup.') {
   if (!room) return;
   clearRoomTimers(room);
   emitToRoom(room, 'chess:room:closed', { roomCode: room.code, reason });
+  adminSpectator.notifyClosed('chess', room.code, reason);
   for (const p of room.players) {
     if (userActiveRoom.get(p.userId) === room.code) {
       userActiveRoom.delete(p.userId);
@@ -1897,13 +1902,15 @@ function sendReaction(socket, payload = {}) {
   if (!player) return { ok: false, error: 'Kamu bukan peserta room ini.' };
 
   const color = playerThemeColor(room, player);
-  emitToRoom(room, 'room:reaction', {
+  const reactionPayload = {
     id: Date.now() + Math.random(),
     playerId: user.id,
     playerName: player.name,
     color,
     emoji
-  });
+  };
+  emitToRoom(room, 'room:reaction', reactionPayload);
+  adminSpectator.notifyReaction('chess', room.code, reactionPayload);
   return { ok: true };
 }
 
@@ -1951,6 +1958,7 @@ function sendChat(socket, payload = {}) {
   room.chats.push(chatMsg);
   if (room.chats.length > MAX_CHESS_CHATS) room.chats.shift();
   emitToRoom(room, 'chess:chat_message', chatMsg);
+  adminSpectator.notifyChat('chess', room.code, chatMsg);
   return { ok: true, message: chatMsg };
 }
 

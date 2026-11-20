@@ -10,6 +10,7 @@ const chessEngine = require('../chess/engine');
 const chessStore = require('../chess/store');
 const snakesEngine = require('../snakes/engine');
 const snakesStore = require('../snakes/store');
+const adminSpectator = require('../admin/spectator');
 const { createLimiter } = require('../lib/limiter');
 const { EMOJIS, MAX_CHATS } = require('../game/config');
 
@@ -25,6 +26,7 @@ const chessActionLimiter = createLimiter({ windowMs: 3000, max: 12 });
 const chessPlayLimiter = createLimiter({ windowMs: 3000, max: 25 });
 const snakesActionLimiter = createLimiter({ windowMs: 3000, max: 12 });
 const snakesPlayLimiter = createLimiter({ windowMs: 3000, max: 20 });
+const adminWatchLimiter = createLimiter({ windowMs: 10000, max: 30 });
 const QUIZ_RATE_ERROR = { ok: false, error: 'Terlalu banyak aksi dalam waktu singkat.' };
 
 // Tolak event bila socket melewati batas; balas callback dengan error yang sama
@@ -339,13 +341,15 @@ function registerSocketHandlers(io) {
       if (!r || !EMOJIS.includes(emoji) || !reactionLimiter(socket.id)) return;
       const player = r.players.find(p => p.id === socket.id);
       if (!player) return;
-      io.to(r.code).emit('room:reaction', {
+      const reactionPayload = {
         id: Date.now() + Math.random(),
         playerId: socket.id,
         playerName: player.name,
         color: player.color,
         emoji
-      });
+      };
+      io.to(r.code).emit('room:reaction', reactionPayload);
+      adminSpectator.notifyReaction('ludo', r.code, reactionPayload);
     });
 
     on(socket, 'room:chat', ({ text, replyToId }) => {
@@ -386,6 +390,7 @@ function registerSocketHandlers(io) {
       r.chats.push(chatMsg);
       if (r.chats.length > MAX_CHATS) r.chats.shift();
       io.to(r.code).emit('room:chat_message', chatMsg);
+      adminSpectator.notifyChat('ludo', r.code, chatMsg);
       store.markRoomDirty(r);
     });
 
@@ -684,8 +689,22 @@ function registerSocketHandlers(io) {
       if (cb) cb({ ok: true, leaderboard: lb });
     });
 
+    // Mode pantau live senyap khusus admin (terisolasi dari room pemain)
+    on(socket, 'admin:watch:join', (payload, cb) => {
+      if (!adminWatchLimiter(socket.id)) {
+        if (typeof cb === 'function') cb({ ok: false, error: 'Terlalu banyak permintaan pantau room.' });
+        return;
+      }
+      adminSpectator.handleWatchJoin(socket, payload, cb);
+    });
+
+    on(socket, 'admin:watch:leave', (_payload, cb) => {
+      adminSpectator.handleWatchLeave(socket, cb);
+    });
+
     socket.on('disconnect', reason => {
       logConnection(socket, 'disconnect', ` reason="${reason}" after=${Math.round((Date.now() - connectedAt) / 1000)}s`);
+      adminSpectator.handleWatchLeave(socket);
       social.detachSocket(socket);
       try {
         quizEngine.handleDisconnect(socket);

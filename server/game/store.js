@@ -2,6 +2,7 @@
 const db = require('../db');
 const inventory = require('./inventory');
 const social = require('../social/store');
+const adminSpectator = require('../admin/spectator');
 const { getMovablePawns, getBlackHoles } = require('./rules');
 const { ROOM_IDLE_TTL_MS, ROOM_SAVE_DELAY_MS, LOBBY_SEAT_GRACE_MS, MAX_HISTORY } = require('./config');
 
@@ -88,6 +89,12 @@ function publicRoom(r) {
 function emitRoom(room) {
   if (!room) return;
   io.to(room.code).emit('room:update', publicRoom(room));
+  if (adminSpectator.hasWatchers('ludo', room.code)) {
+    adminSpectator.notifyState('ludo', room.code, {
+      ...publicRoom(room),
+      chats: Array.isArray(room.chats) ? room.chats.slice(-50) : []
+    });
+  }
   markRoomDirty(room);
 }
 
@@ -226,6 +233,7 @@ function deleteRoom(room, reason = 'Room sudah ditutup.') {
   if (io) {
     io.to(room.code).emit('room:closed', { code: room.code, reason });
     io.in(room.code).socketsLeave(room.code);
+    adminSpectator.notifyClosed('ludo', room.code, reason);
   }
 }
 
