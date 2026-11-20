@@ -1,4 +1,5 @@
 // REST API: autentikasi, leaderboard, room aktif, dan toko item.
+const crypto = require('crypto');
 const express = require('express');
 const db = require('../db');
 const items = require('../items');
@@ -6,13 +7,14 @@ const inventory = require('../game/inventory');
 const store = require('../game/store');
 const { createLimiter } = require('../lib/limiter');
 const { verifyGoogleIdToken, exchangeGoogleAuthCode } = require('../lib/googleAuth');
-const { loadDotEnv } = require('../migrate');
+const { loadDotEnv, reloadDotEnvIfChanged } = require('../migrate');
 const { registerSocialRoutes } = require('../social/routes');
 const { registerQuizRoutes } = require('../quiz/routes');
 const { registerChessRoutes } = require('../chess/routes');
 const { registerSnakesRoutes } = require('../snakes/routes');
 const { registerEconomyRoutes } = require('../economy/routes');
 const { registerAdminRoutes } = require('../admin/routes');
+const { recordAdminAudit } = require('../admin/middleware');
 const quizEngine = require('../quiz/engine');
 const social = require('../social/store');
 const paymentGateway = require('../lib/paymentGateway');
@@ -22,6 +24,64 @@ const recaptcha = require('../lib/recaptcha');
 const loginLimiter = createLimiter({ windowMs: 10 * 60 * 1000, max: 20 });
 const registerLimiter = createLimiter({ windowMs: 60 * 60 * 1000, max: Number(process.env.REGISTER_RATE_LIMIT || 30) });
 const googleAuthLimiter = createLimiter({ windowMs: 10 * 60 * 1000, max: Number(process.env.GOOGLE_AUTH_RATE_LIMIT || 30) });
+const basicRegisterLimiter = createLimiter({ windowMs: 10 * 60 * 1000, max: Number(process.env.BASIC_REGISTER_RATE_LIMIT || 60) });
+
+function safeEqualString(a, b) {
+  const hashA = crypto.createHash('sha256').update(String(a || ''), 'utf8').digest();
+  const hashB = crypto.createHash('sha256').update(String(b || ''), 'utf8').digest();
+  return crypto.timingSafeEqual(hashA, hashB);
+}
+
+function verifyBasicAuthRegister(req, res) {
+  if (process.env.NODE_ENV !== 'test') {
+    reloadDotEnvIfChanged();
+  }
+  const expectedUser = String(process.env.BASIC_AUTH_REGISTER_USER || '').trim();
+  const expectedPass = String(process.env.BASIC_AUTH_REGISTER_PASS || '');
+
+  if (!expectedUser || !expectedPass) {
+    res.status(503).json({
+      success: false,
+      error: 'Basic Auth register API belum dikonfigurasi. Set BASIC_AUTH_REGISTER_USER dan BASIC_AUTH_REGISTER_PASS di .env.'
+    });
+    return null;
+  }
+
+  const rawAuth = String(req.headers.authorization || '').trim();
+  const match = /^Basic\s+(.+)$/i.exec(rawAuth);
+  if (!match) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="PlayGo Register API"');
+    res.status(401).json({ success: false, error: 'Autentikasi Basic Auth tidak valid.' });
+    return null;
+  }
+
+  let decoded = '';
+  try {
+    decoded = Buffer.from(match[1].trim(), 'base64').toString('utf8');
+  } catch {
+    res.setHeader('WWW-Authenticate', 'Basic realm="PlayGo Register API"');
+    res.status(401).json({ success: false, error: 'Autentikasi Basic Auth tidak valid.' });
+    return null;
+  }
+
+  const colonIdx = decoded.indexOf(':');
+  if (colonIdx === -1) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="PlayGo Register API"');
+    res.status(401).json({ success: false, error: 'Autentikasi Basic Auth tidak valid.' });
+    return null;
+  }
+
+  const providedUser = decoded.slice(0, colonIdx);
+  const providedPass = decoded.slice(colonIdx + 1);
+
+  if (!safeEqualString(providedUser, expectedUser) || !safeEqualString(providedPass, expectedPass)) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="PlayGo Register API"');
+    res.status(401).json({ success: false, error: 'Autentikasi Basic Auth tidak valid.' });
+    return null;
+  }
+
+  return { authenticatedUser: expectedUser };
+}
 
 function bearerToken(req) {
   return String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
@@ -82,6 +142,84 @@ function createApiRouter() {
     const result = await db.registerUser({ username, password, name, referralCode });
     if (result.error) return res.status(400).json({ success: false, error: result.error });
     res.json({ success: true, user: withKing(result.user), token: result.token });
+  }));
+
+  // Endpoint registrasi user langsung dari Postman/API klien menggunakan HTTP Basic Auth (tanpa reCAPTCHA)
+  api.post('/auth/register-basic', asyncRoute(async (req, res) => {
+    if (!(process.env.NODE_ENV === 'test' && process.env.ENABLE_RATE_LIMIT_IN_TEST !== '1')) {
+      if (!basicRegisterLimiter(req.ip)) {
+        return res.status(429).json({ success: false, error: 'Terlalu banyak permintaan ke register API. Coba lagi sebentar.' });
+      }
+    }
+
+    const authInfo = verifyBasicAuthRegister(req, res);
+    if (!authInfo) return;
+
+    const { username, password, name, email, role, points, coins, diamonds, referralCode } = req.body || {};
+
+    let cleanReferralCode = '';
+    if (referralCode !== undefined && referralCode !== null && String(referralCode).trim() !== '') {
+      cleanReferralCode = String(referralCode).trim();
+      if (!/^\d{6}$/.test(cleanReferralCode)) {
+        return res.status(400).json({ success: false, error: 'Kode referral harus berupa 6 digit angka.' });
+      }
+      const referrer = db.findUserByReferralCode(cleanReferralCode);
+      if (!referrer) {
+        return res.status(400).json({ success: false, error: 'Kode referral tidak valid atau tidak ditemukan.' });
+      }
+      if (typeof username === 'string' && referrer.username.toLowerCase() === username.trim().toLowerCase()) {
+        return res.status(400).json({ success: false, error: 'Tidak dapat menggunakan kode referral milik sendiri.' });
+      }
+    }
+
+    const initialCoins = points !== undefined && points !== '' && points !== null ? points : coins;
+    const initialDiamonds = diamonds !== undefined && diamonds !== '' && diamonds !== null ? Number(diamonds) : 0;
+    if (!Number.isInteger(initialDiamonds) || initialDiamonds < 0 || initialDiamonds > 10000000) {
+      return res.status(400).json({ success: false, error: 'Saldo Diamonds awal harus bilangan bulat >= 0.' });
+    }
+
+    const resolvedRole = role === 'admin' ? 'admin' : 'player';
+    const created = await db.adminCreateUser({
+      username,
+      password,
+      name,
+      email: email || null,
+      role: resolvedRole,
+      points: initialCoins
+    });
+    if (created.error) {
+      return res.status(created.status || 400).json({ success: false, error: created.error });
+    }
+
+    if (initialDiamonds > 0) {
+      await economy.adminAdjustDiamonds({
+        targetUserId: created.user.id,
+        amount: initialDiamonds,
+        reason: 'Saldo awal via Basic Auth Register API (Postman)',
+        txType: 'ADMIN_ADJUSTMENT',
+        adminUser: { id: null, username: authInfo.authenticatedUser }
+      });
+    }
+
+    if (cleanReferralCode) {
+      await db.claimReferral({ userId: created.user.id, referralCode: cleanReferralCode });
+    }
+
+    const freshUser = db.sanitizeUser(db.findUserById(created.user.id));
+
+    recordAdminAudit({
+      adminUser: { id: null, username: `basic:${authInfo.authenticatedUser}` },
+      action: 'USER_REGISTER_BASIC_API',
+      targetType: 'user',
+      targetId: freshUser.id,
+      summary: `Registrasi user @${freshUser.username} via Basic Auth API (role: ${freshUser.role}, coins: ${freshUser.points}, diamonds: ${freshUser.diamonds})`
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'User berhasil didaftarkan.',
+      user: withKing(freshUser)
+    });
   }));
 
   api.post('/auth/login', asyncRoute(async (req, res) => {

@@ -346,3 +346,113 @@ test('Admin CMS RBAC, User CRUD, Active Room Monitoring, and Financial Transacti
   const afterDelDetail = await apiJson(`/api/admin/users/${targetId}`, { token: adminAuth.token });
   assert.equal(afterDelDetail.status, 404);
 });
+
+test('POST /api/auth/register-basic enforces HTTP Basic Auth and registers users cleanly', async () => {
+  const prevUser = process.env.BASIC_AUTH_REGISTER_USER;
+  const prevPass = process.env.BASIC_AUTH_REGISTER_PASS;
+
+  try {
+    // 1. Belum dikonfigurasi -> 503
+    delete process.env.BASIC_AUTH_REGISTER_USER;
+    delete process.env.BASIC_AUTH_REGISTER_PASS;
+    const unconfigured = await apiJson('/api/auth/register-basic', {
+      method: 'POST',
+      body: { username: 'pm_user_0', password: 'Password#123' }
+    });
+    assert.equal(unconfigured.status, 503);
+
+    // Set kredensial termasuk simbol ":" pada password untuk menguji parsing yang benar
+    process.env.BASIC_AUTH_REGISTER_USER = 'postman_client';
+    process.env.BASIC_AUTH_REGISTER_PASS = 'Rahasia:Postman#2026';
+
+    // 2. Tanpa header Authorization -> 401 + WWW-Authenticate
+    const noAuth = await apiJson('/api/auth/register-basic', {
+      method: 'POST',
+      body: { username: 'pm_user_0', password: 'Password#123' }
+    });
+    assert.equal(noAuth.status, 401);
+    assert.ok(noAuth.headers.get('www-authenticate')?.includes('Basic'));
+
+    // 3. Password salah -> 401
+    const badCreds = Buffer.from('postman_client:salah', 'utf8').toString('base64');
+    const badAuthRes = await fetch(`${url}/api/auth/register-basic`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${badCreds}`
+      },
+      body: JSON.stringify({ username: 'pm_user_0', password: 'Password#123' })
+    });
+    assert.equal(badAuthRes.status, 401);
+
+    // 4. Valid Basic Auth + register dengan coins, diamonds, email & role -> 201
+    const goodCreds = Buffer.from('postman_client:Rahasia:Postman#2026', 'utf8').toString('base64');
+    const okRes = await fetch(`${url}/api/auth/register-basic`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${goodCreds}`
+      },
+      body: JSON.stringify({
+        username: 'postman_player1',
+        password: 'UserPass#123',
+        name: 'Postman Player',
+        email: 'postman1@playgo.id',
+        role: 'player',
+        coins: 450,
+        diamonds: 12
+      })
+    });
+    const okData = await okRes.json();
+    assert.equal(okRes.status, 201, `Gagal register-basic: ${JSON.stringify(okData)}`);
+    assert.equal(okData.success, true);
+    assert.equal(okData.user.username, 'postman_player1');
+    assert.equal(okData.user.name, 'Postman Player');
+    assert.equal(okData.user.email, 'postman1@playgo.id');
+    assert.equal(okData.user.points, 450);
+    assert.equal(okData.user.diamonds, 12);
+
+    // 5. Pastikan user baru bisa langsung login via /api/auth/login
+    const loginCheck = await apiJson('/api/auth/login', {
+      method: 'POST',
+      body: { username: 'postman_player1', password: 'UserPass#123' }
+    });
+    assert.equal(loginCheck.status, 200);
+    assert.equal(loginCheck.data.user.username, 'postman_player1');
+
+    // 6. Duplikat username ditolak 400
+    const dupRes = await fetch(`${url}/api/auth/register-basic`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${goodCreds}`
+      },
+      body: JSON.stringify({
+        username: 'postman_player1',
+        password: 'UserPass#123'
+      })
+    });
+    assert.equal(dupRes.status, 400);
+
+    // 7. Referral tidak valid ditolak 400 tanpa membuat user baru
+    const badRefRes = await fetch(`${url}/api/auth/register-basic`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${goodCreds}`
+      },
+      body: JSON.stringify({
+        username: 'postman_bad_ref',
+        password: 'UserPass#123',
+        referralCode: '000000'
+      })
+    });
+    assert.equal(badRefRes.status, 400);
+    assert.equal(db.findUserByUsername('postman_bad_ref'), null);
+  } finally {
+    if (prevUser === undefined) delete process.env.BASIC_AUTH_REGISTER_USER;
+    else process.env.BASIC_AUTH_REGISTER_USER = prevUser;
+    if (prevPass === undefined) delete process.env.BASIC_AUTH_REGISTER_PASS;
+    else process.env.BASIC_AUTH_REGISTER_PASS = prevPass;
+  }
+});
