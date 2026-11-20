@@ -264,6 +264,7 @@ textarea {
 
 .alert--error { background: var(--danger-soft); color: var(--danger); }
 .alert--success { background: var(--success-soft); color: var(--success); }
+.alert--warning { background: var(--warning-soft); color: var(--warning); }
 
 /* Titik warna pemain */
 .dot {

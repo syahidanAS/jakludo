@@ -53,6 +53,7 @@ async function registerUser(prefix = 'cp') {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       username,
+      email: `${username}@playgo.test`,
       password: 'Password#123',
       name: `ChessPlayer ${userCounter}`
     })

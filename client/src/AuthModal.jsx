@@ -31,6 +31,8 @@ async function postJson(url, body) {
   return data;
 }
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 // Aturan password sama dengan validasi server (server/db.js)
 const PASSWORD_RULES = [
   { key: 'length', label: 'Minimal 8 karakter', test: p => p.length >= 8 },
@@ -116,8 +118,11 @@ function PasswordField({ id, label, value, onChange, autoComplete, describedBy, 
 export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
   const [tab, setTab] = useState('login');
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [usernameCheck, setUsernameCheck] = useState({ status: 'idle', message: '' });
+  const [emailCheck, setEmailCheck] = useState({ status: 'idle', message: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleConfig, setGoogleConfig] = useState({ enabled: false, clientId: '' });
@@ -125,7 +130,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
   const [googleHelpOpen, setGoogleHelpOpen] = useState(false);
   const [gisReady, setGisReady] = useState(false);
   const googleBtnRef = useRef(null);
-  const ids = { user: useId(), pass: useId(), confirm: useId(), rules: useId(), hint: useId() };
+  const ids = { user: useId(), email: useId(), emailHint: useId(), pass: useId(), confirm: useId(), rules: useId(), hint: useId() };
 
   // Ambil konfigurasi Google Client ID & reCAPTCHA v3 dari server saat modal terbuka
   useEffect(() => {
@@ -230,6 +235,8 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
     if (isOpen) {
       setError('');
       setConfirmPassword('');
+      setUsernameCheck({ status: 'idle', message: '' });
+      setEmailCheck({ status: 'idle', message: '' });
       setGoogleHelpOpen(false);
       try {
         if (typeof window !== 'undefined') {
@@ -252,7 +259,95 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
   const switchTab = next => {
     setTab(next);
     setError('');
+    setUsernameCheck({ status: 'idle', message: '' });
+    setEmailCheck({ status: 'idle', message: '' });
   };
+
+  // Pemeriksaan real-time keunikan username (debounced 400ms) saat mode daftar manual
+  useEffect(() => {
+    if (!isOpen || !isRegister) {
+      setUsernameCheck({ status: 'idle', message: '' });
+      return;
+    }
+    const clean = username.trim();
+    if (!clean || !/^[a-zA-Z0-9_]{3,20}$/.test(clean)) {
+      setUsernameCheck({ status: 'idle', message: '' });
+      return;
+    }
+
+    const controller = new AbortController();
+    setUsernameCheck({ status: 'checking', message: 'Memeriksa ketersediaan username...' });
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/auth/check-availability?username=${encodeURIComponent(clean)}`, {
+          signal: controller.signal
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!controller.signal.aborted && res.ok && data?.success && data.username) {
+          setUsernameCheck({
+            status: data.username.available ? 'available' : data.username.valid ? 'taken' : 'invalid',
+            message: data.username.message
+          });
+        } else if (!controller.signal.aborted) {
+          setUsernameCheck({ status: 'idle', message: '' });
+        }
+      } catch (err) {
+        if (err?.name !== 'AbortError' && !controller.signal.aborted) {
+          setUsernameCheck({ status: 'idle', message: '' });
+        }
+      }
+    }, 400);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [isOpen, isRegister, username]);
+
+  // Pemeriksaan real-time keunikan email (debounced 400ms) saat mode daftar manual
+  useEffect(() => {
+    if (!isOpen || !isRegister) {
+      setEmailCheck({ status: 'idle', message: '' });
+      return;
+    }
+    const clean = email.trim().toLowerCase();
+    if (!clean) {
+      setEmailCheck({ status: 'idle', message: '' });
+      return;
+    }
+    if (!EMAIL_REGEX.test(clean) || clean.length > 254) {
+      setEmailCheck({ status: 'invalid', message: 'Format email belum valid.' });
+      return;
+    }
+
+    const controller = new AbortController();
+    setEmailCheck({ status: 'checking', message: 'Memeriksa ketersediaan email...' });
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/auth/check-availability?email=${encodeURIComponent(clean)}`, {
+          signal: controller.signal
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!controller.signal.aborted && res.ok && data?.success && data.email) {
+          setEmailCheck({
+            status: data.email.available ? 'available' : data.email.valid ? 'taken' : 'invalid',
+            message: data.email.message
+          });
+        } else if (!controller.signal.aborted) {
+          setEmailCheck({ status: 'idle', message: '' });
+        }
+      } catch (err) {
+        if (err?.name !== 'AbortError' && !controller.signal.aborted) {
+          setEmailCheck({ status: 'idle', message: '' });
+        }
+      }
+    }, 400);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [isOpen, isRegister, email]);
 
   const handleCustomGoogleClick = () => {
     setError('');
@@ -289,22 +384,64 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
   const submit = async e => {
     e.preventDefault();
     const name = username.trim();
-    if (!name || !password) return setError('Username dan password wajib diisi.');
+    const cleanEmail = email.trim().toLowerCase();
+    if (!isRegister && (!name || !password)) {
+      return setError('Username dan password wajib diisi.');
+    }
     if (isRegister) {
+      if (!name || !cleanEmail || !password) return setError('Username, email, dan password wajib diisi.');
       if (!/^[a-zA-Z0-9_]{3,20}$/.test(name)) return setError('Username 3-20 karakter: huruf, angka, atau garis bawah (_).');
+      if (!EMAIL_REGEX.test(cleanEmail) || cleanEmail.length > 254) return setError('Format email tidak valid.');
       if (!passwordOk) return setError('Password belum memenuhi semua syarat di bawah.');
       if (!matches) return setError('Ketik ulang password belum sama.');
+      if (usernameCheck.status === 'taken') {
+        return setError(usernameCheck.message || 'Username sudah digunakan, silakan pilih username lain.');
+      }
+      if (emailCheck.status === 'taken') {
+        return setError(emailCheck.message || 'Email sudah terdaftar, silakan gunakan email lain.');
+      }
     }
 
     setLoading(true);
     setError('');
     sound.playClick();
     try {
+      if (isRegister && (usernameCheck.status !== 'available' || emailCheck.status !== 'available')) {
+        const availRes = await fetch(
+          `/api/auth/check-availability?username=${encodeURIComponent(name)}&email=${encodeURIComponent(cleanEmail)}`
+        );
+        const availData = await availRes.json().catch(() => ({}));
+        if (availRes.ok && availData?.success) {
+          if (availData.username && !availData.username.available) {
+            setUsernameCheck({
+              status: availData.username.valid ? 'taken' : 'invalid',
+              message: availData.username.message
+            });
+            setError(availData.username.message || 'Username sudah digunakan.');
+            return;
+          }
+          if (availData.email && !availData.email.available) {
+            setEmailCheck({
+              status: availData.email.valid ? 'taken' : 'invalid',
+              message: availData.email.message
+            });
+            setError(availData.email.message || 'Email sudah terdaftar.');
+            return;
+          }
+          if (availData.username?.available) {
+            setUsernameCheck({ status: 'available', message: availData.username.message });
+          }
+          if (availData.email?.available) {
+            setEmailCheck({ status: 'available', message: availData.email.message });
+          }
+        }
+      }
+
       const action = isRegister ? 'register' : 'login';
       const recaptchaToken = await executeRecaptcha(recaptchaConfig.siteKey, action);
 
       const payload = isRegister
-        ? { username: name, password, name, recaptchaToken }
+        ? { username: name, email: cleanEmail, password, name, recaptchaToken }
         : { username: name, password, recaptchaToken };
 
       const data = await postJson(isRegister ? '/api/auth/register' : '/api/auth/login', payload);
@@ -370,7 +507,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
       </div>
 
       <div className="auth-divider">
-        <span>atau dengan username &amp; password</span>
+        <span>{isRegister ? 'atau daftar dengan email & password' : 'atau dengan username & password'}</span>
       </div>
 
       <form className="form" onSubmit={submit} noValidate>
@@ -385,11 +522,60 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }) {
             autoComplete="username"
             autoCapitalize="none"
             aria-describedby={isRegister ? ids.hint : undefined}
+            aria-invalid={isRegister && (usernameCheck.status === 'taken' || usernameCheck.status === 'invalid') ? 'true' : undefined}
             disabled={loading}
             required
           />
-          {isRegister && <p id={ids.hint} className="field__hint">Huruf kecil, angka, dan garis bawah (_), 3-20 karakter.</p>}
+          {isRegister && (
+            usernameCheck.status !== 'idle' ? (
+              <p
+                id={ids.hint}
+                className={`field__hint ${usernameCheck.status === 'available' ? 'is-ok' : usernameCheck.status === 'checking' ? '' : 'is-error'}`}
+                role="status"
+                aria-live="polite"
+              >
+                {usernameCheck.status === 'available' ? `✓ ${usernameCheck.message}` : usernameCheck.message}
+              </p>
+            ) : (
+              <p id={ids.hint} className="field__hint">Huruf kecil, angka, dan garis bawah (_), 3-20 karakter.</p>
+            )
+          )}
         </div>
+
+        {isRegister && (
+          <div className="field">
+            <label htmlFor={ids.email}>Email</label>
+            <input
+              id={ids.email}
+              className="input"
+              type="email"
+              inputMode="email"
+              placeholder="nama@email.com"
+              value={email}
+              onChange={e => setEmail(e.target.value.replace(/\s+/g, ''))}
+              maxLength={254}
+              autoComplete="email"
+              autoCapitalize="none"
+              spellCheck={false}
+              aria-describedby={ids.emailHint}
+              aria-invalid={emailCheck.status === 'taken' || emailCheck.status === 'invalid' ? 'true' : undefined}
+              disabled={loading}
+              required
+            />
+            <p
+              id={ids.emailHint}
+              className={`field__hint ${emailCheck.status === 'available' ? 'is-ok' : emailCheck.status === 'taken' || emailCheck.status === 'invalid' ? 'is-error' : ''}`}
+              role={emailCheck.status !== 'idle' ? 'status' : undefined}
+              aria-live="polite"
+            >
+              {emailCheck.status === 'idle'
+                ? 'Gunakan email aktif yang belum pernah terdaftar.'
+                : emailCheck.status === 'available'
+                  ? `✓ ${emailCheck.message}`
+                  : emailCheck.message}
+            </p>
+          </div>
+        )}
 
         <PasswordField
           id={ids.pass}

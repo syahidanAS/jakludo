@@ -36,7 +36,7 @@ async function registerUser(username) {
   const res = await fetch(`${url}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password: 'Rahasia#123', name: username })
+    body: JSON.stringify({ username, email: `${username}@playgo.test`, password: 'Rahasia#123', name: username })
   });
   const data = await res.json();
   assert.equal(res.status, 200, `Registrasi ${username} gagal: ${JSON.stringify(data)}`);

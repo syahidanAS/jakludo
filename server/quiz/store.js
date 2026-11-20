@@ -746,6 +746,8 @@ function getQuizLeaderboard(limit = 50) {
   const rows = [];
   for (const s of state.stats.values()) {
     if (s.matchesPlayed <= 0) continue;
+    const rawUser = db.getUserById(s.userId);
+    if (rawUser && db.isUserAdmin(rawUser)) continue;
     const user = enrichUser(s.userId);
     const winRate = Math.round((s.wins / s.matchesPlayed) * 100);
     rows.push({

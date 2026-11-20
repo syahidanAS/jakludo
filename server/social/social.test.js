@@ -64,7 +64,7 @@ async function register(prefix = 'user') {
   const res = await fetch(`${url}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password: 'Rahasia#123', name: username.toUpperCase() })
+    body: JSON.stringify({ username, email: `${username}@playgo.test`, password: 'Rahasia#123', name: username.toUpperCase() })
   });
   return res.json();
 }

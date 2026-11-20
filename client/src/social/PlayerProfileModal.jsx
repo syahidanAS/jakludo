@@ -52,6 +52,7 @@ function formatJoinDate(iso) {
 export default function PlayerProfileModal({
   userId,
   isOpen,
+  initialEditEmail = false,
   onClose,
   currentUser,
   social,
@@ -65,6 +66,8 @@ export default function PlayerProfileModal({
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const avatarInputRef = useRef(null);
+  const emailInputRef = useRef(null);
+  const autoEditAppliedRef = useRef(false);
 
   // State Form Edit Profil
   const [isEditing, setIsEditing] = useState(false);
@@ -97,15 +100,41 @@ export default function PlayerProfileModal({
 
   useEffect(() => {
     if (isOpen && userId) {
+      autoEditAppliedRef.current = false;
       setFeedback(null);
       setProfile(null);
       setIsEditing(false);
       setEditError('');
       loadProfile();
+    } else if (!isOpen) {
+      autoEditAppliedRef.current = false;
     }
   }, [isOpen, userId, loadProfile]);
 
-  const startEditing = () => {
+  useEffect(() => {
+    if (
+      isOpen &&
+      initialEditEmail &&
+      !autoEditAppliedRef.current &&
+      profile &&
+      currentUser &&
+      profile.userId === currentUser.id
+    ) {
+      autoEditAppliedRef.current = true;
+      setEditName(profile.name || currentUser.name || '');
+      setEditUsername(profile.username || currentUser.username || '');
+      setEditEmail(profile.email || currentUser.email || '');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setShowPasswordChange(false);
+      setEditError('');
+      setIsEditing(true);
+      requestAnimationFrame(() => emailInputRef.current?.focus());
+    }
+  }, [isOpen, initialEditEmail, profile, currentUser]);
+
+  const startEditing = (options = {}) => {
     setEditName(profile?.name || currentUser?.name || '');
     setEditUsername(profile?.username || currentUser?.username || '');
     setEditEmail(profile?.email || currentUser?.email || '');
@@ -115,6 +144,9 @@ export default function PlayerProfileModal({
     setShowPasswordChange(false);
     setEditError('');
     setIsEditing(true);
+    if (options?.focusEmail) {
+      requestAnimationFrame(() => emailInputRef.current?.focus());
+    }
     sound.playClick();
   };
 
@@ -278,6 +310,7 @@ export default function PlayerProfileModal({
   };
 
   const isSelf = !!(profile?.isSelf || (currentUser && profile?.userId === currentUser.id));
+  const missingOwnEmail = isSelf && !String(profile?.email || currentUser?.email || '').trim();
   const friendship = profile?.friendshipStatus || 'none';
   const joinLabel = formatJoinDate(profile?.createdAt);
 
@@ -353,6 +386,23 @@ export default function PlayerProfileModal({
             </div>
           </div>
 
+          {missingOwnEmail && !isEditing && (
+            <div className="alert alert--warning profile-email-alert" role="alert">
+              <span className="profile-email-alert__text">
+                <Icon name="warning" size={16} />
+                <span>Alamat email belum diisi. Segera lengkapi alamat email untuk keamanan akunmu.</span>
+              </span>
+              <button
+                type="button"
+                className="btn btn--primary btn--sm"
+                onClick={() => startEditing({ focusEmail: true })}
+              >
+                <Icon name="mail" size={14} />
+                <span>Isi Email</span>
+              </button>
+            </div>
+          )}
+
           {feedback && (
             <p
               className={`alert alert--${feedback.type === 'success' ? 'success' : 'error'}`}
@@ -379,6 +429,12 @@ export default function PlayerProfileModal({
                   <Icon name="close" size={18} />
                 </button>
               </div>
+
+              {missingOwnEmail && !editEmail.trim() && (
+                <p className="alert alert--warning" role="alert">
+                  Alamat email belum diisi. Lengkapi kolom Email di bawah lalu klik Simpan.
+                </p>
+              )}
 
               <div className="field">
                 <label htmlFor="edit-profile-name">Nama Tampilan</label>
@@ -418,12 +474,18 @@ export default function PlayerProfileModal({
               <div className="field">
                 <label htmlFor="edit-profile-email">Email</label>
                 <input
+                  ref={emailInputRef}
                   id="edit-profile-email"
                   type="email"
+                  inputMode="email"
                   className="input"
                   value={editEmail}
+                  maxLength={254}
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   placeholder="contoh: nama@domain.com"
-                  onChange={e => setEditEmail(e.target.value)}
+                  onChange={e => setEditEmail(e.target.value.replace(/\s+/g, ''))}
                   disabled={editSaving}
                 />
                 <span className="field__hint">

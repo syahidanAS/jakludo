@@ -558,6 +558,8 @@ function bootstrapLocalState() {
 async function hydrateFromPostgres(activePool) {
   state.usersById.clear();
   state.usersByUsername.clear();
+  state.usersByEmail.clear();
+  state.usersByGoogleId.clear();
   state.usersByReferralCode.clear();
   state.referrals.clear();
   state.referralsByReferrer.clear();
@@ -839,6 +841,20 @@ function validateUsername(username) {
   return { valid: true, cleanUsername: clean };
 }
 
+function validateEmail(email) {
+  if (!email || typeof email !== 'string' || !email.trim()) {
+    return { valid: false, message: 'Email wajib diisi.' };
+  }
+  const clean = email.trim().toLowerCase();
+  if (clean.length > 254) {
+    return { valid: false, message: 'Email maksimal 254 karakter.' };
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
+    return { valid: false, message: 'Format email tidak valid.' };
+  }
+  return { valid: true, cleanEmail: clean };
+}
+
 function validatePassword(password) {
   if (!password || typeof password !== 'string') {
     return { valid: false, message: 'Password wajib diisi.' };
@@ -888,15 +904,21 @@ async function verifyPassword(password, storedHash) {
 // MANAJEMEN USER
 // ==========================================
 
-async function registerUser({ username, password, name, referralCode }) {
+async function registerUser({ username, email, password, name, referralCode }) {
   const userValid = validateUsername(username);
   if (!userValid.valid) return { error: userValid.message };
+
+  const emailValid = validateEmail(email);
+  if (!emailValid.valid) return { error: emailValid.message };
 
   const passValid = validatePassword(password);
   if (!passValid.valid) return { error: passValid.message };
 
   if (findUserByUsername(userValid.cleanUsername)) {
     return { error: 'Username sudah digunakan, silakan pilih username lain.' };
+  }
+  if (findUserByEmail(emailValid.cleanEmail)) {
+    return { error: 'Email sudah terdaftar, silakan gunakan email lain.' };
   }
 
   let referrer = null;
@@ -919,6 +941,9 @@ async function registerUser({ username, password, name, referralCode }) {
   if (findUserByUsername(userValid.cleanUsername)) {
     return { error: 'Username sudah digunakan, silakan pilih username lain.' };
   }
+  if (findUserByEmail(emailValid.cleanEmail)) {
+    return { error: 'Email sudah terdaftar, silakan gunakan email lain.' };
+  }
 
   const displayName = (typeof name === 'string' ? name.trim().slice(0, 18) : '') || userValid.cleanUsername;
   const id = 'user_' + crypto.randomUUID();
@@ -930,9 +955,9 @@ async function registerUser({ username, password, name, referralCode }) {
     try {
       await execPgTransaction(async client => {
         await client.query(
-          `INSERT INTO users (id, username, name, password_hash, auth_type, avatar, created_at, referral_code, referred_by)
-           VALUES ($1, $2, $3, $4, 'password', '🎯', $5, $6, $7)`,
-          [id, userValid.cleanUsername, displayName, passwordHash, createdAt, myReferralCode, referredByUserId]
+          `INSERT INTO users (id, username, name, password_hash, auth_type, avatar, email, created_at, referral_code, referred_by)
+           VALUES ($1, $2, $3, $4, 'password', '🎯', $5, $6, $7, $8)`,
+          [id, userValid.cleanUsername, displayName, passwordHash, emailValid.cleanEmail, createdAt, myReferralCode, referredByUserId]
         );
         await client.query(
           `INSERT INTO leaderboard (user_id, username, name, avatar, wins, matches_played, points, auth_type)
@@ -956,7 +981,14 @@ async function registerUser({ username, password, name, referralCode }) {
       });
     } catch (err) {
       if (String(err.code) === '23505' || String(err.message).includes('unique')) {
-        return { error: 'Username sudah digunakan, silakan pilih username lain.' };
+        const detail = `${err.constraint || ''} ${err.detail || ''} ${err.message || ''}`.toLowerCase();
+        if (detail.includes('email')) {
+          return { error: 'Email sudah terdaftar, silakan gunakan email lain.' };
+        }
+        if (detail.includes('username')) {
+          return { error: 'Username sudah digunakan, silakan pilih username lain.' };
+        }
+        return { error: 'Username atau email sudah digunakan.' };
       }
       throw err;
     }
@@ -969,6 +1001,7 @@ async function registerUser({ username, password, name, referralCode }) {
     passwordHash,
     authType: 'password',
     avatar: '🎯',
+    email: emailValid.cleanEmail,
     createdAt,
     referralCode: myReferralCode,
     referredBy: referredByUserId
@@ -1432,6 +1465,9 @@ function updateUserEmail(userId, email) {
   const row = state.usersById.get(userId);
   if (!row) return null;
   const cleanEmail = email ? String(email).trim().toLowerCase() : null;
+  if (row.email) {
+    state.usersByEmail.delete(String(row.email).toLowerCase());
+  }
   row.email = cleanEmail;
   if (cleanEmail) {
     state.usersByEmail.set(cleanEmail, userId);
@@ -2060,7 +2096,14 @@ function formatLeaderboardRows(rows) {
 function getRankedEntries() {
   const excluded = new Set(['bot', 'player', 'seed']);
   return formatLeaderboardRows(
-    Array.from(state.leaderboard.values()).filter(e => !excluded.has(e.authType))
+    Array.from(state.leaderboard.values()).filter(e => {
+      if (excluded.has(e.authType)) return false;
+      const user = findUserById(e.userId);
+      if (user ? isUserAdmin(user) : resolveUserRole(null, e.username) === 'admin') {
+        return false;
+      }
+      return true;
+    })
   );
 }
 
@@ -2072,21 +2115,24 @@ async function queryGlobalLeaderboard() {
   if (!pool || closed) return getLeaderboard();
   await flush();
   const { rows } = await pool.query(
-    `SELECT user_id, username, name, avatar, wins, matches_played, points, auth_type
-     FROM leaderboard
-     WHERE auth_type NOT IN ('bot', 'player', 'seed')`
+    `SELECT l.user_id, l.username, l.name, l.avatar, l.wins, l.matches_played, l.points, l.auth_type, u.role
+     FROM leaderboard l
+     LEFT JOIN users u ON u.id = l.user_id
+     WHERE l.auth_type NOT IN ('bot', 'player', 'seed')`
   );
   return formatLeaderboardRows(
-    rows.map(r => ({
-      userId: r.user_id,
-      username: r.username,
-      name: r.name,
-      avatar: r.avatar,
-      wins: Number(r.wins),
-      matchesPlayed: Number(r.matches_played),
-      points: Number(r.points),
-      authType: r.auth_type
-    }))
+    rows
+      .filter(r => resolveUserRole(r.role, r.username) !== 'admin')
+      .map(r => ({
+        userId: r.user_id,
+        username: r.username,
+        name: r.name,
+        avatar: r.avatar,
+        wins: Number(r.wins),
+        matchesPlayed: Number(r.matches_played),
+        points: Number(r.points),
+        authType: r.auth_type
+      }))
   );
 }
 
@@ -2768,6 +2814,7 @@ module.exports = {
   execPgTransaction,
   getUserByUsername: findUserByUsername,
   validateUsername,
+  validateEmail,
   validatePassword,
   hashPassword,
   verifyPassword,

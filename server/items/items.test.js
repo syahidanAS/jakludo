@@ -40,10 +40,11 @@ function connect() {
 
 let userSeq = 0;
 async function register() {
+  const uname = `pemain_item_${++userSeq}`;
   const res = await fetch(`${url}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: `pemain_item_${++userSeq}`, password: 'Rahasia#123' })
+    body: JSON.stringify({ username: uname, email: `${uname}@playgo.test`, password: 'Rahasia#123' })
   });
   return res.json();
 }

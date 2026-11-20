@@ -143,7 +143,8 @@ export default function LeaderboardModal({
     ? list[0]
     : null;
 
-  const mine = currentUser ? list.find(p => p.userId === currentUser.id) : null;
+  const isAdminViewer = Boolean(currentUser?.isAdmin || currentUser?.role === 'admin');
+  const mine = currentUser && !isAdminViewer ? list.find(p => p.userId === currentUser.id) : null;
 
   const switchTab = nextTab => {
     if (nextTab === tab) return;
@@ -171,7 +172,9 @@ export default function LeaderboardModal({
       footer={
         currentUser && status === 'ready' ? (
           <p className="lb-mine">
-            {mine
+            {isAdminViewer
+              ? 'Akun dengan role admin tidak ditampilkan di papan peringkat.'
+              : mine
               ? isSnakesTab
                 ? `Posisimu di Ular Tangga: #${mine.rank} · ${mine.wins} menang dari ${mine.matchesPlayed} match (Win Rate ${mine.winRate}%)`
                 : isChessTab
@@ -186,7 +189,7 @@ export default function LeaderboardModal({
               : isQuizTab
               ? 'Kamu belum masuk peringkat Monster Quiz Battle. Selesaikan satu duel untuk tercatat di peringkat!'
               : 'Kamu belum masuk peringkat JakLudo. Selesaikan satu pertandingan bersama pemain lain.'}
-            {!isQuizTab && !isChessTab && !isSnakesTab && mine?.isLudoKing && (
+            {!isAdminViewer && !isQuizTab && !isChessTab && !isSnakesTab && mine?.isLudoKing && (
               <strong> Kamu Ludo King saat ini 👑</strong>
             )}
           </p>

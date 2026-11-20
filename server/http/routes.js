@@ -25,6 +25,7 @@ const loginLimiter = createLimiter({ windowMs: 10 * 60 * 1000, max: 20 });
 const registerLimiter = createLimiter({ windowMs: 60 * 60 * 1000, max: Number(process.env.REGISTER_RATE_LIMIT || 30) });
 const googleAuthLimiter = createLimiter({ windowMs: 10 * 60 * 1000, max: Number(process.env.GOOGLE_AUTH_RATE_LIMIT || 30) });
 const basicRegisterLimiter = createLimiter({ windowMs: 10 * 60 * 1000, max: Number(process.env.BASIC_REGISTER_RATE_LIMIT || 60) });
+const availabilityLimiter = createLimiter({ windowMs: 10 * 60 * 1000, max: Number(process.env.AVAILABILITY_RATE_LIMIT || 120) });
 
 function safeEqualString(a, b) {
   const hashA = crypto.createHash('sha256').update(String(a || ''), 'utf8').digest();
@@ -118,11 +119,55 @@ function syncUserItemsToRooms(userId) {
 function createApiRouter() {
   const api = express.Router();
 
+  // Cek ketersediaan username dan/atau email sebelum registrasi manual (real-time + pra-submit)
+  api.get('/auth/check-availability', (req, res) => {
+    if (!(process.env.NODE_ENV === 'test' && process.env.ENABLE_RATE_LIMIT_IN_TEST !== '1')) {
+      if (!availabilityLimiter(req.ip)) {
+        return res.status(429).json({ success: false, error: 'Terlalu banyak permintaan pemeriksaan akun. Coba lagi sebentar.' });
+      }
+    }
+
+    const rawUsername = req.query?.username;
+    const rawEmail = req.query?.email;
+    const hasUsername = rawUsername !== undefined && rawUsername !== null && String(rawUsername).trim() !== '';
+    const hasEmail = rawEmail !== undefined && rawEmail !== null && String(rawEmail).trim() !== '';
+
+    if (!hasUsername && !hasEmail) {
+      return res.status(400).json({ success: false, error: 'Parameter username atau email wajib diisi.' });
+    }
+
+    const payload = { success: true };
+
+    if (hasUsername) {
+      const check = db.validateUsername(String(rawUsername));
+      if (!check.valid) {
+        payload.username = { valid: false, available: false, message: check.message };
+      } else if (db.findUserByUsername(check.cleanUsername)) {
+        payload.username = { valid: true, available: false, message: 'Username sudah digunakan, silakan pilih username lain.' };
+      } else {
+        payload.username = { valid: true, available: true, message: 'Username tersedia.' };
+      }
+    }
+
+    if (hasEmail) {
+      const check = db.validateEmail(String(rawEmail));
+      if (!check.valid) {
+        payload.email = { valid: false, available: false, message: check.message };
+      } else if (db.findUserByEmail(check.cleanEmail)) {
+        payload.email = { valid: true, available: false, message: 'Email sudah terdaftar, silakan gunakan email lain.' };
+      } else {
+        payload.email = { valid: true, available: true, message: 'Email tersedia.' };
+      }
+    }
+
+    res.json(payload);
+  });
+
   api.post('/auth/register', asyncRoute(async (req, res) => {
     if (!registerLimiter(req.ip)) {
       return res.status(429).json({ success: false, error: 'Terlalu banyak pendaftaran dari jaringan ini. Coba lagi nanti.' });
     }
-    const { username, password, name, recaptchaToken, referralCode } = req.body || {};
+    const { username, email, password, name, recaptchaToken, referralCode } = req.body || {};
 
     const captchaRes = await recaptcha.verifyRecaptchaToken({
       token: recaptchaToken,
@@ -133,7 +178,7 @@ function createApiRouter() {
       return res.status(400).json({ success: false, error: captchaRes.error });
     }
 
-    const result = await db.registerUser({ username, password, name, referralCode });
+    const result = await db.registerUser({ username, email, password, name, referralCode });
     if (result.error) return res.status(400).json({ success: false, error: result.error });
     res.json({ success: true, user: withKing(result.user), token: result.token });
   }));

@@ -17,8 +17,11 @@ const { server, shutdown } = require('../index');
 const db = require('../db');
 const store = require('../game/store');
 const quizEngine = require('../quiz/engine');
+const quizStore = require('../quiz/store');
 const chessEngine = require('../chess/engine');
+const chessStore = require('../chess/store');
 const snakesEngine = require('../snakes/engine');
+const snakesStore = require('../snakes/store');
 
 let url;
 
@@ -58,7 +61,7 @@ async function apiJson(route, { method = 'GET', token = '', body = undefined } =
 async function registerPlayer(username) {
   const res = await apiJson('/api/auth/register', {
     method: 'POST',
-    body: { username, password: 'Rahasia#123', name: username }
+    body: { username, email: `${username}@playgo.test`, password: 'Rahasia#123', name: username }
   });
   assert.equal(res.status, 200, `Registrasi ${username} gagal: ${JSON.stringify(res.data)}`);
   return res.data;
@@ -450,5 +453,166 @@ test('POST /api/admin/register-basic enforces HTTP Basic Auth and always registe
     else process.env.BASIC_AUTH_REGISTER_USER = prevUser;
     if (prevPass === undefined) delete process.env.BASIC_AUTH_REGISTER_PASS;
     else process.env.BASIC_AUTH_REGISTER_PASS = prevPass;
+  }
+});
+
+test('Akun role admin (db role & ADMIN_USERNAMES) tidak ditampilkan di seluruh leaderboard', async () => {
+  const prevAdminUsernames = process.env.ADMIN_USERNAMES;
+
+  try {
+    const regularAuth = await registerPlayer('lb_regular');
+    const adminRoleAuth = await registerPlayer('lb_admin_role');
+    await db.setUserRole(adminRoleAuth.user.id, 'admin');
+
+    const envAdminAuth = await registerPlayer('lb_env_admin');
+    process.env.ADMIN_USERNAMES = `${prevAdminUsernames || 'admin'},${envAdminAuth.user.username}`;
+
+    // 1. JakLudo: beri poin & kemenangan lebih tinggi untuk kedua admin dibanding pemain biasa
+    await db.setUserPoints(adminRoleAuth.user.id, 99999);
+    await db.setUserPoints(envAdminAuth.user.id, 88888);
+
+    const awards1 = db.recordMatchResult({
+      winnerPlayerId: 'p_admin',
+      players: [
+        { id: 'p_admin', userId: adminRoleAuth.user.id, isBot: false },
+        { id: 'p_reg', userId: regularAuth.user.id, isBot: false }
+      ]
+    });
+    db.recordMatchResult({
+      winnerPlayerId: 'p_reg',
+      players: [
+        { id: 'p_reg', userId: regularAuth.user.id, isBot: false },
+        { id: 'p_env', userId: envAdminAuth.user.id, isBot: false }
+      ]
+    });
+
+    const ludoLbRes = await apiJson('/api/leaderboard');
+    assert.equal(ludoLbRes.status, 200);
+    assert.equal(ludoLbRes.data.leaderboard.some(e => e.userId === adminRoleAuth.user.id), false);
+    assert.equal(ludoLbRes.data.leaderboard.some(e => e.userId === envAdminAuth.user.id), false);
+
+    const regularLudoRow = ludoLbRes.data.leaderboard.find(e => e.userId === regularAuth.user.id);
+    assert.ok(regularLudoRow, 'Pemain biasa harus muncul di leaderboard JakLudo');
+    assert.equal(db.checkIsLudoKing(adminRoleAuth.user.id), false);
+    assert.equal(db.checkIsLudoKing(envAdminAuth.user.id), false);
+    assert.equal(db.checkIsLudoKing(regularAuth.user.id), ludoLbRes.data.leaderboard[0]?.userId === regularAuth.user.id);
+
+    // Pastikan saldo Coins & profil publik admin tetap terjaga meski disembunyikan dari leaderboard
+    const expectedAdminPoints = 99999 + Number(awards1?.p_admin?.points || 0) + Number(awards1?.p_admin?.dailyBonus || 0);
+    assert.equal(db.getUserPoints(adminRoleAuth.user.id), expectedAdminPoints);
+    const adminPubRes = await apiJson(`/api/users/${adminRoleAuth.user.username}/profile`);
+    assert.equal(adminPubRes.status, 200);
+    assert.equal(adminPubRes.data.profile.points, expectedAdminPoints);
+    assert.equal(adminPubRes.data.profile.rank, null);
+    assert.equal(adminPubRes.data.profile.isLudoKing, false);
+
+    // 2. Monster Quiz Battle: admin menang duel melawan pemain biasa
+    quizStore.recordMatchFinished({
+      matchId: 'q_lb_test_1',
+      roomId: 'qr_lb_1',
+      winnerUserId: adminRoleAuth.user.id,
+      endReason: 'hp_zero',
+      maxRounds: 5,
+      roundsPlayed: 2,
+      startedAt: Date.now() - 15000,
+      players: [
+        { userId: adminRoleAuth.user.id, slot: 0, monsterId: 'emberon', hp: 80, correctAnswers: 2, forfeited: false },
+        { userId: regularAuth.user.id, slot: 1, monsterId: 'aquaris', hp: 0, correctAnswers: 0, forfeited: false }
+      ]
+    });
+
+    const quizLbRes = await apiJson('/api/quiz/leaderboard');
+    assert.equal(quizLbRes.status, 200);
+    assert.equal(quizLbRes.data.leaderboard.some(e => e.userId === adminRoleAuth.user.id), false);
+    const regularQuizRow = quizLbRes.data.leaderboard.find(e => e.userId === regularAuth.user.id);
+    assert.ok(regularQuizRow, 'Pemain biasa harus tetap tampil di leaderboard Monster Quiz');
+    assert.equal(regularQuizRow.rank, 1);
+
+    // 3. Chess Master: admin menang match kompetitif melawan pemain biasa
+    chessStore.createMatchRecord({
+      id: 'chess_lb_test_1',
+      whitePlayerId: adminRoleAuth.user.id,
+      blackPlayerId: regularAuth.user.id,
+      initialFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      whiteRemainingTimeMs: 300000,
+      blackRemainingTimeMs: 300000
+    });
+    chessStore.finalizeMatchRecord({
+      matchId: 'chess_lb_test_1',
+      result: '1-0',
+      winnerUserId: adminRoleAuth.user.id,
+      terminationReason: 'checkmate',
+      whiteRemainingTimeMs: 280000,
+      blackRemainingTimeMs: 270000
+    });
+
+    const chessLbRes = await apiJson('/api/chess/leaderboard', { token: adminRoleAuth.token });
+    assert.equal(chessLbRes.status, 200);
+    assert.equal(chessLbRes.data.entries.some(e => e.userId === adminRoleAuth.user.id), false);
+    assert.equal(chessLbRes.data.myEntry, null);
+    const regularChessRow = chessLbRes.data.entries.find(e => e.userId === regularAuth.user.id);
+    assert.ok(regularChessRow, 'Pemain biasa harus tetap tampil di leaderboard Chess Master');
+
+    // 4. Snakes & Ladders: admin menang match melawan pemain biasa
+    snakesStore.recordCompletedMatch({
+      id: 'snk_room_lb_1',
+      code: 'SNKLB1',
+      startedAt: Date.now() - 20000,
+      finishedAt: Date.now(),
+      turnNumber: 8,
+      finishReason: 'finish',
+      moveLog: [1, 2, 3, 4, 5, 6],
+      winnerPlayerId: 'sp_admin',
+      winnerUserId: adminRoleAuth.user.id,
+      players: [
+        { id: 'sp_admin', player_type: 'human', user_id: adminRoleAuth.user.id, display_name: adminRoleAuth.user.username },
+        { id: 'sp_reg', player_type: 'human', user_id: regularAuth.user.id, display_name: regularAuth.user.username }
+      ]
+    });
+
+    const snakesLbRes = await apiJson('/api/games/snakes-and-ladders/leaderboard', { token: adminRoleAuth.token });
+    assert.equal(snakesLbRes.status, 200);
+    assert.equal(snakesLbRes.data.entries.some(e => e.userId === adminRoleAuth.user.id), false);
+    assert.equal(snakesLbRes.data.myEntry, null);
+    const regularSnakesRow = snakesLbRes.data.entries.find(e => e.userId === regularAuth.user.id);
+    assert.ok(regularSnakesRow, 'Pemain biasa harus tetap tampil di leaderboard Ular Tangga');
+    assert.equal(regularSnakesRow.rank, 1);
+
+    // 5. Group Leaderboard: admin masuk grup, namun tidak tampil di leaderboard grup
+    const createGroupRes = await apiJson('/api/groups', {
+      method: 'POST',
+      token: regularAuth.token,
+      body: { name: 'Grup Tes Leaderboard' }
+    });
+    assert.equal(createGroupRes.status, 200);
+    const groupId = createGroupRes.data.group.id;
+
+    const inviteRes = await apiJson(`/api/groups/${groupId}/invites`, {
+      method: 'POST',
+      token: regularAuth.token,
+      body: { username: adminRoleAuth.user.username }
+    });
+    assert.equal(inviteRes.status, 200);
+
+    const acceptRes = await apiJson(`/api/group-invites/${inviteRes.data.invite.id}/accept`, {
+      method: 'POST',
+      token: adminRoleAuth.token
+    });
+    assert.equal(acceptRes.status, 200);
+
+    const grpLbRes = await apiJson(`/api/groups/${groupId}/leaderboard`, { token: regularAuth.token });
+    assert.equal(grpLbRes.status, 200);
+    assert.equal(grpLbRes.data.leaderboard.some(e => e.userId === adminRoleAuth.user.id), false);
+    assert.equal(grpLbRes.data.leaderboard.length, 1);
+    assert.equal(grpLbRes.data.leaderboard[0].userId, regularAuth.user.id);
+    assert.equal(grpLbRes.data.leaderboard[0].rank, 1);
+
+    const grpQueryRes = await apiJson(`/api/leaderboard?groupId=${groupId}`, { token: adminRoleAuth.token });
+    assert.equal(grpQueryRes.status, 200);
+    assert.equal(grpQueryRes.data.leaderboard.some(e => e.userId === adminRoleAuth.user.id), false);
+    assert.equal(grpQueryRes.data.leaderboard[0].userId, regularAuth.user.id);
+  } finally {
+    if (prevAdminUsernames === undefined) delete process.env.ADMIN_USERNAMES;
+    else process.env.ADMIN_USERNAMES = prevAdminUsernames;
   }
 });

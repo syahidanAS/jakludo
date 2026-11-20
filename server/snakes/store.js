@@ -457,7 +457,7 @@ function getSortedLeaderboardEntries() {
   for (const agg of map.values()) {
     if (agg.totalMatches <= 0) continue;
     const u = db.getUserById(agg.userId);
-    if (!u || String(u.id).startsWith('bot_')) continue;
+    if (!u || String(u.id).startsWith('bot_') || db.isUserAdmin(u)) continue;
     const winRate = Math.round((agg.wins / agg.totalMatches) * 100);
     const avgDuration = Math.round(agg.totalDuration / agg.totalMatches);
     rows.push({

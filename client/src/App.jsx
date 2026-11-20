@@ -4,6 +4,7 @@ import MobileBottomNav from './components/MobileBottomNav';
 import GameHeader from './components/game/GameHeader';
 import Toasts from './components/Toasts';
 import { ReconnectBar } from './components/NetworkStatus';
+import EmailReminderBanner from './components/EmailReminderBanner';
 import InstallGuide from './components/InstallGuide';
 import NotificationPrompt from './components/NotificationPrompt';
 import SocialOnboardingTour from './components/SocialOnboardingTour';
@@ -70,6 +71,8 @@ export default function App() {
   const [modal, setModal] = useState(null); // 'auth' | 'shop' | 'audio' | 'leaderboard' | 'friends' | 'groups' | null
   const [gameMode, setGameMode] = useState(getInitialGameModeFromUrl); // 'hub' | 'ludo' | 'quiz'
   const [profileUserId, setProfileUserId] = useState('');
+  const [profileEditEmail, setProfileEditEmail] = useState(false);
+  const [emailAlertDismissed, setEmailAlertDismissed] = useState(false);
   const [initialChatFriendId, setInitialChatFriendId] = useState('');
   const [cropRequest, setCropRequest] = useState(null);
   const [showReferralPrompt, setShowReferralPrompt] = useState(false);
@@ -112,6 +115,9 @@ export default function App() {
   }, []);
 
   const auth = useAuth();
+  useEffect(() => {
+    setEmailAlertDismissed(false);
+  }, [auth.currentUser?.id]);
   const requestAvatarCrop = useCallback(({ file, title, subtitle }) => {
     if (!file || !String(file.type || '').startsWith('image/')) {
       return Promise.reject(new Error('Pilih file gambar yang valid.'));
@@ -313,7 +319,13 @@ export default function App() {
   };
   const openProfile = userId => {
     if (!userId) return;
+    setProfileEditEmail(false);
     setProfileUserId(String(userId));
+  };
+  const openProfileForEmail = () => {
+    if (!auth.currentUser?.id) return;
+    setProfileEditEmail(true);
+    setProfileUserId(String(auth.currentUser.id));
   };
   const openChatWithFriend = friendId => {
     setProfileUserId('');
@@ -345,12 +357,21 @@ export default function App() {
     inSnakesBattle: !!snakesRoom && snakesRoom.status === 'playing',
     currentUrl: window.location.pathname + window.location.search,
     profileOpen: !!profileUserId,
-    closeProfile: () => setProfileUserId(''),
+    closeProfile: () => {
+      setProfileUserId('');
+      setProfileEditEmail(false);
+    },
     leaveLudo: game.actions.leaveRoom,
     leaveQuiz: quiz.actions.leaveRoom,
     leaveChess: chess.actions.leaveRoom,
     leaveSnakes: snakes.actions.leaveRoom
   };
+
+  const inActiveMatch =
+    inGame ||
+    roomRef.current.inQuizBattle ||
+    roomRef.current.inChessBattle ||
+    roomRef.current.inSnakesBattle;
 
   const showBottomNav =
     !inGame &&
@@ -407,6 +428,13 @@ export default function App() {
           onLogout={auth.logout}
         />
       )}
+
+      <EmailReminderBanner
+        user={auth.checking ? null : auth.currentUser}
+        hidden={inActiveMatch || emailAlertDismissed}
+        onOpenEditEmail={openProfileForEmail}
+        onDismiss={() => setEmailAlertDismissed(true)}
+      />
 
       <Toasts
         error={inGame ? game.error : ''}
@@ -683,7 +711,11 @@ export default function App() {
       <PlayerProfileModal
         userId={profileUserId}
         isOpen={!!profileUserId}
-        onClose={() => setProfileUserId('')}
+        initialEditEmail={profileEditEmail}
+        onClose={() => {
+          setProfileUserId('');
+          setProfileEditEmail(false);
+        }}
         currentUser={auth.currentUser}
         social={social}
         onUpdateProfile={auth.updateProfile}

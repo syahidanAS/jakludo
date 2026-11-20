@@ -44,7 +44,7 @@ async function register(username) {
   const res = await fetch(`${url}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password: 'Rahasia#123', name: username })
+    body: JSON.stringify({ username, email: `${username}@playgo.test`, password: 'Rahasia#123', name: username })
   });
   return res.json();
 }
@@ -343,7 +343,7 @@ test('room dan data pemain tetap ada setelah server restart', async () => {
   };
   const reg = (u, username) => fetch(`${u}/api/auth/register`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password: 'Rahasia#123' })
+    body: JSON.stringify({ username, email: `${username}@playgo.test`, password: 'Rahasia#123' })
   }).then(r => r.json());
 
   let srv = await start();
@@ -645,6 +645,7 @@ test('Google Auth: linking akun saat email Google cocok dengan akun terdaftar', 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       username: `linkuser_${Date.now().toString(36)}`.slice(0, 20),
+      email: `link_init_${Date.now()}@playgo.test`,
       password: 'Password#123',
       name: 'User Akun Biasa'
     })
@@ -688,6 +689,7 @@ test('Update profil: nama, username, email, dan password', async () => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       username: origUsername,
+      email: `init_${origUsername}@playgo.test`,
       password: oldPassword,
       name: 'Nama Awal'
     })
@@ -786,6 +788,7 @@ test('Google reCAPTCHA v3: config endpoint dan verifikasi token login / register
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       username: testUser,
+      email: `${testUser}@playgo.test`,
       password: 'StrongPassword123!',
       name: 'User Recaptcha',
       recaptchaToken: 'mock_recaptcha_token'
@@ -1206,7 +1209,7 @@ test('Sistem Kode Referral: pendaftar baru memakai kode referral dan pemberi kod
   const hostRes = await fetch(`${url}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: hostUname, password: 'Password123!', name: 'Host Referral' })
+    body: JSON.stringify({ username: hostUname, email: `${hostUname}@playgo.test`, password: 'Password123!', name: 'Host Referral' })
   });
   const hostData = await hostRes.json();
   assert.equal(hostData.success, true);
@@ -1232,6 +1235,7 @@ test('Sistem Kode Referral: pendaftar baru memakai kode referral dan pemberi kod
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       username: 'ref_bad_' + ts,
+      email: `ref_bad_${ts}@playgo.test`,
       password: 'Password123!',
       name: 'Bad Guest',
       referralCode: 'TIDAK_ADA_CODE'
@@ -1247,6 +1251,7 @@ test('Sistem Kode Referral: pendaftar baru memakai kode referral dan pemberi kod
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       username: guestUname,
+      email: `${guestUname}@playgo.test`,
       password: 'Password123!',
       name: 'Guest Teman',
       referralCode: hostRefCode.toLowerCase() // test case-insensitivity
@@ -1288,7 +1293,7 @@ test('Sistem Kode Referral: pendaftar baru memakai kode referral dan pemberi kod
   const claimerReg = await fetch(`${url}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: claimerUname, password: 'Password123!', name: 'Claimer Player' })
+    body: JSON.stringify({ username: claimerUname, email: `${claimerUname}@playgo.test`, password: 'Password123!', name: 'Claimer Player' })
   });
   const claimerData = await claimerReg.json();
   assert.equal(claimerData.success, true);
@@ -1355,4 +1360,116 @@ test('Sistem Kode Referral: pendaftar baru memakai kode referral dan pemberi kod
   assert.equal(hostMeData.user.points, initialHostPoints + 100);
   assert.equal(hostMeData.user.referralCount, 2);
   assert.equal(hostMeData.user.referralBonusCoins, 100);
+});
+
+test('Registrasi manual: wajib email valid serta cek keunikan username & email', async () => {
+  const ts = Date.now().toString(36).slice(-5);
+  const uname = `uniq_${ts}`;
+  const rawEmail = `Pemain.${ts}@PlayGo.ID`;
+  const normalizedEmail = rawEmail.toLowerCase();
+
+  // 1. GET /api/auth/check-availability tanpa parameter -> 400
+  const emptyCheck = await fetch(`${url}/api/auth/check-availability`);
+  assert.equal(emptyCheck.status, 400);
+
+  // 2. Cek username & email yang masih kosong/tersedia -> valid: true, available: true
+  const availRes = await fetch(
+    `${url}/api/auth/check-availability?username=${encodeURIComponent(uname)}&email=${encodeURIComponent(rawEmail)}`
+  );
+  assert.equal(availRes.status, 200);
+  const availData = await availRes.json();
+  assert.equal(availData.success, true);
+  assert.equal(availData.username.valid, true);
+  assert.equal(availData.username.available, true);
+  assert.equal(availData.email.valid, true);
+  assert.equal(availData.email.available, true);
+
+  // 3. Cek format username & email tidak valid -> valid: false, available: false
+  const invalidCheckRes = await fetch(
+    `${url}/api/auth/check-availability?username=ab&email=bukan-email`
+  );
+  assert.equal(invalidCheckRes.status, 200);
+  const invalidCheckData = await invalidCheckRes.json();
+  assert.equal(invalidCheckData.username.valid, false);
+  assert.equal(invalidCheckData.username.available, false);
+  assert.equal(invalidCheckData.email.valid, false);
+  assert.equal(invalidCheckData.email.available, false);
+
+  // 4. POST /api/auth/register tanpa email -> 400
+  const missingEmailRes = await fetch(`${url}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: uname, password: 'Password#123' })
+  });
+  assert.equal(missingEmailRes.status, 400);
+  const missingEmailData = await missingEmailRes.json();
+  assert.match(missingEmailData.error, /email/i);
+
+  // 5. POST /api/auth/register dengan format email tidak valid -> 400
+  const badEmailRes = await fetch(`${url}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: uname, email: 'email-rusak', password: 'Password#123' })
+  });
+  assert.equal(badEmailRes.status, 400);
+
+  // 6. POST /api/auth/register valid dengan email campuran huruf besar -> 200 & dinormalisasi lowercase
+  const okRes = await fetch(`${url}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: uname,
+      email: rawEmail,
+      password: 'Password#123',
+      name: 'Pemain Unik'
+    })
+  });
+  assert.equal(okRes.status, 200);
+  const okData = await okRes.json();
+  assert.equal(okData.success, true);
+  assert.equal(okData.user.username, uname);
+  assert.equal(okData.user.email, normalizedEmail);
+
+  const meRes = await fetch(`${url}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${okData.token}` }
+  });
+  const meData = await meRes.json();
+  assert.equal(meData.user.email, normalizedEmail);
+
+  // 7. GET /api/auth/check-availability untuk username & email yang sama (beda kapitalisasi) -> available: false
+  const takenCheckRes = await fetch(
+    `${url}/api/auth/check-availability?username=${encodeURIComponent(uname.toUpperCase())}&email=${encodeURIComponent(normalizedEmail.toUpperCase())}`
+  );
+  assert.equal(takenCheckRes.status, 200);
+  const takenCheckData = await takenCheckRes.json();
+  assert.equal(takenCheckData.username.available, false);
+  assert.equal(takenCheckData.email.available, false);
+
+  // 8. POST /api/auth/register duplikat username -> 400
+  const dupUserRes = await fetch(`${url}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: uname,
+      email: `other_${ts}@playgo.id`,
+      password: 'Password#123'
+    })
+  });
+  assert.equal(dupUserRes.status, 400);
+  const dupUserData = await dupUserRes.json();
+  assert.match(dupUserData.error, /username/i);
+
+  // 9. POST /api/auth/register duplikat email (case-insensitive) -> 400
+  const dupEmailRes = await fetch(`${url}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: `other_${ts}`,
+      email: normalizedEmail.toUpperCase(),
+      password: 'Password#123'
+    })
+  });
+  assert.equal(dupEmailRes.status, 400);
+  const dupEmailData = await dupEmailRes.json();
+  assert.match(dupEmailData.error, /email/i);
 });

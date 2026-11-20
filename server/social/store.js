@@ -1213,6 +1213,7 @@ async function getGroupLeaderboard(groupId, userId) {
          u.id AS user_id,
          u.username,
          u.name,
+         u.role,
          COALESCE(u.avatar, l.avatar, '🎯') AS avatar,
          COALESCE(l.wins, 0) AS wins,
          COALESCE(l.matches_played, 0) AS matches_played,
@@ -1224,6 +1225,7 @@ async function getGroupLeaderboard(groupId, userId) {
       [groupId]
     );
     for (const r of pgRows) {
+      if (db.isUserAdmin({ role: r.role, username: r.username })) continue;
       const wins = Number(r.wins || 0);
       const matchesPlayed = Number(r.matches_played || 0);
       const points = Number(r.points || 0);
@@ -1246,7 +1248,7 @@ async function getGroupLeaderboard(groupId, userId) {
 
     for (const uid of membersMap.keys()) {
       const u = db.getUserById(uid);
-      if (!u) continue;
+      if (!u || db.isUserAdmin(u)) continue;
       const gEntry = globalById.get(uid);
       const wins = gEntry ? gEntry.wins : 0;
       const matchesPlayed = gEntry ? gEntry.matchesPlayed : 0;
@@ -1750,7 +1752,7 @@ function getUserPublicProfile(targetIdOrUsername, viewerUserId = null) {
   const lbEntry = lbList.find(e => e.userId === target.id);
   const wins = lbEntry ? lbEntry.wins : 0;
   const matchesPlayed = lbEntry ? lbEntry.matchesPlayed : 0;
-  const points = lbEntry ? lbEntry.points : target.points ?? 200;
+  const points = lbEntry ? lbEntry.points : db.getUserPoints(target.id);
   const winRate = matchesPlayed > 0 ? Math.round((wins / matchesPlayed) * 100) : 0;
   const rank = lbEntry ? lbEntry.rank : null;
   const isLudoKing = db.checkIsLudoKing(target.id);

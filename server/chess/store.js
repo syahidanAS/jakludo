@@ -365,7 +365,7 @@ function getSortedLeaderboardEntries() {
   for (const prof of state.profiles.values()) {
     if (prof.totalGames <= 0 && prof.rating === DEFAULT_RATING) continue;
     const u = db.getUserById(prof.userId);
-    if (!u) continue;
+    if (!u || db.isUserAdmin(u)) continue;
     const winRate = prof.totalGames > 0 ? Math.round((prof.wins / prof.totalGames) * 100) : 0;
     rows.push({
       userId: prof.userId,
