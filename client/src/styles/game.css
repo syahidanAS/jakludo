@@ -674,3 +674,114 @@
   padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--border);
 }
+
+/* ---------- Ocean Blue: Panel Hint Langkah Terbaik ---------- */
+
+.ocean-hint-box {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 2px solid #0ea5e9;
+  box-shadow: inset 0 0 0 999px rgba(14, 165, 233, 0.06);
+}
+
+.ocean-hint-box__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.ocean-hint-box__title {
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  color: #0369a1;
+}
+
+:root[data-theme='dark'] .ocean-hint-box__title {
+  color: #7dd3fc;
+}
+
+.ocean-hint-box__sub {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+.ocean-hint-list {
+  display: grid;
+  gap: 6px;
+}
+
+.ocean-hint-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition: transform 0.14s var(--ease), border-color 0.14s var(--ease), box-shadow 0.14s var(--ease);
+}
+
+.ocean-hint-chip:hover {
+  transform: translateY(-1px);
+  border-color: #0284c7;
+}
+
+.ocean-hint-chip:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.ocean-hint-chip--rank-1 {
+  border-color: #0ea5e9;
+  background: rgba(14, 165, 233, 0.14);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35);
+}
+
+.ocean-hint-chip--rank-2 {
+  border-color: rgba(14, 165, 233, 0.5);
+  background: rgba(14, 165, 233, 0.07);
+}
+
+.ocean-hint-chip--rank-3 {
+  border-color: rgba(2, 132, 199, 0.35);
+}
+
+.ocean-hint-chip__rank {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 0.7rem;
+  background: #0284c7;
+  color: #ffffff;
+}
+
+.ocean-hint-chip--rank-1 .ocean-hint-chip__rank {
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  border: 1px solid #fef08a;
+  box-shadow: 0 0 8px rgba(14, 165, 233, 0.55);
+}
+
+.ocean-hint-chip__pawn {
+  flex-shrink: 0;
+  color: var(--text);
+}
+
+.ocean-hint-chip__reason {
+  color: var(--text-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

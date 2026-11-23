@@ -23,7 +23,8 @@ export const LUDO_SKIN_META = {
     rarity: 'Rare',
     accent: '#0ea5e9',
     ringColor: '#bae6fd',
-    glow: 'rgba(14, 165, 233, 0.55)'
+    glow: 'rgba(14, 165, 233, 0.55)',
+    abilityLabel: 'Hint Langkah Terbaik'
   },
   emerald_green: {
     id: 'emerald_green',

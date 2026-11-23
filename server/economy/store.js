@@ -97,7 +97,7 @@ const DEFAULT_LUDO_SKINS = [
   {
     id: 'ocean_blue',
     name: 'Ocean Blue',
-    description: 'Bidak biru samudra dengan inti mutiara laut yang tenang dan berkelas.',
+    description: 'Bidak biru samudra dengan inti mutiara laut. Dilengkapi kemampuan Hint Langkah Terbaik yang menyalakan bidak paling menguntungkan berurutan dari peluang tertinggi.',
     priceDiamonds: 20,
     rarity: 'Rare',
     assetKey: 'ocean_blue',

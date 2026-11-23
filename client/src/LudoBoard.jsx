@@ -12,6 +12,7 @@ import Icon from './components/Icon';
 import PlayerAvatar from './components/PlayerAvatar';
 import { isAvatarUrl } from './social/media';
 import { LudoSkinTokenInner } from './components/game/LudoSkinPawn';
+import { hasOceanBlueHintAbility } from './utils/oceanBlueHints.mjs';
 
 // Pemetaan sudut layar (Top-Left, Top-Right, Bottom-Left, Bottom-Right)
 // berdasarkan sudut rotasi papan agar badge nama pemain selalu sejajar dengan letak markasnya
@@ -46,6 +47,7 @@ function LudoBoardView({
   myPlayerId,
   isMyTurn,
   movablePawns = [],
+  moveHints = null,
   onMovePawn,
   targeting = false,
   onSelectTarget
@@ -100,6 +102,9 @@ function LudoBoardView({
   const boardRotation = myColor ? (BOARD_ROTATION[myColor] ?? 0) : 0;
   const counterStyle = boardRotation !== 0 ? { transform: `rotate(${-boardRotation}deg)` } : undefined;
 
+  const hintsByPawn = useMemo(() => (moveHints?.active ? moveHints.byPawn || {} : {}), [moveHints]);
+  const showRankBadges = Boolean(moveHints?.active && (moveHints.recommended?.length || 0) > 0);
+
   // Hitung kotak tujuan mana saja yang bisa dilewati / dituju oleh bidak pemain aktif
   const validTargets = useMemo(() => {
     if (!isMyTurn || room.dice === null || !myColor || !movablePawns.length) return {};
@@ -123,16 +128,23 @@ function LudoBoardView({
 
       if (targetCoord) {
         const key = `${targetCoord[0]},${targetCoord[1]}`;
+        const hintRank = hintsByPawn[pawnIdx]?.rank ?? null;
+        const prev = targets[key];
+        const bestRank =
+          prev?.hintRank != null && hintRank != null
+            ? Math.min(prev.hintRank, hintRank)
+            : hintRank ?? prev?.hintRank ?? null;
         targets[key] = {
           pawnIdx,
           targetVal,
-          isExit: currentVal === 0
+          isExit: currentVal === 0,
+          hintRank: bestRank
         };
       }
     });
 
     return targets;
-  }, [isMyTurn, room.dice, myColor, myPlayerId, room.pawns, movablePawns]);
+  }, [isMyTurn, room.dice, myColor, myPlayerId, room.pawns, movablePawns, hintsByPawn]);
 
   // Animasi langkah demi langkah saat menerima animatingMove dari server
   useEffect(() => {
@@ -325,6 +337,8 @@ function LudoBoardView({
                 : rawVal >= 1;
               const inBase = !isPawnOut;
               const canMove = inBase && isMyTurn && player?.id === myPlayerId && movablePawns.includes(pawnIdx) && !room.animatingMove;
+              const hint = canMove ? hintsByPawn[pawnIdx] : null;
+              const hintTierClass = hint ? ` pawn-ocean-hint pawn-ocean-hint--rank-${Math.min(hint.rank, 3)}` : '';
 
               return (
                 <div key={pawnIdx} className={`yard-slot yard-slot-${color}`}>
@@ -332,14 +346,26 @@ function LudoBoardView({
                   {inBase && player && (
                     <button
                       type="button"
-                      className={`pawn-token pawn-${color} ${canMove ? 'pawn-can-move pulse-anim' : ''}`}
+                      className={`pawn-token pawn-${color} ${canMove ? 'pawn-can-move pulse-anim' : ''}${hintTierClass}`}
                       data-skin={player?.equippedSkin?.id || ''}
                       onClick={() => handlePawnClick(pawnIdx, canMove)}
                       disabled={!canMove}
-                      aria-label={canMove ? `Jalankan bidak ${pawnIdx + 1} keluar markas` : `Bidak ${pawnIdx + 1} ${player?.name || ''} di markas`}
+                      title={hint ? `Rekomendasi #${hint.rank}: ${hint.reason}` : undefined}
+                      aria-label={
+                        hint
+                          ? `Jalankan bidak ${pawnIdx + 1} keluar markas (Hint #${hint.rank}: ${hint.reason})`
+                          : canMove
+                          ? `Jalankan bidak ${pawnIdx + 1} keluar markas`
+                          : `Bidak ${pawnIdx + 1} ${player?.name || ''} di markas`
+                      }
                     >
                       {/* base-yard sudah diputar balik; jangan putar lagi agar angka tidak miring */}
                       <LudoSkinTokenInner skin={player?.equippedSkin} number={pawnIdx + 1} />
+                      {hint && showRankBadges && (
+                        <span className={`pawn-hint-rank pawn-hint-rank--${Math.min(hint.rank, 3)}`} aria-hidden="true">
+                          #{hint.rank}
+                        </span>
+                      )}
                     </button>
                   )}
                 </div>
@@ -394,6 +420,7 @@ function LudoBoardView({
     if (isStar && safeZonesActive) cellClass += ' cell-safe-star';
     if (isBlackHole) cellClass += ' cell-black-hole';
     if (isValidTarget) cellClass += ' cell-valid-target';
+    if (isValidTarget && targetInfo.hintRank === 1 && !isBlackHole) cellClass += ' cell-hint-top';
 
     return (
       <div
@@ -422,9 +449,11 @@ function LudoBoardView({
             {cellPawns.map(({ player, pawnIdx, val, isHopping, canMove }, idx) => {
               const isTarget = targeting && player.id !== myPlayerId && val >= 1 && val <= 39;
               const isInteractive = canMove || isTarget;
+              const hint = canMove ? hintsByPawn[pawnIdx] : null;
 
               let btnClass = `pawn-token pawn-${player.color}`;
               if (canMove) btnClass += ' pawn-can-move pulse-anim';
+              if (hint) btnClass += ` pawn-ocean-hint pawn-ocean-hint--rank-${Math.min(hint.rank, 3)}`;
               if (isHopping) btnClass += ' pawn-stepping';
               if (isTarget) btnClass += ' pawn-target pulse-target';
 
@@ -444,17 +473,25 @@ function LudoBoardView({
                     handlePawnClick(pawnIdx, canMove);
                   }}
                   disabled={!isInteractive}
+                  title={hint ? `Rekomendasi #${hint.rank}: ${hint.reason}` : undefined}
                   aria-label={
                     isTarget
                       ? `Pilih bidak ${pawnIdx + 1} milik ${player.name} sebagai target`
+                      : hint
+                      ? `Jalankan bidak ${pawnIdx + 1} (Hint #${hint.rank}: ${hint.reason})`
                       : canMove
                       ? `Jalankan bidak ${pawnIdx + 1}`
                       : `Bidak ${pawnIdx + 1} milik ${player.name}`
                   }
-                  style={{ zIndex: isHopping ? 100 : (isTarget ? 90 : 10 + idx) }}
+                  style={{ zIndex: isHopping ? 100 : (isTarget ? 90 : hint ? (75 - Math.min(hint.rank, 4) * 4) : 10 + idx) }}
                 >
                   <span className="pawn-counter-wrap" style={counterStyle}>
                     <LudoSkinTokenInner skin={player?.equippedSkin} number={pawnIdx + 1} />
+                    {hint && showRankBadges && (
+                      <span className={`pawn-hint-rank pawn-hint-rank--${Math.min(hint.rank, 3)}`} aria-hidden="true">
+                        #{hint.rank}
+                      </span>
+                    )}
                   </span>
                   {isTarget && <span className="pawn-target-crosshair" aria-hidden="true">🎯</span>}
                 </button>
@@ -468,10 +505,11 @@ function LudoBoardView({
 
   // Render Kotak Tengah (Finish Goal 1x1 pada r=5, c=5)
   const isGoalTarget = !!validTargets['5,5'];
+  const isGoalHintTop = isGoalTarget && validTargets['5,5']?.hintRank === 1;
   const renderCenterGoal = () => {
     return (
       <div
-        className={`board-center-goal ${isGoalTarget ? 'cell-valid-target' : ''}`}
+        className={`board-center-goal ${isGoalTarget ? 'cell-valid-target' : ''}${isGoalHintTop ? ' cell-hint-top' : ''}`}
         style={{
           gridRow: '6 / span 1',
           gridColumn: '6 / span 1'
@@ -540,6 +578,14 @@ function LudoBoardView({
           <div className="hud-name-row">
             <strong className="hud-player-name">{player ? player.name : 'Kursi kosong'}</strong>
             {isMe && <span className="hud-tag you-tag">KAMU</span>}
+            {isMe && hasOceanBlueHintAbility(player?.equippedSkin) && (
+              <span
+                className="hud-tag ocean-hint-tag"
+                title="Skin Ocean Blue aktif: Hint langkah terbaik otomatis menyala di giliranmu"
+              >
+                🌊 HINT
+              </span>
+            )}
             {player?.isBot && <span className="hud-tag bot-tag">BOT</span>}
             {player?.isLudoKing && <span className="hud-tag king-tag">👑</span>}
           </div>

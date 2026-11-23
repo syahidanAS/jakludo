@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import LudoBoard from '../LudoBoard';
 import Modal from '../components/Modal';
 import TurnPanel from '../components/game/TurnPanel';
@@ -9,6 +9,7 @@ import ShieldPrompt from '../components/game/ShieldPrompt';
 import WinnerDialog from '../components/game/WinnerDialog';
 import { InventoryChips, ActiveItemActions } from '../ItemControls';
 import { sound } from '../sound';
+import { evaluateOceanBlueHints } from '../utils/oceanBlueHints.mjs';
 
 // Layar permainan. Satu set kontrol saja; posisinya diatur CSS grid:
 //   HP & tablet : papan di atas, panel giliran tepat di bawahnya, chat lewat bottom sheet
@@ -16,6 +17,16 @@ import { sound } from '../sound';
 // sheet ('chat' | 'scores' | null) dipegang App agar toast chat juga bisa membuka obrolan
 export default function GameScreen({ game, itemCatalog, sheet, onSheetChange, onOpenShop }) {
   const { room, me, playerId, isTurn, canAct, currentTurnPlayer, movablePawns, actions } = game;
+  const moveHints = useMemo(
+    () => evaluateOceanBlueHints({
+      room,
+      playerId,
+      movablePawns,
+      isMyTurn: isTurn,
+      targeting: !!game.itemTargeting
+    }),
+    [room, playerId, movablePawns, isTurn, game.itemTargeting]
+  );
   const openSheet = name => {
     sound.playClick();
     onSheetChange(name);
@@ -31,6 +42,7 @@ export default function GameScreen({ game, itemCatalog, sheet, onSheetChange, on
           myPlayerId={playerId}
           isMyTurn={isTurn}
           movablePawns={movablePawns}
+          moveHints={moveHints}
           onMovePawn={actions.movePawn}
           targeting={!!game.itemTargeting}
           onSelectTarget={actions.selectTarget}
@@ -45,6 +57,7 @@ export default function GameScreen({ game, itemCatalog, sheet, onSheetChange, on
           canAct={canAct}
           currentTurnPlayer={currentTurnPlayer}
           movablePawns={movablePawns}
+          moveHints={moveHints}
           unreadChats={game.unreadChats}
           actions={actions}
           onOpenChat={() => openSheet('chat')}

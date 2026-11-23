@@ -15,6 +15,7 @@ import GameScreen from './screens/GameScreen';
 import AudioSettingsModal from './AudioSettingsModal';
 import PlayerProfileModal from './social/PlayerProfileModal';
 import ReferralPromptModal from './components/ReferralPromptModal';
+import OceanBluePromoModal from './components/OceanBluePromoModal';
 import { storage } from './storage';
 import { useAuth } from './hooks/useAuth';
 import { useGameRoom } from './hooks/useGameRoom';
@@ -76,6 +77,9 @@ export default function App() {
   const [initialChatFriendId, setInitialChatFriendId] = useState('');
   const [cropRequest, setCropRequest] = useState(null);
   const [showReferralPrompt, setShowReferralPrompt] = useState(false);
+  const [showOceanBlueIntro, setShowOceanBlueIntro] = useState(false);
+  const oceanIntroShownThisSession = useRef(false);
+  const [shopFocus, setShopFocus] = useState(null);
   const [audio, setAudio] = useState(sound.getState());
   const [sheet, setSheet] = useState(null); // bottom sheet di layar permainan: 'chat' | 'scores'
   const [leaveRequest, setLeaveRequest] = useState(0); // Back saat bermain Ludo membuka konfirmasi keluar
@@ -311,12 +315,60 @@ export default function App() {
 
   const open = name => () => {
     if (name === 'friends') setInitialChatFriendId('');
+    if (name === 'shop') setShopFocus(null);
     navigateTo({ modal: name });
   };
+  const openShopWithFocus = useCallback((focus = null) => {
+    sound.playClick();
+    setShopFocus(focus);
+    navigateTo({ modal: 'shop' });
+  }, [navigateTo]);
   const close = () => {
     setInitialChatFriendId('');
+    setShopFocus(null);
     navigateTo({ modal: null });
   };
+
+  const oceanIntroKey = userId => (userId ? `ocean_blue_hint_seen_v1_${userId}` : 'ocean_blue_hint_seen_v1_guest');
+  const canShowOceanBlueIntro =
+    !auth.checking &&
+    game.screen === 'home' &&
+    !quiz.room &&
+    !chess.room &&
+    !snakes.room &&
+    !modal &&
+    !profileUserId &&
+    !cropRequest &&
+    !pwa.installGuide &&
+    !showReferralPrompt;
+
+  useEffect(() => {
+    if (!canShowOceanBlueIntro || oceanIntroShownThisSession.current) return undefined;
+    const key = oceanIntroKey(auth.currentUser?.id);
+    if (storage.get(key) === '1') return undefined;
+    const timer = setTimeout(() => {
+      oceanIntroShownThisSession.current = true;
+      setShowOceanBlueIntro(true);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [canShowOceanBlueIntro, auth.currentUser?.id]);
+
+  const handleCloseOceanBlueIntro = useCallback(() => {
+    oceanIntroShownThisSession.current = true;
+    storage.set(oceanIntroKey(auth.currentUser?.id), '1');
+    setShowOceanBlueIntro(false);
+  }, [auth.currentUser?.id]);
+
+  const handleOpenOceanBlueShopFromIntro = useCallback(() => {
+    handleCloseOceanBlueIntro();
+    openShopWithFocus({ tab: 'skins', skinId: 'ocean_blue' });
+  }, [handleCloseOceanBlueIntro, openShopWithFocus]);
+
+  const handlePlayLudoFromIntro = useCallback(() => {
+    handleCloseOceanBlueIntro();
+    sound.playClick();
+    navigateTo({ mode: 'ludo' });
+  }, [handleCloseOceanBlueIntro, navigateTo]);
   const openProfile = userId => {
     if (!userId) return;
     setProfileEditEmail(false);
@@ -498,6 +550,8 @@ export default function App() {
             onUpdateUser={auth.setCurrentUser}
             authToken={auth.authToken}
             initialGame={gameMode === 'quiz' || gameMode === 'chess' ? gameMode : 'all'}
+            initialTab={shopFocus?.tab || null}
+            initialSkinId={shopFocus?.skinId || null}
             onOpenAuth={open('auth')}
           />
         </Suspense>
@@ -724,8 +778,8 @@ export default function App() {
       />
       <AudioSettingsModal isOpen={modal === 'audio'} onClose={close} />
       <InstallGuide platform={pwa.installGuide} onClose={pwa.closeInstallGuide} />
-      <NotificationPrompt enabled={game.screen === 'home' && !modal && !profileUserId && !cropRequest && !pwa.installGuide} />
-      <SocialOnboardingTour enabled={game.screen === 'home' && !modal && !profileUserId && !cropRequest && !pwa.installGuide} />
+      <NotificationPrompt enabled={game.screen === 'home' && !modal && !profileUserId && !cropRequest && !pwa.installGuide && !showOceanBlueIntro} />
+      <SocialOnboardingTour enabled={game.screen === 'home' && !modal && !profileUserId && !cropRequest && !pwa.installGuide && !showOceanBlueIntro} />
       <AvatarCropModal
         file={cropRequest?.file || null}
         title={cropRequest?.title}
@@ -746,6 +800,13 @@ export default function App() {
         onClose={handleCloseReferralPrompt}
         authToken={auth.authToken}
         onSuccess={handleReferralClaimSuccess}
+      />
+      <OceanBluePromoModal
+        isOpen={showOceanBlueIntro}
+        onClose={handleCloseOceanBlueIntro}
+        user={auth.currentUser}
+        onOpenShop={handleOpenOceanBlueShopFromIntro}
+        onPlayLudo={handlePlayLudoFromIntro}
       />
     </div>
   );

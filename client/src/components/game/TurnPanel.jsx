@@ -3,6 +3,7 @@ import Dice3D from '../../Dice3D';
 import TurnTimer from './TurnTimer';
 import Icon from '../Icon';
 import PlayerAvatar from '../PlayerAvatar';
+import { sound } from '../../sound';
 
 const REACTIONS = ['🎲', '🔥', '👏', '😂', '😭', '👑'];
 
@@ -23,8 +24,9 @@ function turnStatus({ room, isTurn, currentTurnPlayer, movablePawns }) {
 }
 
 // Panel giliran: dadu, aksi utama, mode menonton saat OUT, reaksi, serta tombol chat & skor. Bidak dipilih langsung di papan.
-export default function TurnPanel({ room, me = null, isTurn, canAct, currentTurnPlayer, movablePawns, unreadChats, actions, onOpenChat, onOpenScores }) {
+export default function TurnPanel({ room, me = null, isTurn, canAct, currentTurnPlayer, movablePawns, moveHints = null, unreadChats, actions, onOpenChat, onOpenScores }) {
   const status = turnStatus({ room, isTurn, currentTurnPlayer, movablePawns });
+  const hintItems = moveHints?.active && !room.animatingMove ? (moveHints.displayList || []) : [];
 
   return (
     <section className={`turn-panel card ${isTurn ? 'is-my-turn card--focus' : ''}`} aria-label="Giliran">
@@ -77,6 +79,35 @@ export default function TurnPanel({ room, me = null, isTurn, canAct, currentTurn
           )}
         </div>
       </div>
+
+      {hintItems.length > 0 && (
+        <div className="ocean-hint-box" aria-label="Hint langkah terbaik Ocean Blue">
+          <div className="ocean-hint-box__head">
+            <span className="ocean-hint-box__title">🌊 Hint Ocean Blue</span>
+            <span className="ocean-hint-box__sub">
+              {hintItems.length > 1 ? 'Urutan peluang terbaik' : 'Peluang terbaik'}
+            </span>
+          </div>
+          <div className="ocean-hint-list" role="list">
+            {hintItems.map(item => (
+              <button
+                key={`${item.rank}-${item.pawnIdx}`}
+                type="button"
+                role="listitem"
+                className={`ocean-hint-chip ocean-hint-chip--rank-${Math.min(item.rank, 3)}`}
+                onClick={() => {
+                  sound.playClick();
+                  actions.movePawn(item.pawnIdx);
+                }}
+              >
+                <span className="ocean-hint-chip__rank">#{item.rank}</span>
+                <strong className="ocean-hint-chip__pawn">{item.label}</strong>
+                <span className="ocean-hint-chip__reason">{item.reason}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="turn-panel__toolbar">
         <div className="reaction-row" role="group" aria-label="Kirim reaksi">

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Modal from './components/Modal';
 import Icon from './components/Icon';
-import { LudoSkinPreview } from './components/game/LudoSkinPawn';
+import { LudoSkinPreview, LUDO_SKIN_META, resolveSkinKey } from './components/game/LudoSkinPawn';
 import { useItemCatalogState } from './items';
 import { sound } from './sound';
 import { storage } from './storage';
@@ -745,13 +745,17 @@ export default function ShopModal({
   onUpdateUser,
   authToken,
   initialGame = 'all',
+  initialTab = null,
+  initialSkinId = null,
   onOpenAuth
 }) {
   const catalog = useItemCatalogState();
   const token = authToken || storage.get('token') || '';
   const isAdmin = Boolean(currentUser?.isAdmin || currentUser?.role === 'admin');
 
-  const [activeTab, setActiveTab] = useState(initialGame === 'quiz' || initialGame === 'chess' ? 'items' : 'skins');
+  const [activeTab, setActiveTab] = useState(
+    initialTab || (initialGame === 'quiz' || initialGame === 'chess' ? 'items' : 'skins')
+  );
   const [feedback, setFeedback] = useState(null);
 
   // Dual currency economy state
@@ -772,7 +776,12 @@ export default function ShopModal({
   // Skin Marketplace Filters & Interactive Preview
   const [skinFilter, setSkinFilter] = useState('all');
   const [skinQuery, setSkinQuery] = useState('');
-  const [inspectedSkinId, setInspectedSkinId] = useState(null);
+  const [inspectedSkinId, setInspectedSkinId] = useState(initialSkinId || null);
+
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+    if (initialSkinId) setInspectedSkinId(initialSkinId);
+  }, [initialTab, initialSkinId]);
 
   // Conversion & Payment Gateway Direct API Top-Up State
   const [duitkuMethods, setDuitkuMethods] = useState(DEFAULT_MIDTRANS_METHODS);
@@ -1731,6 +1740,11 @@ export default function ShopModal({
                       <span className={`rarity-badge rarity-badge--${String(showcaseSkin.rarity).toLowerCase()}`}>
                         {showcaseSkin.rarity}
                       </span>
+                      {LUDO_SKIN_META[resolveSkinKey(showcaseSkin)]?.abilityLabel && (
+                        <span className="badge badge--ocean-ability">
+                          🌊 {LUDO_SKIN_META[resolveSkinKey(showcaseSkin)].abilityLabel}
+                        </span>
+                      )}
                       {showcaseSkin.equipped && <span className="badge badge--success">✓ Terpasang</span>}
                     </div>
                     <h2>{showcaseSkin.name}</h2>
@@ -1770,7 +1784,15 @@ export default function ShopModal({
                             ? `BELI SKIN (${showcaseSkin.priceDiamonds} 💎)`
                             : 'Diamonds Kurang'}
                         </button>
-                      ) : null}
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn--primary btn--sm"
+                          onClick={() => onOpenAuth?.()}
+                        >
+                          Login untuk Beli
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1826,6 +1848,7 @@ export default function ShopModal({
                   {visibleSkins.map(skin => {
                     const isBusy = skinActionId === skin.id;
                     const canAfford = diamonds >= Number(skin.priceDiamonds);
+                    const abilityLabel = LUDO_SKIN_META[resolveSkinKey(skin)]?.abilityLabel || null;
                     return (
                       <li
                         key={skin.id}
@@ -1839,6 +1862,9 @@ export default function ShopModal({
                             <span className={`rarity-badge rarity-badge--${String(skin.rarity).toLowerCase()}`}>
                               {skin.rarity}
                             </span>
+                            {abilityLabel && (
+                              <span className="badge badge--ocean-ability">🌊 {abilityLabel}</span>
+                            )}
                             {skin.equipped ? (
                               <span className="badge badge--success">✓ DIPAKAI</span>
                             ) : skin.owned ? (

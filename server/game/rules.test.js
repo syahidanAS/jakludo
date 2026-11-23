@@ -220,3 +220,185 @@ test('peringkat akhir: pemenang, lalu bidak finish, total langkah, dan pemain OU
   room.players[3].isOut = true; // d menyerah walau 2 bidaknya sudah finish
   assert.deepEqual(rankPlayers(room, 'a'), ['a', 'c', 'b', 'd']);
 });
+
+// ---------- Skin Ocean Blue: Hint langkah taktis ----------
+
+function makeHintRoom(pawnsByPlayer, { settings = { safeZones: true }, skin = { id: 'ocean_blue', assetKey: 'ocean_blue' }, itemsByPlayer = {} } = {}) {
+  const room = makeRoom(pawnsByPlayer, settings);
+  room.started = true;
+  room.turn = 0;
+  room.players[0].equippedSkin = skin;
+  for (const [pid, items] of Object.entries(itemsByPlayer)) {
+    const p = room.players.find(pl => pl.id === pid);
+    if (p) p.items = items;
+  }
+  return room;
+}
+
+test('Ocean Blue ability: hanya aktif pada skin ocean_blue', async () => {
+  const { hasOceanBlueHintAbility, evaluateOceanBlueHints } = await import('../../client/src/utils/oceanBlueHints.mjs');
+
+  assert.equal(hasOceanBlueHintAbility('ocean_blue'), true);
+  assert.equal(hasOceanBlueHintAbility({ id: 'ocean_blue' }), true);
+  assert.equal(hasOceanBlueHintAbility({ id: 'custom_skin', assetKey: 'ocean_blue' }), true);
+  assert.equal(hasOceanBlueHintAbility(null), false);
+  assert.equal(hasOceanBlueHintAbility(undefined), false);
+  assert.equal(hasOceanBlueHintAbility({ id: 'classic_gold', assetKey: 'classic_gold' }), false);
+  assert.equal(hasOceanBlueHintAbility({ id: 'legendary_diamond', assetKey: 'legendary_diamond' }), false);
+  assert.equal(hasOceanBlueHintAbility({ id: 'fire_phoenix', assetKey: 'fire_phoenix' }), false);
+
+  const baseRoom = makeHintRoom({ a: [2, 10, 0, 0], b: [3, 0, 0, 0] });
+  baseRoom.dice = 3;
+  assert.equal(evaluateOceanBlueHints({ room: baseRoom, playerId: 'a', movablePawns: [0, 1], isMyTurn: true }).active, true);
+
+  // Guard non-aktif
+  assert.equal(evaluateOceanBlueHints({ room: baseRoom, playerId: 'a', movablePawns: [0, 1], isMyTurn: false }).active, false);
+  assert.equal(evaluateOceanBlueHints({ room: baseRoom, playerId: 'a', movablePawns: [0, 1], isMyTurn: true, targeting: true }).active, false);
+  assert.equal(evaluateOceanBlueHints({ room: baseRoom, playerId: 'a', movablePawns: [], isMyTurn: true }).active, false);
+
+  const noDiceRoom = { ...baseRoom, dice: null };
+  assert.equal(evaluateOceanBlueHints({ room: noDiceRoom, playerId: 'a', movablePawns: [0, 1], isMyTurn: true }).active, false);
+
+  const nonOceanRoom = makeHintRoom({ a: [2, 10, 0, 0], b: [3, 0, 0, 0] }, { skin: { id: 'classic_gold', assetKey: 'classic_gold' } });
+  nonOceanRoom.dice = 3;
+  assert.equal(evaluateOceanBlueHints({ room: nonOceanRoom, playerId: 'a', movablePawns: [0, 1], isMyTurn: true }).active, false);
+});
+
+test('Ocean Blue hint mengurutkan >2 bidak menguntungkan dari peluang terbaik (Finish > Makan > Jalur Finish > Safe Star)', async () => {
+  const { evaluateOceanBlueHints } = await import('../../client/src/utils/oceanBlueHints.mjs');
+  // Merah (offset 0), dadu 3:
+  //   bidak 0 (val 10 -> 13, track 12): makan hijau (val 3, track 12)
+  //   bidak 1 (val 4 -> 7, track 6): mendarat di petak aman bintang (SAFE_TRACK_INDICES = 6)
+  //   bidak 2 (val 41 -> 44): masuk finish
+  //   bidak 3 (val 37 -> 40): masuk jalur finish aman
+  const room = makeHintRoom({ a: [10, 4, 41, 37], b: [3, 0, 0, 0] });
+  room.dice = 3;
+  const movablePawns = getMovablePawns(room, room.players[0], 3);
+  const res = evaluateOceanBlueHints({ room, playerId: 'a', movablePawns, isMyTurn: true });
+
+  assert.equal(res.active, true);
+  assert.deepEqual(res.recommended.map(r => r.pawnIdx), [2, 0, 3, 1]);
+  assert.deepEqual(res.recommended.map(r => r.rank), [1, 2, 3, 4]);
+  assert.equal(res.byPawn[2].tags.isFinish, true);
+  assert.equal(res.byPawn[0].tags.isCapture, true);
+  assert.equal(res.byPawn[3].tags.isEnterHome, true);
+  assert.equal(res.byPawn[1].tags.isSafeLanding, true);
+});
+
+test('Ocean Blue hint mengecualikan jebakan Black Hole saat >2 bidak lain menguntungkan', async () => {
+  const { evaluateOceanBlueHints } = await import('../../client/src/utils/oceanBlueHints.mjs');
+  // Merah dadu 3:
+  //   bidak 0 (val 10 -> 13, track 12): makan hijau val 3 -> rank #1
+  //   bidak 2 (val 38 -> 41): masuk jalur finish -> rank #2
+  //   bidak 1 (val 4 -> 7, track 6): safe star -> rank #3
+  //   bidak 3 (val 2 -> 5, track 4): Black Hole tanpa perisai -> tidak masuk recommended
+  const room = makeHintRoom(
+    { a: [10, 4, 38, 2], b: [3, 0, 0, 0] },
+    { settings: { safeZones: true, blackHole: true } }
+  );
+  room.dice = 3;
+  const movablePawns = getMovablePawns(room, room.players[0], 3);
+  const res = evaluateOceanBlueHints({ room, playerId: 'a', movablePawns, isMyTurn: true });
+
+  assert.deepEqual(res.recommended.map(r => r.pawnIdx), [0, 2, 1]);
+  assert.deepEqual(res.recommended.map(r => r.rank), [1, 2, 3]);
+  assert.equal(res.byPawn[3], undefined);
+  const bhEval = res.evaluated.find(e => e.pawnIdx === 3);
+  assert.equal(bhEval.tags.isBlackHoleDanger, true);
+});
+
+test('Ocean Blue hint mengenali Blackhole Shield dan Universal Shield (format client & server)', async () => {
+  const { evaluatePawnMove } = await import('../../client/src/utils/oceanBlueHints.mjs');
+  const unshieldedRoom = makeHintRoom(
+    { a: [2, 0, 0, 0], b: [0, 0, 0, 0] },
+    { settings: { safeZones: true, blackHole: true } }
+  );
+  const clientShieldRoom = makeHintRoom(
+    { a: [2, 0, 0, 0], b: [0, 0, 0, 0] },
+    { settings: { safeZones: true, blackHole: true }, itemsByPlayer: { a: { blackholeShield: { count: 1 } } } }
+  );
+  const serverShieldRoom = makeHintRoom(
+    { a: [2, 0, 0, 0], b: [0, 0, 0, 0] },
+    { settings: { safeZones: true, blackHole: true }, itemsByPlayer: { a: { universalShield: { owned: 1, earned: 0 } } } }
+  );
+
+  const evalUnshielded = evaluatePawnMove(unshieldedRoom, unshieldedRoom.players[0], 0, 3);
+  const evalClientShield = evaluatePawnMove(clientShieldRoom, clientShieldRoom.players[0], 0, 3);
+  const evalServerShield = evaluatePawnMove(serverShieldRoom, serverShieldRoom.players[0], 0, 3);
+
+  assert.equal(evalUnshielded.tags.isBlackHoleDanger, true);
+  assert.equal(evalClientShield.tags.isBlackHoleDanger, false);
+  assert.equal(evalClientShield.tags.isBlackHoleShielded, true);
+  assert.equal(evalServerShield.tags.isBlackHoleDanger, false);
+  assert.equal(evalServerShield.tags.isBlackHoleShielded, true);
+  assert.ok(evalClientShield.score > evalUnshielded.score);
+  assert.ok(evalServerShield.score > evalUnshielded.score);
+});
+
+test('Ocean Blue hint memprioritaskan makan pemain aktif dibanding OUT dan kabur dari ancaman', async () => {
+  const { evaluateOceanBlueHints } = await import('../../client/src/utils/oceanBlueHints.mjs');
+
+  // Makan pemain aktif vs pemain OUT (nilai jarak bidak korban sama-sama 3)
+  const capRoom = makeHintRoom(
+    { a: [10, 20, 0, 0], b: [3, 0, 0, 0], c: [3, 0, 0, 0] },
+    { settings: { safeZones: false } }
+  );
+  capRoom.players[2].isOut = true;
+  capRoom.dice = 3;
+  const capRes = evaluateOceanBlueHints({ room: capRoom, playerId: 'a', movablePawns: [0, 1], isMyTurn: true });
+  assert.equal(capRes.recommended[0].pawnIdx, 0);
+
+  // Kabur dari ancaman vs melangkah ke posisi rawan dikejar
+  // Merah bidak 0 di val 6 (track 5, dikejar hijau val 32 track 1 -> jarak 4) + 4 -> val 10 (track 9, aman)
+  // Merah bidak 1 di val 14 (track 13, aman) + 4 -> val 18 (track 17, dikejar kuning val 36 track 15 -> jarak 2)
+  const escapeRoom = makeHintRoom({ a: [6, 14, 0, 0], b: [32, 0, 0, 0], c: [36, 0, 0, 0] });
+  escapeRoom.dice = 4;
+  const escRes = evaluateOceanBlueHints({ room: escapeRoom, playerId: 'a', movablePawns: [0, 1], isMyTurn: true });
+  assert.equal(escRes.recommended[0].pawnIdx, 0);
+  assert.equal(escRes.recommended[0].tags.isEscapeDanger, true);
+  assert.equal(escRes.byPawn[1], undefined);
+});
+
+test('Ocean Blue hint menggabungkan bidak identik di markas menjadi peringkat #1 dan tetap menyarankan langkah paling aman saat semua berisiko', async () => {
+  const { evaluateOceanBlueHints } = await import('../../client/src/utils/oceanBlueHints.mjs');
+
+  const baseRoom = makeHintRoom({ a: [0, 0, 0, 0], b: [0, 0, 0, 0] });
+  baseRoom.dice = 6;
+  const baseRes = evaluateOceanBlueHints({ room: baseRoom, playerId: 'a', movablePawns: [0, 1, 2, 3], isMyTurn: true });
+  assert.deepEqual(baseRes.recommended.map(r => r.rank), [1, 1, 1, 1]);
+  assert.equal(baseRes.displayList.length, 1);
+  assert.equal(baseRes.displayList[0].label, 'Bidak 1–4');
+
+  // Semua bidak yang bisa jalan menuju bahaya (1 kena Black Hole jauh, 1 sekadar rawan dikejar):
+  // Bidak dengan kerugian lebih kecil tetap muncul sebagai #1
+  const badRoom = makeHintRoom(
+    { a: [12, 2, 0, 0], b: [33, 0, 0, 0] },
+    { settings: { safeZones: true, blackHole: true } }
+  );
+  // Dice 3: bidak 0 (12->15, track 14 BLACK HOLE!), bidak 1 (2->5, track 4 juga Black Hole!)
+  // Bidak 1 lebih murah (from 2 vs 12 -> penalty to+20 lebih kecil: 45+25=70 vs 45+35=80), tetap terpilih sebagai #1
+  badRoom.dice = 3;
+  const badRes = evaluateOceanBlueHints({ room: badRoom, playerId: 'a', movablePawns: [0, 1], isMyTurn: true });
+  assert.equal(badRes.recommended.length, 1);
+  assert.equal(badRes.recommended[0].pawnIdx, 1);
+  assert.equal(badRes.recommended[0].rank, 1);
+});
+
+test('Ocean Blue hint #1 konsisten dengan chooseBestPawn pada skenario taktis utama', async () => {
+  const { evaluateOceanBlueHints } = await import('../../client/src/utils/oceanBlueHints.mjs');
+
+  const scenarios = [
+    { room: makeHintRoom({ a: [2, 10, 0, 0], b: [3, 0, 0, 0] }), dice: 3 },
+    { room: makeHintRoom({ a: [3, 20, 0, 0], b: [32, 0, 0, 0] }), dice: 2 },
+    { room: makeHintRoom({ a: [37, 5, 0, 0], b: [24, 0, 0, 0] }), dice: 4 },
+    { room: makeHintRoom({ a: [2, 20, 0, 0], b: [0, 0, 0, 0] }, { settings: { safeZones: true, blackHole: true } }), dice: 3 }
+  ];
+
+  for (const { room, dice } of scenarios) {
+    room.dice = dice;
+    const movablePawns = getMovablePawns(room, room.players[0], dice);
+    const botBest = chooseBestPawn(room, room.players[0], dice);
+    const hintBest = evaluateOceanBlueHints({ room, playerId: 'a', movablePawns, isMyTurn: true }).recommended[0]?.pawnIdx;
+    assert.equal(hintBest, botBest);
+  }
+});
