@@ -110,7 +110,7 @@ const DEFAULT_LUDO_SKINS = [
   {
     id: 'emerald_green',
     name: 'Emerald Green',
-    description: 'Zamrud hijau berkilau dengan aura hutan mistis yang tajam di papan.',
+    description: 'Zamrud hijau berkilau dengan aura hutan mistis. Dilengkapi skill Anti-Eliminasi (1x awal laga, +1 tiap bidak finish, maks. 3) untuk menahan injakan & Force Return dengan konfirmasi.',
     priceDiamonds: 25,
     rarity: 'Rare',
     assetKey: 'emerald_green',
@@ -123,7 +123,7 @@ const DEFAULT_LUDO_SKINS = [
   {
     id: 'galaxy_purple',
     name: 'Galaxy Purple',
-    description: 'Bidak nebula ungu kosmik bertabur bintang untuk penakluk arena.',
+    description: 'Bidak nebula ungu kosmik bertabur bintang. Dilengkapi skill Anti-Eliminasi (1x awal laga, +1 tiap bidak finish, maks. 3) untuk menahan injakan & Force Return dengan konfirmasi.',
     priceDiamonds: 30,
     rarity: 'Epic',
     assetKey: 'galaxy_purple',

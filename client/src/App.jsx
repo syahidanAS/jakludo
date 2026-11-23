@@ -133,6 +133,7 @@ export default function App() {
   const game = useGameRoom({
     authToken: auth.authToken,
     currentUser: auth.currentUser,
+    onUpdateUser: auth.setCurrentUser,
     onNeedLogin: () => navigateTo({ modal: 'auth' })
   });
   const quiz = useMonsterQuiz({
@@ -329,7 +330,7 @@ export default function App() {
     navigateTo({ modal: null });
   };
 
-  const oceanIntroKey = userId => (userId ? `ocean_blue_hint_seen_v1_${userId}` : 'ocean_blue_hint_seen_v1_guest');
+  const oceanIntroKey = userId => (userId ? `skin_abilities_intro_seen_v2_${userId}` : 'skin_abilities_intro_seen_v2_guest');
   const canShowOceanBlueIntro =
     !auth.checking &&
     game.screen === 'home' &&
@@ -359,9 +360,9 @@ export default function App() {
     setShowOceanBlueIntro(false);
   }, [auth.currentUser?.id]);
 
-  const handleOpenOceanBlueShopFromIntro = useCallback(() => {
+  const handleOpenOceanBlueShopFromIntro = useCallback((skinId = 'emerald_green') => {
     handleCloseOceanBlueIntro();
-    openShopWithFocus({ tab: 'skins', skinId: 'ocean_blue' });
+    openShopWithFocus({ tab: 'skins', skinId: skinId || 'emerald_green' });
   }, [handleCloseOceanBlueIntro, openShopWithFocus]);
 
   const handlePlayLudoFromIntro = useCallback(() => {

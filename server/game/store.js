@@ -1,6 +1,7 @@
 // State room di memori: broadcast ke klien, snapshot ke SQLite, dan siklus hidup room.
 const db = require('../db');
 const inventory = require('./inventory');
+const { publicSkinShield } = require('./skinSkills');
 const social = require('../social/store');
 const adminSpectator = require('../admin/spectator');
 const { getMovablePawns, getBlackHoles } = require('./rules');
@@ -36,14 +37,21 @@ function roomTimeout(room, fn, ms) {
 // DATA UNTUK KLIEN
 // ==========================================
 
-function publicPlayer(p, room) {
+function publicPlayer(p, room, { includeBotFlag = false } = {}) {
   // sessionId adalah rahasia reconnect; catatan dadu tidak dikirim agar lemparan tidak bisa dihitung;
-  // stok item dikirim dalam bentuk ringkasan
-  const { sessionId, items, diceStats, ...rest } = p;
-  return { ...rest, equippedSkin: p.equippedSkin || null, items: inventory.publicItems(p, room) };
+  // stok item dikirim dalam bentuk ringkasan; bot organik disamarkan bagi klien pemain
+  const { sessionId, items, diceStats, organicBot, skinShieldCharges, skinShieldEnabled, ...rest } = p;
+  const isBot = includeBotFlag ? Boolean(p.isBot) : (organicBot ? false : Boolean(p.isBot));
+  return {
+    ...rest,
+    isBot,
+    equippedSkin: p.equippedSkin || null,
+    skinShield: publicSkinShield(p, room),
+    items: inventory.publicItems(p, room)
+  };
 }
 
-function publicRoom(r) {
+function publicRoom(r, { includeBotFlag = false } = {}) {
   const current = r.players[r.turn];
   const movable = r.started && !r.winner && r.dice !== null && !r.rolling && !r.animatingMove && !r.pendingShield && current
     ? getMovablePawns(r, current, r.dice)
@@ -52,7 +60,7 @@ function publicRoom(r) {
     code: r.code,
     group: r.groupId ? social.getGroupBasic(r.groupId) : null,
     host: r.host,
-    players: r.players.map(p => publicPlayer(p, r)),
+    players: r.players.map(p => publicPlayer(p, r, { includeBotFlag })),
     started: r.started,
     turn: r.turn,
     dice: r.dice,
@@ -62,6 +70,14 @@ function publicRoom(r) {
     winner: r.winner,
     pawns: r.pawns,
     message: r.message,
+    matchmaking: r.matchmaking?.active
+      ? {
+          active: true,
+          targetPlayers: r.matchmaking.targetPlayers,
+          totalMs: r.matchmaking.totalMs,
+          remainingMs: Math.max(0, r.matchmaking.expiresAt - Date.now())
+        }
+      : null,
     lastCapture: r.lastCapture || null,
     lastBlackHole: r.lastBlackHole || null,
     lastGoal: r.lastGoal || null,
@@ -73,7 +89,20 @@ function publicRoom(r) {
       : null,
     // Keputusan perisai yang sedang ditunggu (data lanjutan permainan tidak dikirim ke klien)
     pendingShield: r.pendingShield
-      ? { id: r.pendingShield.id, playerId: r.pendingShield.playerId, itemId: r.pendingShield.itemId, event: r.pendingShield.event, pawnIdx: r.pendingShield.pawnIdx, attackerId: r.pendingShield.attackerId, remainingMs: Math.max(0, r.pendingShield.expiresAt - Date.now()) }
+      ? {
+          id: r.pendingShield.id,
+          playerId: r.pendingShield.playerId,
+          source: r.pendingShield.source || 'item',
+          itemId: r.pendingShield.itemId,
+          skinKey: r.pendingShield.skinKey || null,
+          skinName: r.pendingShield.skinName || null,
+          charges: r.pendingShield.charges ?? null,
+          maxCharges: r.pendingShield.maxCharges ?? null,
+          event: r.pendingShield.event,
+          pawnIdx: r.pendingShield.pawnIdx,
+          attackerId: r.pendingShield.attackerId,
+          remainingMs: Math.max(0, r.pendingShield.expiresAt - Date.now())
+        }
       : null,
     lastBlackHoleShift: r.lastBlackHoleShift || null,
     blackHoles: r.settings?.blackHole ? getBlackHoles(r) : [],
@@ -91,7 +120,7 @@ function emitRoom(room) {
   io.to(room.code).emit('room:update', publicRoom(room));
   if (adminSpectator.hasWatchers('ludo', room.code)) {
     adminSpectator.notifyState('ludo', room.code, {
-      ...publicRoom(room),
+      ...publicRoom(room, { includeBotFlag: true }),
       chats: Array.isArray(room.chats) ? room.chats.slice(-50) : []
     });
   }
@@ -124,7 +153,7 @@ function resetRoomEvents(r) {
 
 function clearRoomTimers(r) {
   if (!r) return;
-  for (const key of ['botTimeout', 'rollTimer', 'passTimer', 'moveTimer', 'turnTimer', 'shieldTimer']) {
+  for (const key of ['botTimeout', 'rollTimer', 'passTimer', 'moveTimer', 'turnTimer', 'shieldTimer', 'matchmakingTimer']) {
     if (r[key]) clearTimeout(r[key]);
     r[key] = null;
   }
@@ -135,7 +164,7 @@ function clearRoomTimers(r) {
 // PERSISTENSI: snapshot ke SQLite agar permainan selamat dari restart/deploy
 // ==========================================
 
-const RUNTIME_KEYS = new Set(['botTimeout', 'rollTimer', 'passTimer', 'moveTimer', 'turnTimer', 'shieldTimer', 'cleanupTimer', 'lobbyRemovals']);
+const RUNTIME_KEYS = new Set(['botTimeout', 'rollTimer', 'passTimer', 'moveTimer', 'turnTimer', 'shieldTimer', 'matchmakingTimer', 'cleanupTimer', 'lobbyRemovals']);
 const dirtyRooms = new Set();
 let saveTimer = null;
 
@@ -186,8 +215,10 @@ function restoreRooms({ onResume }) {
       passTimer: null,
       moveTimer: null,
       turnTimer: null,
+      matchmakingTimer: null,
       cleanupTimer: null
     };
+    room.matchmaking = null;
     for (const p of room.players) {
       inventory.normalizeLegacy(p);
       if (!p.isBot) {
@@ -235,6 +266,17 @@ function deleteRoom(room, reason = 'Room sudah ditutup.') {
     io.in(room.code).socketsLeave(room.code);
     adminSpectator.notifyClosed('ludo', room.code, reason);
   }
+}
+
+function removeRoomQuietly(room) {
+  if (!room) return;
+  clearRoomTimers(room);
+  if (room.cleanupTimer) clearTimeout(room.cleanupTimer);
+  room.cleanupTimer = null;
+  for (const timer of room.lobbyRemovals.values()) clearTimeout(timer);
+  room.lobbyRemovals.clear();
+  rooms.delete(room.code);
+  queueRoomSave(room.code);
 }
 
 function isCreator(room, player) {
@@ -353,6 +395,7 @@ module.exports = {
   markRoomDirty,
   restoreRooms,
   deleteRoom,
+  removeRoomQuietly,
   isCreator,
   hasConnectedHuman,
   deleteIfAllHumansOut,

@@ -20,42 +20,64 @@ export default function ShieldPrompt({ room, playerId, catalog, onDecide }) {
 
   if (!mine) return null;
 
-  const item = catalog.find(i => i.id === pending.itemId);
+  const isSkinShield = pending.source === 'skinShield';
+  const item = isSkinShield ? null : catalog.find(i => i.id === pending.itemId);
   const name = item?.name || 'perisai';
   const me = room.players.find(p => p.id === playerId);
   const stock = itemStock(me, pending.itemId).count;
   const attacker = room.players.find(p => p.id === pending.attackerId);
   const seconds = Math.max(0, Math.ceil((deadline - now) / 1000));
+  const skinCharges = pending.charges ?? me?.skinShield?.charges ?? 1;
+  const skinMaxCharges = pending.maxCharges ?? me?.skinShield?.max ?? 3;
+  const skinName = pending.skinName || me?.skinShield?.skinName || 'Skin';
+
   const threat = pending.event === 'forceReturn'
     ? `${attacker?.name || 'Lawan'} memakai Force Return ke bidak ${pending.pawnIdx + 1} milikmu.`
+    : pending.event === 'stomp'
+    ? `${attacker?.name || 'Lawan'} menginjak bidak ${pending.pawnIdx + 1} milikmu.`
     : `Bidak ${pending.pawnIdx + 1} milikmu mendarat di Black Hole.`;
 
   return (
     <Modal
       isOpen
       size="sm"
-      icon={item?.icon || '🔰'}
-      title={`Pakai ${name}?`}
+      icon={isSkinShield ? '🛡️' : (item?.icon || '🔰')}
+      title={isSkinShield ? 'Aktifkan Anti-Eliminasi?' : `Pakai ${name}?`}
       subtitle={threat}
       footer={
         <>
           <button type="button" className="btn btn--secondary" onClick={() => onDecide(false)}>
-            Simpan perisai
+            {isSkinShield ? 'Jangan pakai' : 'Simpan perisai'}
           </button>
           <button type="button" className="btn btn--primary" onClick={() => onDecide(true)}>
-            Pakai {name}
+            {isSkinShield ? 'Pakai Anti-Eliminasi' : `Pakai ${name}`}
           </button>
         </>
       }
     >
-      <p>
-        {pending.event === 'forceReturn'
-          ? 'Kalau dipakai, bidakmu tetap di tempat. Kalau disimpan, bidakmu pulang ke markas.'
-          : 'Kalau dipakai, bidakmu tidak tersedot. Kalau disimpan, bidakmu kembali ke markas.'}
-      </p>
-      <p className="muted" role="timer" aria-live="off">
-        Sisa {stock} perisai. Otomatis dipakai dalam {seconds} detik.
-      </p>
+      {isSkinShield ? (
+        <>
+          <p>
+            Kalau dipakai, bidakmu tetap aman di posisi sekarang dan tidak pulang ke markas.
+            Skill <strong>{skinName}</strong> ini hanya berlaku di permainan ini dan terisi +1
+            setiap kali bidakmu masuk garis finish (maks. {skinMaxCharges}).
+          </p>
+          <p className="muted" role="timer" aria-live="off">
+            Sisa skill {skinCharges}/{skinMaxCharges}. Jika tidak dikonfirmasi dalam {seconds} detik, skill tidak digunakan.
+          </p>
+        </>
+      ) : (
+        <>
+          <p>
+            {pending.event === 'forceReturn'
+              ? 'Kalau dipakai, bidakmu tetap di tempat. Kalau disimpan, bidakmu pulang ke markas.'
+              : 'Kalau dipakai, bidakmu tidak tersedot. Kalau disimpan, bidakmu kembali ke markas.'}
+          </p>
+          <p className="muted" role="timer" aria-live="off">
+            Sisa {stock} perisai. Otomatis dipakai dalam {seconds} detik.
+          </p>
+        </>
+      )}
     </Modal>
   );
 }

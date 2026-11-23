@@ -6,9 +6,16 @@ const store = require('./store');
 const engine = require('./engine');
 const social = require('../social/store');
 const { nextFreeColor } = require('./rules');
-const { MAX_PLAYERS, BOT_NAMES } = require('./config');
+const { MAX_PLAYERS, BOT_NAMES, MATCHMAKING_TIMEOUT_MS } = require('./config');
+const { createOrganicBotPlayer } = require('./organicBots');
 
 const { rooms, addHistory, emitRoom } = store;
+
+let matchmakingTimeoutMs = MATCHMAKING_TIMEOUT_MS;
+function setMatchmakingTimeoutMs(ms) {
+  const n = Number(ms);
+  matchmakingTimeoutMs = Number.isFinite(n) && n > 0 ? n : MATCHMAKING_TIMEOUT_MS;
+}
 
 const makeRoomCode = () => Math.random().toString(36).slice(2, 7).toUpperCase();
 const makeSessionId = () => 'sess_' + crypto.randomBytes(12).toString('hex');
@@ -41,6 +48,9 @@ function createRoom(socket, payload) {
     chats: [],
     lobbyRemovals: new Map(),
     settings: { safeZones: true, blackHole: false, blackHoleMode: 'static' },
+    matchmaking: null,
+    matchmakingTimer: null,
+    hasMatchmakingBots: false,
     botTimeout: null,
     rollTimer: null,
     passTimer: null,
@@ -86,7 +96,8 @@ function joinRoom(socket, code, payload) {
   }
 
   if (room.started) return socket.emit('room:error', 'Permainan sudah dimulai.');
-  if (room.players.length >= MAX_PLAYERS) return socket.emit('room:error', `Room sudah penuh (maksimal ${MAX_PLAYERS} pemain).`);
+  const maxCapacity = room.matchmaking?.active ? room.matchmaking.targetPlayers : MAX_PLAYERS;
+  if (room.players.length >= maxCapacity) return socket.emit('room:error', `Room sudah penuh (maksimal ${maxCapacity} pemain).`);
 
   const rawName = typeof payload.name === 'string' ? payload.name : '';
   const isFirstPlayer = room.players.length === 0;
@@ -139,6 +150,10 @@ function joinRoom(socket, code, payload) {
     });
   }
   emitRoom(room);
+
+  if (room.matchmaking?.active && room.players.length >= room.matchmaking.targetPlayers) {
+    startMatchedRoom(room);
+  }
 }
 
 // Pemain lama tersambung ulang (reload, sinyal putus, pindah perangkat, server restart, atau masuk menonton setelah OUT)
@@ -221,42 +236,174 @@ function rejoinPlayer(socket, room, player, user) {
   }
 }
 
-function addBot(room, hostSocketId) {
-  if (!room || room.started || room.players.length >= MAX_PLAYERS || room.host !== hostSocketId) return;
-  const botId = 'bot_' + crypto.randomBytes(5).toString('hex');
-  const color = nextFreeColor(room.players);
-  const bot = {
-    id: botId,
-    name: BOT_NAMES[color],
-    color,
-    isHost: false,
-    isBot: true,
-    connected: true,
-    autoPlayCount: 0,
-    isOut: false,
-    items: {}
+function clearMatchmaking(room) {
+  if (!room) return;
+  if (room.matchmakingTimer) {
+    clearTimeout(room.matchmakingTimer);
+    room.matchmakingTimer = null;
+  }
+  room.matchmaking = null;
+}
+
+function startMatchedRoom(room) {
+  if (!room || room.started) return;
+  clearMatchmaking(room);
+  engine.startGame(room);
+  room.message = `Permainan dimulai! Giliran ${room.players[0].name}.`;
+  addHistory(room, '🎲 Permainan dimulai!');
+  emitRoom(room);
+  engine.triggerTurn(room);
+}
+
+function findCompatibleMatchmakingRoom(sourceRoom, targetPlayers) {
+  const sourceUserIds = new Set((sourceRoom.players || []).map(p => p.userId).filter(Boolean));
+  const safeZones = sourceRoom.settings?.safeZones !== false;
+  const blackHole = !!sourceRoom.settings?.blackHole;
+  const blackHoleMode = sourceRoom.settings?.blackHoleMode || 'static';
+
+  for (const r of rooms.values()) {
+    if (r === sourceRoom || r.code === sourceRoom.code) continue;
+    if (r.started || r.winner || r.groupId || !r.matchmaking?.active) continue;
+    if (r.matchmaking.targetPlayers !== targetPlayers) continue;
+    if ((r.settings?.safeZones !== false) !== safeZones) continue;
+    if (!!r.settings?.blackHole !== blackHole) continue;
+    if ((r.settings?.blackHoleMode || 'static') !== blackHoleMode) continue;
+    if (r.players.length + sourceRoom.players.length > targetPlayers) continue;
+    if (!store.hasConnectedHuman(r)) continue;
+    if (r.players.some(p => p.userId && sourceUserIds.has(p.userId))) continue;
+    return r;
+  }
+  return null;
+}
+
+function mergeRoomInto(sourceRoom, targetRoom) {
+  const io = store.getIo();
+  const movingPlayers = [...(sourceRoom.players || [])];
+  for (const p of movingPlayers) {
+    p.color = nextFreeColor(targetRoom.players);
+    p.isHost = false;
+    targetRoom.players.push(p);
+    targetRoom.pawns[p.id] = [0, 0, 0, 0];
+    addHistory(targetRoom, `${p.isLudoKing ? '👑 [Ludo King] ' : ''}${p.name} bergabung ke dalam room.`);
+
+    const sock = io?.sockets?.sockets?.get(p.id);
+    if (sock) {
+      sock.leave(sourceRoom.code);
+      sock.join(targetRoom.code);
+      sock.data.room = targetRoom.code;
+      sock.emit('room:joined', {
+        code: targetRoom.code,
+        playerId: p.id,
+        sessionId: p.sessionId,
+        isLudoKing: p.isLudoKing,
+        reconnected: false
+      });
+      sock.emit('room:chats', targetRoom.chats);
+    }
+    if (io) {
+      io.to(targetRoom.code).emit('room:member_joined', {
+        name: p.name,
+        avatar: p.avatar,
+        playerId: p.id,
+        reconnected: false
+      });
+    }
+  }
+  store.cancelCleanup(targetRoom);
+  store.removeRoomQuietly(sourceRoom);
+}
+
+function completeMatchmakingWithFallback(room) {
+  if (!room || room.started || !room.matchmaking?.active) return;
+  if (!store.hasConnectedHuman(room)) {
+    clearMatchmaking(room);
+    return;
+  }
+  const target = room.matchmaking.targetPlayers;
+  const io = store.getIo();
+  clearMatchmaking(room);
+
+  while (room.players.length < target) {
+    const bot = createOrganicBotPlayer(room);
+    room.players.push(bot);
+    room.pawns[bot.id] = [0, 0, 0, 0];
+    room.hasMatchmakingBots = true;
+    addHistory(room, `${bot.name} bergabung ke dalam room.`);
+    if (io) {
+      io.to(room.code).emit('room:member_joined', {
+        name: bot.name,
+        avatar: bot.avatar,
+        playerId: bot.id,
+        reconnected: false
+      });
+    }
+  }
+
+  startMatchedRoom(room);
+}
+
+function findRandomPlayers(room, hostSocketId, payload) {
+  if (!room || room.started) {
+    return { ok: false, error: 'Room tidak tersedia atau permainan sudah dimulai.' };
+  }
+  if (room.host !== hostSocketId) {
+    return { ok: false, error: 'Hanya host yang dapat mencari pemain acak.' };
+  }
+  if (room.groupId) {
+    return { ok: false, error: 'Pencarian pemain acak tidak tersedia untuk match grup.' };
+  }
+  const targetPlayers = Number(payload?.targetPlayers);
+  if (!Number.isInteger(targetPlayers) || targetPlayers < 2 || targetPlayers > MAX_PLAYERS) {
+    return { ok: false, error: 'Pilih jumlah pemain (2, 3, atau 4) sebelum mencari pemain acak.' };
+  }
+  if (targetPlayers < room.players.length) {
+    return { ok: false, error: `Jumlah pemain di room sudah ${room.players.length}. Pilih minimal ${room.players.length} pemain.` };
+  }
+
+  if (room.players.length === targetPlayers) {
+    startMatchedRoom(room);
+    return { ok: true, matched: true, code: room.code };
+  }
+
+  const candidate = findCompatibleMatchmakingRoom(room, targetPlayers);
+  if (candidate) {
+    mergeRoomInto(room, candidate);
+    if (candidate.players.length >= candidate.matchmaking.targetPlayers) {
+      startMatchedRoom(candidate);
+    } else {
+      candidate.message = `Mencari pemain acak (${candidate.players.length}/${candidate.matchmaking.targetPlayers})...`;
+      emitRoom(candidate);
+    }
+    return { ok: true, matched: candidate.started, code: candidate.code };
+  }
+
+  clearMatchmaking(room);
+  const now = Date.now();
+  const totalMs = matchmakingTimeoutMs;
+  room.matchmaking = {
+    active: true,
+    targetPlayers,
+    totalMs,
+    startedAt: now,
+    expiresAt: now + totalMs
   };
-  room.players.push(bot);
-  room.pawns[botId] = [0, 0, 0, 0];
-  addHistory(room, `${bot.name} ditambahkan oleh host.`);
+  room.message = `Mencari pemain acak (${room.players.length}/${targetPlayers})...`;
+  addHistory(room, `🔍 Mencari pemain acak untuk ${targetPlayers} pemain...`);
+  emitRoom(room);
+  room.matchmakingTimer = store.roomTimeout(room, () => completeMatchmakingWithFallback(room), totalMs);
+  return { ok: true, matched: false, code: room.code };
+}
+
+function cancelRandomMatch(room, hostSocketId) {
+  if (!room || room.started || room.host !== hostSocketId || !room.matchmaking?.active) return;
+  clearMatchmaking(room);
+  room.message = 'Pencarian pemain acak dibatalkan.';
+  addHistory(room, '⏹️ Pencarian pemain acak dibatalkan oleh host.');
   emitRoom(room);
 }
 
-function removeBot(room, hostSocketId) {
-  if (!room || room.started || room.host !== hostSocketId) return;
-  for (let i = room.players.length - 1; i > 0; i--) {
-    if (room.players[i].isBot) {
-      const [removed] = room.players.splice(i, 1);
-      delete room.pawns[removed.id];
-      addHistory(room, `${removed.name} dikeluarkan.`);
-      emitRoom(room);
-      return;
-    }
-  }
-}
-
 function updateSettings(room, hostSocketId, { safeZones, blackHole, blackHoleMode }) {
-  if (!room || room.host !== hostSocketId || room.started) return;
+  if (!room || room.host !== hostSocketId || room.started || room.matchmaking?.active) return;
   let changed = false;
   if (typeof safeZones === 'boolean') {
     room.settings.safeZones = safeZones;
@@ -283,12 +430,15 @@ function handleDeparture(socket, r, { intentional }) {
 
   if (!r.started) {
     store.cancelLobbyRemoval(r, departing);
+    const wasHost = r.host === socket.id || departing.isHost;
     if (intentional) {
+      if (wasHost && r.matchmaking?.active) clearMatchmaking(r);
       addHistory(r, `${departing.name} keluar dari ruang tunggu.`);
       store.removeLobbyPlayer(r, departing);
     } else {
       departing.disconnectedAt = Date.now();
       store.holdLobbySeat(r, departing);
+      if (!store.hasConnectedHuman(r) && r.matchmaking?.active) clearMatchmaking(r);
       addHistory(r, `⚠️ ${departing.name} terputus dari ruang tunggu, menunggu tersambung ulang...`);
       if (r.host === socket.id) store.reassignHost(r);
       emitRoom(r);
@@ -342,4 +492,12 @@ function handleDeparture(socket, r, { intentional }) {
   emitRoom(r);
 }
 
-module.exports = { createRoom, joinRoom, addBot, removeBot, updateSettings, handleDeparture };
+module.exports = {
+  createRoom,
+  joinRoom,
+  findRandomPlayers,
+  cancelRandomMatch,
+  setMatchmakingTimeoutMs,
+  updateSettings,
+  handleDeparture
+};

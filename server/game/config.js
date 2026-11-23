@@ -23,6 +23,8 @@ module.exports = {
   MAX_PLAYERS: 4,
   MAX_CHATS: 50,
   MAX_HISTORY: 15,
+  // Batas waktu pencarian pemain acak sebelum sistem mengisi kursi kosong dengan bot organik
+  MATCHMAKING_TIMEOUT_MS: Number(process.env.LUDO_MATCHMAKING_TIMEOUT_MS) || 12000,
   EMOJIS: ['🎲', '🔥', '👏', '😂', '😭', '👑', '⚡', '🎯'],
   BOT_NAMES: { red: 'Bot Merah', green: 'Bot Hijau', yellow: 'Bot Kuning', blue: 'Bot Biru' }
 };

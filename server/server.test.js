@@ -8,6 +8,7 @@ const path = require('path');
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jakludo-test-'));
 process.env.JAKLUDO_DATA_DIR = dataDir;
 process.env.NODE_ENV = 'test';
+process.env.REGISTER_RATE_LIMIT = '200';
 
 const { io: ioClient } = require('socket.io-client');
 const { server, rooms, shutdown } = require('./index');
@@ -108,7 +109,7 @@ test('pemain lain tidak bisa mengambil alih kursi dengan nama yang sama', async 
   // sessionId tidak boleh ikut disiarkan
   const update = await new Promise(resolve => {
     sockets[0].socket.once('room:update', resolve);
-    sockets[0].socket.emit('room:add_bot');
+    sockets[0].socket.emit('room:update_settings', { safeZones: false });
   });
   assert.ok(update.players.every(p => p.sessionId === undefined));
 
@@ -117,7 +118,7 @@ test('pemain lain tidak bisa mengambil alih kursi dengan nama yang sama', async 
   again.emit('room:join', { code, sessionId: sockets[1].sessionId, name: 'x' });
   const rejoined = await once(again, 'room:joined');
   assert.equal(rejoined.reconnected, true);
-  assert.equal(room.players.length, 3);
+  assert.equal(room.players.length, 2);
 });
 
 test('restart hanya setelah ada pemenang dan mereset state pemain', async () => {
@@ -327,7 +328,8 @@ test('room dan data pemain tetap ada setelah server restart', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jakludo-restart-'));
   const start = () => new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['server/index.js'], {
-      cwd: path.join(__dirname, '..'), env: { ...process.env, JAKLUDO_DATA_DIR: dir, PORT: '0' }
+      cwd: path.join(__dirname, '..'),
+      env: { ...process.env, JAKLUDO_DATA_DIR: dir, PORT: '0', LUDO_MATCHMAKING_TIMEOUT_MS: '80' }
     });
     child.stdout.on('data', d => {
       const m = String(d).match(/listening on (\d+)/);
@@ -353,8 +355,8 @@ test('room dan data pemain tetap ada setelah server restart', async () => {
   const host = await client(srv.url);
   host.emit('room:create', { token: a.token });
   const { code } = await once(host, 'room:joined');
-  host.emit('room:add_bot');
-  await wait(500);
+  host.emit('room:find_random', { targetPlayers: 2 });
+  await wait(350);
   host.close();
   await stop(srv.child);
 
@@ -444,12 +446,17 @@ test('hitung mundur giliran dikirim ke klien dan hilang saat pemain bertindak', 
 });
 
 test('pemain diberi tahu saat room ditutup karena semua pemain manusia OUT', async () => {
+  const lobby = require('./game/lobby');
   const { sockets, room } = await createRoomWith(['A']);
   const a = sockets[0].socket;
-  a.emit('room:add_bot');
-  await wait(50);
-  a.emit('game:start');
-  await wait(80);
+  lobby.setMatchmakingTimeoutMs(50);
+  try {
+    a.emit('room:find_random', { targetPlayers: 2 });
+    await wait(160);
+  } finally {
+    lobby.setMatchmakingTimeoutMs(null);
+  }
+  assert.equal(room.started, true);
   clearTimeout(room.turnTimer);
   const closed = new Promise(resolve => a.once('room:closed', resolve));
   room.players[0].autoPlayCount = 3; // sudah 3x tidak jalan
@@ -1472,4 +1479,546 @@ test('Registrasi manual: wajib email valid serta cek keunikan username & email',
   assert.equal(dupEmailRes.status, 400);
   const dupEmailData = await dupEmailRes.json();
   assert.match(dupEmailData.error, /email/i);
+});
+
+const emitAck = (sock, event, payload) =>
+  new Promise(resolve => sock.emit(event, payload, resolve));
+
+test('penambahan bot manual (room:add_bot / room:remove_bot) ditolak', async () => {
+  const { sockets, room } = await createRoomWith(['HostOnly']);
+  const host = sockets[0].socket;
+
+  const errPromise = once(host, 'room:error');
+  host.emit('room:add_bot');
+  const errMsg = await errPromise;
+  assert.match(errMsg, /tidak tersedia|Cari Pemain Acak/i);
+  assert.equal(room.players.length, 1);
+
+  const errRemove = once(host, 'room:error');
+  host.emit('room:remove_bot');
+  assert.match(await errRemove, /tidak tersedia/i);
+});
+
+test('room:find_random mewajibkan pilihan jumlah pemain valid (2, 3, atau 4)', async () => {
+  const { sockets } = await createRoomWith(['HostCheck']);
+  const host = sockets[0].socket;
+
+  for (const badTarget of [undefined, null, 1, 5, 'abc']) {
+    const res = await emitAck(host, 'room:find_random', { targetPlayers: badTarget });
+    assert.equal(res.ok, false);
+    assert.match(res.error, /jumlah pemain/i);
+  }
+});
+
+test('room:find_random mempertemukan 2 pemain manusia organik secara acak tanpa bot', async () => {
+  const u1 = await register(`org_a_${Date.now().toString(36).slice(-5)}`);
+  const u2 = await register(`org_b_${Date.now().toString(36).slice(-5)}`);
+  const s1 = await connect();
+  const s2 = await connect();
+
+  s1.emit('room:create', { token: u1.token });
+  const joined1 = await once(s1, 'room:joined');
+  s2.emit('room:create', { token: u2.token });
+  const joined2 = await once(s2, 'room:joined');
+  assert.notEqual(joined1.code, joined2.code);
+
+  const searchRes1 = await emitAck(s1, 'room:find_random', { targetPlayers: 2 });
+  assert.equal(searchRes1.ok, true);
+  assert.equal(searchRes1.matched, false);
+
+  const mergedJoined2 = once(s2, 'room:joined');
+  const searchRes2 = await emitAck(s2, 'room:find_random', { targetPlayers: 2 });
+  assert.equal(searchRes2.ok, true);
+  assert.equal(searchRes2.matched, true);
+  assert.equal(searchRes2.code, joined1.code);
+
+  const moved2 = await mergedJoined2;
+  assert.equal(moved2.code, joined1.code);
+
+  const matchedRoom = rooms.get(joined1.code);
+  assert.ok(matchedRoom);
+  assert.equal(matchedRoom.started, true);
+  assert.equal(matchedRoom.players.length, 2);
+  assert.equal(matchedRoom.players.every(p => !p.isBot), true);
+  assert.equal(rooms.has(joined2.code), false);
+  clearTimeout(matchedRoom.turnTimer);
+});
+
+test('room:find_random fallback mengisi bot organik dengan nama, username, Ava SVG, dan samaran isBot:false ke klien', async () => {
+  const lobby = require('./game/lobby');
+  const u = await register(`solo_${Date.now().toString(36).slice(-5)}`);
+  const host = await connect();
+  host.emit('room:create', { token: u.token });
+  const { code } = await once(host, 'room:joined');
+
+  let lastPublicRoom = null;
+  host.on('room:update', state => {
+    if (state.started) lastPublicRoom = state;
+  });
+
+  lobby.setMatchmakingTimeoutMs(50);
+  try {
+    const searchAck = await emitAck(host, 'room:find_random', { targetPlayers: 4 });
+    assert.equal(searchAck.ok, true);
+    assert.equal(searchAck.matched, false);
+    await wait(200);
+  } finally {
+    lobby.setMatchmakingTimeoutMs(null);
+  }
+
+  const room = rooms.get(code);
+  assert.equal(room.started, true);
+  assert.equal(room.players.length, 4);
+  clearTimeout(room.turnTimer);
+
+  const serverBots = room.players.slice(1);
+  assert.equal(serverBots.length, 3);
+  assert.equal(serverBots.every(b => b.isBot === true && b.organicBot === true), true);
+  assert.equal(new Set(serverBots.map(b => b.username)).size, 3);
+  assert.equal(new Set(serverBots.map(b => b.name)).size, 3);
+  for (const b of serverBots) {
+    assert.equal(/\s/.test(b.name), false, `nama bot organik harus tanpa spasi (bukan nama lengkap): ${b.name}`);
+    assert.match(b.username, /^[a-zA-Z0-9._-]{3,20}$/);
+    assert.match(b.avatar, /^\/api\/avatars\/ava\/[a-zA-Z0-9._-]+\.svg$/);
+    const avaRes = await fetch(`${url}${b.avatar}`);
+    assert.equal(avaRes.status, 200);
+    assert.match(avaRes.headers.get('content-type') || '', /image\/svg\+xml/i);
+    const svg = await avaRes.text();
+    assert.match(svg, /^<svg\b/);
+  }
+
+  // Klien melihat bot organik seolah pemain biasa (isBot: false)
+  assert.ok(lastPublicRoom);
+  assert.equal(lastPublicRoom.players.length, 4);
+  assert.equal(lastPublicRoom.players.every(p => p.isBot === false && p.organicBot === undefined), true);
+
+  // Validasi seed invalid mengembalikan 404
+  const badAva = await fetch(`${url}/api/avatars/ava/not!valid.svg`);
+  assert.equal(badAva.status, 404);
+});
+
+test('matchmaking JakLudo melawan bot organik tetap memberi Coins/Poin penuh saat selesai tanpa mencatat bot di leaderboard', async () => {
+  const lobby = require('./game/lobby');
+  const u = await register(`cuan_${Date.now().toString(36).slice(-5)}`);
+  const before = db.getLeaderboard().find(e => e.userId === u.user.id).points;
+
+  const host = await connect();
+  host.emit('room:create', { token: u.token });
+  const { code } = await once(host, 'room:joined');
+
+  lobby.setMatchmakingTimeoutMs(50);
+  try {
+    await emitAck(host, 'room:find_random', { targetPlayers: 2 });
+    await wait(180);
+  } finally {
+    lobby.setMatchmakingTimeoutMs(null);
+  }
+
+  const room = rooms.get(code);
+  assert.equal(room.started, true);
+  clearTimeout(room.turnTimer);
+  clearTimeout(room.botTimeout);
+
+  // Buat pemain manusia tepat 1 langkah sebelum finish seluruh bidak
+  const humanPlayer = room.players[0];
+  room.turn = 0;
+  room.dice = 2;
+  room.pawns[humanPlayer.id] = [42, 44, 44, 44];
+  host.emit('game:move', { pawn: 0 });
+  await wait(2 * 220 + 600);
+
+  assert.equal(room.winner, humanPlayer.id);
+  assert.ok(room.matchResult?.awards?.[humanPlayer.id]);
+  assert.equal(room.matchResult.awards[humanPlayer.id].points, 30);
+  assert.equal(room.matchResult.awards[humanPlayer.id].dailyBonus, 5);
+
+  const board = db.getLeaderboard();
+  const after = board.find(e => e.userId === u.user.id).points;
+  assert.equal(after, before + 35);
+  assert.equal(board.some(e => e.username === room.players[1].username), false);
+});
+
+test('tombol 1 klik room:invite_friends mengundang teman online ke room JakLudo', async () => {
+  const ts = Date.now().toString(36).slice(-5);
+  const u1 = await register(`inv1_${ts}`);
+  const u2 = await register(`inv2_${ts}`);
+
+  await fetch(`${url}/api/friends/request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${u1.token}` },
+    body: JSON.stringify({ username: u2.user.username })
+  });
+  await fetch(`${url}/api/friends/${u1.user.id}/accept`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${u2.token}` }
+  });
+
+  const s1 = await connect();
+  const s2 = await connect();
+  await emitAck(s1, 'social:identify', { token: u1.token });
+  await emitAck(s2, 'social:identify', { token: u2.token });
+
+  s1.emit('room:create', { token: u1.token });
+  const { code } = await once(s1, 'room:joined');
+
+  const invitePromise = once(s2, 'room:invite');
+  const res = await emitAck(s1, 'room:invite_friends', {});
+  assert.equal(res.ok, true);
+  assert.equal(res.invitedCount, 1);
+
+  const invite = await invitePromise;
+  assert.equal(invite.code, code);
+  assert.equal(invite.gameType, 'ludo');
+});
+
+test('room:cancel_random membatalkan pencarian pemain acak tanpa memunculkan bot', async () => {
+  const { sockets, room } = await createRoomWith(['Canceller']);
+  const host = sockets[0].socket;
+
+  const res = await emitAck(host, 'room:find_random', { targetPlayers: 3 });
+  assert.equal(res.ok, true);
+  assert.equal(room.matchmaking?.active, true);
+
+  host.emit('room:cancel_random');
+  await wait(80);
+  assert.equal(room.matchmaking, null);
+  assert.equal(room.started, false);
+  assert.equal(room.players.length, 1);
+});
+
+async function registerWithSkin(prefix, skinId = null) {
+  const uname = `${prefix}_${Date.now().toString(36).slice(-5)}_${Math.random().toString(36).slice(2, 5)}`;
+  const auth = await register(uname);
+  if (skinId) {
+    db.awardUserPoints(auth.user.id, 6000);
+    await fetch(`${url}/api/economy/convert`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+      body: JSON.stringify({ diamonds: 40, direction: 'coins_to_diamonds' })
+    });
+    const buyRes = await fetch(`${url}/api/economy/skins/purchase`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+      body: JSON.stringify({ skinId })
+    });
+    assert.equal(buyRes.status, 200);
+    const eqRes = await fetch(`${url}/api/economy/skins/equip`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+      body: JSON.stringify({ skinId })
+    });
+    assert.equal(eqRes.status, 200);
+  }
+  return auth;
+}
+
+function waitForRoom(sock, predicate, timeoutMs = 4000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      sock.off('room:update', onUpdate);
+      reject(new Error('Timeout menunggu room:update yang diharapkan'));
+    }, timeoutMs);
+    function onUpdate(state) {
+      if (predicate(state)) {
+        clearTimeout(timer);
+        sock.off('room:update', onUpdate);
+        resolve(state);
+      }
+    }
+    sock.on('room:update', onUpdate);
+  });
+}
+
+test('Emerald Green Anti-Eliminasi: injakan butuh konfirmasi, selamat saat dipakai, dan hanya 1x sebelum diisi ulang', async () => {
+  const authA = await registerWithSkin('em_att', null);
+  const authB = await registerWithSkin('em_def', 'emerald_green');
+  const sockA = await connect();
+  const sockB = await connect();
+
+  sockA.emit('room:create', { token: authA.token });
+  const joinedA = await once(sockA, 'room:joined');
+  sockB.emit('room:join', { code: joinedA.code, token: authB.token });
+  const joinedB = await once(sockB, 'room:joined');
+
+  const startPromise = waitForRoom(sockB, r => r.started === true);
+  sockA.emit('game:start');
+  const startedState = await startPromise;
+
+  const room = rooms.get(joinedA.code);
+  clearTimeout(room.turnTimer);
+  const defPublic = startedState.players.find(p => p.id === joinedB.playerId);
+  assert.deepEqual(defPublic.skinShield, {
+    active: true,
+    charges: 1,
+    max: 3,
+    skinKey: 'emerald_green',
+    skinName: 'Emerald Green'
+  });
+
+  // Red (A) di 15 maju 1 -> 16 (track 15); Green (B) di 6 (track 15)
+  room.turn = 0;
+  room.dice = 1;
+  room.pawns[joinedA.playerId] = [15, 0, 0, 0];
+  room.pawns[joinedB.playerId] = [6, 0, 0, 0];
+
+  const promptPromise = waitForRoom(
+    sockB,
+    r => r.pendingShield?.source === 'skinShield' && r.pendingShield?.event === 'stomp'
+  );
+  sockA.emit('game:move', { pawn: 0 });
+  const promptState = await promptPromise;
+  assert.equal(promptState.pendingShield.playerId, joinedB.playerId);
+  assert.equal(promptState.pendingShield.skinKey, 'emerald_green');
+  assert.equal(promptState.pendingShield.charges, 1);
+
+  const afterConfirmPromise = waitForRoom(
+    sockB,
+    r => !r.pendingShield && r.turn === 1 && r.lastItemEvent?.itemId === 'skinAntiElimination'
+  );
+  sockB.emit('game:shield_decision', { use: true });
+  const afterConfirm = await afterConfirmPromise;
+
+  // Bidak B tetap di lintasan (tidak pulang ke 0), A tetap di 16, skill berkurang jadi 0, A tidak dapat bonus makan
+  assert.equal(afterConfirm.pawns[joinedB.playerId][0], 6);
+  assert.equal(afterConfirm.pawns[joinedA.playerId][0], 16);
+  assert.equal(afterConfirm.players[1].skinShield.charges, 0);
+  assert.equal(afterConfirm.turn, 1);
+
+  // Injak kedua kali saat skill 0 -> langsung tereliminasi tanpa konfirmasi
+  clearTimeout(room.turnTimer);
+  room.turn = 0;
+  room.dice = 1;
+  room.pawns[joinedA.playerId][0] = 15;
+  const secondStompPromise = waitForRoom(
+    sockB,
+    r => !r.animatingMove && r.pawns[joinedB.playerId][0] === 0
+  );
+  sockA.emit('game:move', { pawn: 0 });
+  const afterSecondStomp = await secondStompPromise;
+  assert.equal(afterSecondStomp.pawns[joinedB.playerId][0], 0);
+  assert.equal(afterSecondStomp.pendingShield, null);
+});
+
+test('Galaxy Purple Anti-Eliminasi: menolak konfirmasi & timeout konfirmasi tidak mengaktifkan skill', async () => {
+  const engine = require('./game/engine');
+  const authA = await registerWithSkin('gx_att', null);
+  const authB = await registerWithSkin('gx_def', 'galaxy_purple');
+  const sockA = await connect();
+  const sockB = await connect();
+
+  sockA.emit('room:create', { token: authA.token });
+  const joinedA = await once(sockA, 'room:joined');
+  sockB.emit('room:join', { code: joinedA.code, token: authB.token });
+  const joinedB = await once(sockB, 'room:joined');
+
+  const startPromise = waitForRoom(sockB, r => r.started === true);
+  sockA.emit('game:start');
+  await startPromise;
+
+  const room = rooms.get(joinedA.code);
+  clearTimeout(room.turnTimer);
+
+  // 1. Pemain menolak konfirmasi -> tereliminasi, charge 1 tetap utuh, penyerang dapat bonus giliran
+  room.turn = 0;
+  room.dice = 1;
+  room.pawns[joinedA.playerId] = [15, 0, 0, 0];
+  room.pawns[joinedB.playerId] = [6, 0, 0, 0];
+
+  const prompt1Promise = waitForRoom(sockB, r => r.pendingShield?.source === 'skinShield');
+  sockA.emit('game:move', { pawn: 0 });
+  const prompt1 = await prompt1Promise;
+  assert.equal(prompt1.pendingShield.skinKey, 'galaxy_purple');
+
+  const afterDeclinePromise = waitForRoom(
+    sockB,
+    r => !r.pendingShield && r.pawns[joinedB.playerId][0] === 0
+  );
+  sockB.emit('game:shield_decision', { use: false });
+  const afterDecline = await afterDeclinePromise;
+  assert.equal(afterDecline.players[1].skinShield.charges, 1);
+  assert.equal(afterDecline.turn, 0, 'penyerang mendapat bonus giliran karena eliminasi berhasil');
+
+  // 2. Pemain tidak mengonfirmasi hingga waktu habis -> tidak otomatis terpakai, bidak tereliminasi
+  clearTimeout(room.turnTimer);
+  room.turn = 0;
+  room.dice = 1;
+  room.pawns[joinedA.playerId] = [15, 0, 0, 0];
+  room.pawns[joinedB.playerId] = [6, 0, 0, 0];
+
+  const prompt2Promise = waitForRoom(sockB, r => r.pendingShield?.source === 'skinShield');
+  sockA.emit('game:move', { pawn: 0 });
+  await prompt2Promise;
+
+  const afterTimeoutPromise = waitForRoom(
+    sockB,
+    r => !r.pendingShield && r.pawns[joinedB.playerId][0] === 0
+  );
+  // Simulasikan timer keputusan habis untuk skinShield (defaultUse = false)
+  engine.resolvePendingShield(room, false, { timedOut: true });
+  const afterTimeout = await afterTimeoutPromise;
+  assert.equal(afterTimeout.players[1].skinShield.charges, 1);
+});
+
+test('Anti-Eliminasi menahan Force Return dan jatuh ke Universal Shield jika skinShield ditolak', async () => {
+  const authA = await registerWithSkin('fr_att', null);
+  const authB = await registerWithSkin('fr_def', 'galaxy_purple');
+  const sockA = await connect();
+  const sockB = await connect();
+
+  sockA.emit('room:create', { token: authA.token });
+  const joinedA = await once(sockA, 'room:joined');
+  sockB.emit('room:join', { code: joinedA.code, token: authB.token });
+  const joinedB = await once(sockB, 'room:joined');
+
+  sockA.emit('game:start');
+  await waitForRoom(sockB, r => r.started === true);
+
+  const room = rooms.get(joinedA.code);
+  clearTimeout(room.turnTimer);
+  room.turn = 0;
+  room.dice = null;
+  room.players[0].items.forceReturn = { owned: 0, earned: 2, state: {} };
+  room.players[1].items.universalShield = { owned: 0, earned: 1, state: {} };
+  room.pawns[joinedA.playerId] = [5, 0, 0, 0];
+  room.pawns[joinedB.playerId] = [8, 0, 0, 0];
+
+  // Serangan 1: konfirmasi skill Anti-Eliminasi Galaxy Purple
+  const promptSkinPromise = waitForRoom(
+    sockB,
+    r => r.pendingShield?.source === 'skinShield' && r.pendingShield?.event === 'forceReturn'
+  );
+  sockA.emit('game:use_item', { itemId: 'forceReturn', target: { playerId: joinedB.playerId, pawnIdx: 0 } });
+  await promptSkinPromise;
+
+  const blockedPromise = waitForRoom(
+    sockB,
+    r => !r.pendingShield && r.lastItemEvent?.itemId === 'skinAntiElimination'
+  );
+  sockB.emit('game:shield_decision', { use: true });
+  const blockedState = await blockedPromise;
+  assert.equal(blockedState.pawns[joinedB.playerId][0], 8);
+  assert.equal(blockedState.players[1].skinShield.charges, 0);
+
+  // Isi ulang skill (+1) via bidak B masuk finish, lalu uji chain ke Universal Shield saat skinShield ditolak
+  clearTimeout(room.turnTimer);
+  room.turn = 1;
+  room.dice = 1;
+  room.pawns[joinedB.playerId] = [8, 43, 0, 0];
+  const afterFinishPromise = waitForRoom(
+    sockB,
+    r => !r.animatingMove && r.pawns[joinedB.playerId][1] === 44 && r.players[1].skinShield.charges === 1
+  );
+  sockB.emit('game:move', { pawn: 1 });
+  await afterFinishPromise;
+
+  clearTimeout(room.turnTimer);
+  room.turn = 0;
+  room.dice = null;
+  const promptSkin2 = waitForRoom(sockB, r => r.pendingShield?.source === 'skinShield');
+  sockA.emit('game:use_item', { itemId: 'forceReturn', target: { playerId: joinedB.playerId, pawnIdx: 0 } });
+  await promptSkin2;
+
+  // Tolak skinShield -> server otomatis menawarkan Universal Shield yang juga dimiliki B
+  const promptUniversal = waitForRoom(
+    sockB,
+    r => r.pendingShield?.source === 'item' && r.pendingShield?.itemId === 'universalShield'
+  );
+  sockB.emit('game:shield_decision', { use: false });
+  await promptUniversal;
+
+  const afterUniversal = waitForRoom(
+    sockB,
+    r => !r.pendingShield && r.lastItemEvent?.itemId === 'universalShield'
+  );
+  sockB.emit('game:shield_decision', { use: true });
+  const finalState = await afterUniversal;
+  assert.equal(finalState.pawns[joinedB.playerId][0], 8);
+  assert.equal(finalState.players[1].skinShield.charges, 1);
+});
+
+test('Anti-Eliminasi bertambah saat masuk finish (maks 3), tidak menahan Black Hole, dan tidak persistent antar permainan', async () => {
+  const authA = await registerWithSkin('cap_em', 'emerald_green');
+  const authB = await registerWithSkin('cap_cl', 'classic_gold');
+  const sockA = await connect();
+  const sockB = await connect();
+
+  sockA.emit('room:create', { token: authA.token });
+  const joinedA = await once(sockA, 'room:joined');
+  sockB.emit('room:join', { code: joinedA.code, token: authB.token });
+  const joinedB = await once(sockB, 'room:joined');
+
+  sockA.emit('game:start');
+  const startState = await waitForRoom(sockA, r => r.started === true);
+  assert.equal(startState.players[0].skinShield.charges, 1);
+  assert.equal(startState.players[1].skinShield, null, 'classic_gold tidak punya skill Anti-Eliminasi');
+
+  const room = rooms.get(joinedA.code);
+  clearTimeout(room.turnTimer);
+
+  // 1. Pastikan Black Hole tidak ditahan oleh skill Anti-Eliminasi
+  room.settings.blackHole = true;
+  room.turn = 0;
+  room.dice = 1;
+  // Red (offset 0) val 5 -> track 4 (Black Hole)
+  room.pawns[joinedA.playerId] = [4, 43, 43, 43];
+  const blackHolePromise = waitForRoom(
+    sockA,
+    r => !r.animatingMove && r.pawns[joinedA.playerId][0] === 0 && r.lastBlackHole?.playerId === joinedA.playerId
+  );
+  sockA.emit('game:move', { pawn: 0 });
+  const afterBH = await blackHolePromise;
+  assert.equal(afterBH.pendingShield, null);
+  assert.equal(afterBH.players[0].skinShield.charges, 1);
+
+  // 2. Finish bidak ke-1 (charges 1 -> 2), ke-2 (2 -> 3), ke-3 (tetap maks 3)
+  for (const [pawnIdx, expectedCharges] of [[1, 2], [2, 3], [3, 3]]) {
+    clearTimeout(room.turnTimer);
+    room.turn = 0;
+    room.dice = 1;
+    const goalPromise = waitForRoom(
+      sockA,
+      r => !r.animatingMove && r.pawns[joinedA.playerId][pawnIdx] === 44 && r.turn === 0
+    );
+    sockA.emit('game:move', { pawn: pawnIdx });
+    const afterGoal = await goalPromise;
+    assert.equal(afterGoal.players[0].skinShield.charges, expectedCharges);
+  }
+
+  // 3. Finish bidak terakhir -> permainan selesai & skill dibersihkan (non-persistent)
+  clearTimeout(room.turnTimer);
+  room.turn = 0;
+  room.dice = 1;
+  room.pawns[joinedA.playerId] = [43, 44, 44, 44];
+  const winPromise = waitForRoom(sockA, r => r.winner === joinedA.playerId);
+  sockA.emit('game:move', { pawn: 0 });
+  const winState = await winPromise;
+  assert.equal(winState.players[0].skinShield, null);
+  assert.equal(room.players[0].skinShieldCharges, 0);
+
+  // 4. Main lagi -> skill dimulai ulang dari 1 (tidak membawa sisa 3 dari laga sebelumnya)
+  const restartPromise = waitForRoom(sockA, r => r.started === true && !r.winner);
+  sockA.emit('game:restart');
+  const restarted = await restartPromise;
+  assert.equal(restarted.players[0].skinShield.charges, 1);
+
+  // 5. Jika skin dilepas sebelum permainan baru, skill tidak ada di permainan berikutnya
+  const finishSecond = waitForRoom(sockA, r => r.winner === joinedA.playerId);
+  clearTimeout(room.turnTimer);
+  room.turn = 0;
+  room.dice = 1;
+  room.pawns[joinedA.playerId] = [43, 44, 44, 44];
+  sockA.emit('game:move', { pawn: 0 });
+  await finishSecond;
+
+  const uneqRes = await fetch(`${url}/api/economy/skins/equip`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authA.token}` },
+    body: JSON.stringify({ skinId: null })
+  });
+  assert.equal(uneqRes.status, 200);
+
+  const restartNoSkin = waitForRoom(sockA, r => r.started === true && !r.winner);
+  sockA.emit('game:restart');
+  const afterUnequipRestart = await restartNoSkin;
+  assert.equal(afterUnequipRestart.players[0].skinShield, null);
 });

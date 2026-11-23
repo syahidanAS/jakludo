@@ -6,6 +6,17 @@ const inventory = require('./inventory');
 const store = require('./store');
 const social = require('../social/store');
 const {
+  MAX_SKIN_SHIELD_CHARGES,
+  SKIN_ANTI_ELIMINATION_ID,
+  resolveSkinKey,
+  skinDisplayName,
+  canUseSkinAntiElimination,
+  initPlayerSkinSkill,
+  clearPlayerSkinSkill,
+  rechargeSkinAntiElimination,
+  consumeSkinAntiElimination
+} = require('./skinSkills');
+const {
   COLORS,
   FINISH,
   getTrackIndex,
@@ -40,6 +51,7 @@ function resetPlayerForGame(p) {
   p.diceStats = newDiceStats();
   inventory.resetForMatch(p);
   if (p.userId) inventory.loadOwned(p, db.getUserItems(p.userId));
+  initPlayerSkinSkill(p);
 }
 
 function startGame(r) {
@@ -61,7 +73,7 @@ function startGame(r) {
 // Main lagi: hanya setelah ada pemenang. Pemain yang tetap berada di room (termasuk yang sempat OUT dan menonton) diikutkan.
 function restartGame(r) {
   const remaining = r.players.filter(p => !p.left || p.connected);
-  if (remaining.length < 2) return 'Butuh minimal 2 pemain untuk bermain lagi. Tambahkan bot atau ajak teman.';
+  if (remaining.length < 2) return 'Butuh minimal 2 pemain untuk bermain lagi. Undang teman atau cari pemain acak di room baru.';
   for (const p of r.players) {
     if (p.left && !p.connected) delete r.pawns[p.id];
     else p.left = false;
@@ -82,11 +94,19 @@ function declareWinner(room, winnerPlayer, { endReason = null } = {}) {
 
   // Poin sama untuk permainan biasa dan grup (leaderboard grup diambil dari leaderboard yang sama)
   const ranking = rankPlayers(room, winnerPlayer.id);
-  const awards = db.recordMatchResult({ winnerPlayerId: winnerPlayer.id, players: room.players, ranking, endReason });
+  const allowBotMatch = Boolean(room.hasMatchmakingBots || room.players.some(p => p.isBot && p.organicBot));
+  const awards = db.recordMatchResult({
+    winnerPlayerId: winnerPlayer.id,
+    players: room.players,
+    ranking,
+    endReason,
+    allowBotMatch
+  });
   // Peringkat resmi + poin yang didapat, ditampilkan di layar hasil
   room.matchResult = { ranking, awards };
   room.players.forEach(p => {
     p.isLudoKing = db.checkIsLudoKing(p.userId);
+    clearPlayerSkinSkill(p);
   });
   store.getIo().emit('leaderboard:update', db.getLeaderboard());
   if (room.groupId) {
@@ -167,11 +187,12 @@ function triggerTurn(room, { preserveClock = false } = {}) {
 
   if (currentPlayer.isBot) {
     if (room.dice === null) {
+      const rollDelay = process.env.NODE_ENV === 'test' ? 120 : 850 + Math.floor(Math.random() * 850);
       room.botTimeout = roomTimeout(room, () => {
         if (room.players[room.turn]?.id === currentPlayer.id && room.dice === null && !room.animatingMove) {
           handleRoll(room, currentPlayer.id);
         }
-      }, 700);
+      }, rollDelay);
     } else {
       scheduleAutoMove(room, currentPlayer, false);
     }
@@ -194,11 +215,12 @@ function triggerTurn(room, { preserveClock = false } = {}) {
 function scheduleAutoMove(room, player, isAuto) {
   const bestPawn = chooseBestPawn(room, player, room.dice);
   if (bestPawn === null) return;
+  const moveDelay = process.env.NODE_ENV === 'test' ? 150 : (player.isBot ? 650 + Math.floor(Math.random() * 750) : 800);
   room.botTimeout = roomTimeout(room, () => {
     if (room.players[room.turn]?.id === player.id && room.dice !== null && !room.animatingMove) {
       handleMove(room, player.id, bestPawn, isAuto);
     }
-  }, 800);
+  }, moveDelay);
 }
 
 function executeAutoPlay(room, player) {
@@ -336,17 +358,89 @@ function handleMove(room, playerId, pawnIdx, isAuto = false) {
   if (room.moveTimer) clearTimeout(room.moveTimer);
   room.moveTimer = roomTimeout(room, () => {
     room.animatingMove = null;
-    const move = { pawnIdx, fromVal, toVal, rollVal, captured: captureAt(room, player, toVal) };
-
-    // Black Hole: perisai pasif dicoba dulu, lalu pemain bisa ditanya soal Universal Shield
-    const trackPos = toVal <= 39 ? getTrackIndex(COLORS.indexOf(player.color), toVal) : null;
-    if (trackPos !== null && room.settings?.blackHole && getBlackHoles(room).includes(trackPos)) {
-      const outcome = protectPawn(room, player, 'blackHole', { pawnIdx, trackPos }, { type: 'move', playerId: player.id, move });
-      if (outcome === 'pending') return emitRoom(room);
-      if (outcome === 'exposed') suckIntoBlackHole(room, player, pawnIdx, trackPos);
-    }
-    finishMove(room, player, move);
+    const move = { pawnIdx, fromVal, toVal, rollVal, captured: false };
+    const victims = findCapturableVictims(room, player, toVal);
+    processMoveCaptures(room, player, move, victims, 0);
   }, steps * 220 + 360);
+}
+
+function continueMoveAfterCaptures(room, player, move) {
+  const { pawnIdx, toVal } = move;
+  // Black Hole: perisai pasif dicoba dulu, lalu pemain bisa ditanya soal Universal Shield
+  const trackPos = toVal <= 39 ? getTrackIndex(COLORS.indexOf(player.color), toVal) : null;
+  if (trackPos !== null && room.settings?.blackHole && getBlackHoles(room).includes(trackPos)) {
+    const outcome = protectPawn(room, player, 'blackHole', { pawnIdx, trackPos }, { type: 'move', playerId: player.id, move });
+    if (outcome === 'pending') return emitRoom(room);
+    if (outcome === 'exposed') suckIntoBlackHole(room, player, pawnIdx, trackPos);
+  }
+  finishMove(room, player, move);
+}
+
+function findCapturableVictims(room, player, toVal) {
+  if (toVal < 1 || toVal > 39) return [];
+  const trackPos = getTrackIndex(COLORS.indexOf(player.color), toVal);
+  const victims = [];
+  for (const opponent of room.players) {
+    if (opponent.id === player.id) continue;
+    const oppColorIdx = COLORS.indexOf(opponent.color);
+    const oppPawns = room.pawns[opponent.id];
+    if (!oppPawns) continue;
+    oppPawns.forEach((oppVal, j) => {
+      if (oppVal < 1 || oppVal > 39) return;
+      if (getTrackIndex(oppColorIdx, oppVal) !== trackPos || isPawnProtected(room, opponent, trackPos)) return;
+      victims.push({ playerId: opponent.id, pawnIdx: j, trackPos });
+    });
+  }
+  return victims;
+}
+
+function executeStompCapture(room, attacker, victim, pawnIdx, trackPos) {
+  const oppPawns = room.pawns[victim.id];
+  if (!oppPawns) return false;
+  oppPawns[pawnIdx] = 0;
+  room.lastCapture = {
+    id: eventId(),
+    attacker: attacker.name,
+    attackerId: attacker.id,
+    defender: victim.name,
+    defenderId: victim.id,
+    color: victim.color,
+    defenderIsOut: !!victim.isOut,
+    trackPos
+  };
+  addHistory(room, `⚔️ ${attacker.name} memakan bidak ${victim.name}${victim.isOut ? ' (pemain out)' : ''}!`);
+  runItemHooks(room, attacker, 'capture', { victim, pawnIdx });
+  return true;
+}
+
+function processMoveCaptures(room, player, move, victims, startIndex = 0) {
+  for (let idx = startIndex; idx < victims.length; idx++) {
+    const v = victims[idx];
+    const victim = room.players.find(p => p.id === v.playerId);
+    if (!victim) continue;
+    const oppVal = room.pawns[victim.id]?.[v.pawnIdx];
+    const oppColorIdx = COLORS.indexOf(victim.color);
+    if (!oppVal || oppVal < 1 || oppVal > 39) continue;
+    if (getTrackIndex(oppColorIdx, oppVal) !== v.trackPos || isPawnProtected(room, victim, v.trackPos)) continue;
+
+    const outcome = protectPawn(
+      room,
+      victim,
+      'stomp',
+      { pawnIdx: v.pawnIdx, trackPos: v.trackPos, attacker: player },
+      { type: 'stomp', playerId: player.id, move, victims, victimIndex: idx }
+    );
+    if (outcome === 'pending') {
+      emitRoom(room);
+      return;
+    }
+    if (outcome === 'protected') continue;
+
+    if (executeStompCapture(room, player, victim, v.pawnIdx, v.trackPos)) {
+      move.captured = true;
+    }
+  }
+  continueMoveAfterCaptures(room, player, move);
 }
 
 // Lanjutan langkah setelah efek petak selesai: menang, finish, bonus giliran, atau giliran berikutnya
@@ -382,45 +476,6 @@ function finishMove(room, player, { pawnIdx, fromVal, toVal, rollVal, captured }
   }
 }
 
-// Makan bidak lawan di petak tujuan (lintasan utama). Return true jika ada yang dimakan.
-function captureAt(room, player, toVal) {
-  if (toVal < 1 || toVal > 39) return false;
-  const trackPos = getTrackIndex(COLORS.indexOf(player.color), toVal);
-  let captured = false;
-
-  // Dicek sebelum Black Hole, termasuk di petak Black Hole: lawan yang bertahan
-  //    di sana (memakai perisai) tetap bisa dimakan dan tetap memberi bonus giliran.
-  //    Bidak yang terlindungi (start miliknya / bintang) tidak pernah sampai sini karena
-  //    canPawnMove menutup petak itu, tapi tetap dicek agar aman.
-  for (const opponent of room.players) {
-    if (opponent.id === player.id) continue;
-    const oppColorIdx = COLORS.indexOf(opponent.color);
-    const oppPawns = room.pawns[opponent.id];
-    if (!oppPawns) continue;
-
-    oppPawns.forEach((oppVal, j) => {
-      if (oppVal < 1 || oppVal > 39) return;
-      if (getTrackIndex(oppColorIdx, oppVal) !== trackPos || isPawnProtected(room, opponent, trackPos)) return;
-
-      oppPawns[j] = 0;
-      captured = true;
-      room.lastCapture = {
-        id: eventId(),
-        attacker: player.name,
-        attackerId: player.id,
-        defender: opponent.name,
-        defenderId: opponent.id,
-        color: opponent.color,
-        defenderIsOut: !!opponent.isOut,
-        trackPos
-      };
-      addHistory(room, `⚔️ ${player.name} memakan bidak ${opponent.name}${opponent.isOut ? ' (pemain out)' : ''}!`);
-      runItemHooks(room, player, 'capture', { victim: opponent, pawnIdx: j });
-    });
-  }
-  return captured;
-}
-
 function suckIntoBlackHole(room, player, pawnIdx, trackPos) {
   room.pawns[player.id][pawnIdx] = 0;
   room.lastBlackHole = { id: eventId(), playerId: player.id, pawnIdx, trackPos, color: player.color, time: Date.now() };
@@ -433,6 +488,10 @@ function resolveGoal(room, player, pawnIdx) {
   room.lastGoal = { id: eventId(), playerId: player.id, playerName: player.name, color: player.color, pawnIdx };
   addHistory(room, `⭐ ${player.name} berhasil memasukkan 1 bidak ke garis akhir!`);
   player.finishedCount = room.pawns[player.id].filter(v => v === FINISH).length;
+  const recharge = rechargeSkinAntiElimination(player);
+  if (recharge.gained) {
+    addHistory(room, `🛡️ ${player.name} mendapat +1 Anti-Eliminasi dari garis finish (${recharge.charges}/${recharge.max})!`);
+  }
 }
 
 // ==========================================
@@ -578,7 +637,44 @@ function useItem(socket, room, { itemId, target }) {
 //   'pending'   -> pemilik ditanya dulu; permainan berhenti sampai resolvePendingShield()
 // `resume` menyimpan cara melanjutkan permainan setelah keputusan (disimpan sebagai data agar
 // tetap bisa dilanjutkan setelah server restart).
-function protectPawn(room, owner, event, data, resume) {
+function protectPawn(room, owner, event, data, resume, { skipSkinShield = false } = {}) {
+  // Skill Anti-Eliminasi per pertandingan milik Emerald Green / Galaxy Purple (stomp & Force Return, wajib konfirmasi)
+  if (
+    !skipSkinShield &&
+    (event === 'stomp' || event === 'forceReturn') &&
+    !owner.isBot &&
+    owner.connected &&
+    canUseSkinAntiElimination(owner)
+  ) {
+    const skinKey = resolveSkinKey(owner.equippedSkin);
+    const skinName = skinDisplayName(owner.equippedSkin);
+    room.pendingShield = {
+      id: eventId(),
+      playerId: owner.id,
+      source: 'skinShield',
+      itemId: SKIN_ANTI_ELIMINATION_ID,
+      skinKey,
+      skinName,
+      charges: Number(owner.skinShieldCharges || 0),
+      maxCharges: MAX_SKIN_SHIELD_CHARGES,
+      event,
+      pawnIdx: data.pawnIdx,
+      trackPos: data.trackPos ?? null,
+      attackerId: data.attacker?.id || null,
+      expiresAt: Date.now() + SHIELD_DECISION_MS,
+      resume
+    };
+    const threat = event === 'forceReturn'
+      ? `Force Return dari ${data.attacker?.name || 'lawan'}`
+      : `injakan dari ${data.attacker?.name || 'lawan'}`;
+    room.message = `🛡️ ${owner.name} sedang mengonfirmasi skill Anti-Eliminasi (${skinName}) untuk menahan ${threat}...`;
+    armShieldTimer(room);
+    return 'pending';
+  }
+
+  // Item perisai toko (Blackhole Shield / Universal Shield) tidak melindungi injakan biasa
+  if (event === 'stomp') return 'exposed';
+
   if (runItemHooks(room, owner, event, data)) return 'protected';
 
   const shield = items.list().find(item => item.kind === 'reactive' && item.protects.includes(event) && inventory.count(owner, item.id) > 0);
@@ -589,6 +685,7 @@ function protectPawn(room, owner, event, data, resume) {
   room.pendingShield = {
     id: eventId(),
     playerId: owner.id,
+    source: 'item',
     itemId: shield.id,
     event,
     pawnIdx: data.pawnIdx,
@@ -603,19 +700,45 @@ function protectPawn(room, owner, event, data, resume) {
   return 'pending';
 }
 
+function activateSkinAntiElimination(room, owner, event, data) {
+  if (!consumeSkinAntiElimination(owner)) return false;
+  const skinKey = resolveSkinKey(owner.equippedSkin);
+  const skinName = skinDisplayName(owner.equippedSkin);
+  const remaining = Math.max(0, Number(owner.skinShieldCharges || 0));
+  const what = event === 'forceReturn'
+    ? `Force Return dari ${data.attacker?.name || 'lawan'}`
+    : `injakan dari ${data.attacker?.name || 'lawan'}`;
+  addHistory(room, `🛡️ ANTI-ELIMINASI (${skinName})! Bidak ${data.pawnIdx + 1} milik ${owner.name} selamat dari ${what}. (Sisa skill: ${remaining}/${MAX_SKIN_SHIELD_CHARGES})`);
+  room.message = `🛡️ ${owner.name} mengaktifkan Anti-Eliminasi (${skinName}) dan menahan ${what}!`;
+  room.lastItemEvent = {
+    id: eventId(),
+    itemId: SKIN_ANTI_ELIMINATION_ID,
+    skinKey,
+    icon: '🛡️',
+    sound: 'chime',
+    title: 'ANTI-ELIMINASI AKTIF!',
+    text: `Bidak ${owner.name} selamat dari ${what} (Sisa skill: ${remaining}/${MAX_SKIN_SHIELD_CHARGES}).`,
+    playerId: owner.id,
+    playerName: owner.name,
+    fx: { color: owner.color, val: room.pawns[owner.id]?.[data.pawnIdx] ?? 0 }
+  };
+  return true;
+}
+
 function useShield(room, owner, shield, event, data) {
   if (!inventory.consume(owner, shield.id)) return false;
   shield.protect(itemContext(room, owner, shield, { ...data, event }));
   return true;
 }
 
-// Waktu memutuskan habis: perisai dipakai (pemain membelinya untuk melindungi bidak)
+// Waktu memutuskan habis: untuk Universal Shield otomatis dipakai, sedangkan untuk skill skin (butuh konfirmasi) tidak dipakai
 function armShieldTimer(room) {
   if (room.shieldTimer) clearTimeout(room.shieldTimer);
   const pending = room.pendingShield;
   const delay = Math.max(0, pending.expiresAt - Date.now());
+  const defaultUse = pending.source === 'skinShield' ? false : true;
   room.shieldTimer = roomTimeout(room, () => {
-    if (room.pendingShield?.id === pending.id) resolvePendingShield(room, true);
+    if (room.pendingShield?.id === pending.id) resolvePendingShield(room, defaultUse, { timedOut: true });
   }, delay);
 }
 
@@ -626,7 +749,7 @@ function decideShield(socket, room, { use }) {
   resolvePendingShield(room, use === true);
 }
 
-function resolvePendingShield(room, use) {
+function resolvePendingShield(room, use, { timedOut = false } = {}) {
   const pending = room.pendingShield;
   if (!pending) return;
   room.pendingShield = null;
@@ -635,12 +758,41 @@ function resolvePendingShield(room, use) {
 
   const owner = room.players.find(p => p.id === pending.playerId);
   const attacker = pending.attackerId ? room.players.find(p => p.id === pending.attackerId) : null;
-  const shield = items.get(pending.itemId);
   const data = { pawnIdx: pending.pawnIdx, trackPos: pending.trackPos, attacker };
-  const isProtected = !!(use && owner && shield && useShield(room, owner, shield, pending.event, data));
-  if (!isProtected && owner) addHistory(room, `${owner.name} memilih tidak memakai ${shield?.name || 'perisai'}.`);
+
+  let isProtected = false;
+  if (pending.source === 'skinShield') {
+    isProtected = !!(use && owner && activateSkinAntiElimination(room, owner, pending.event, data));
+    if (!isProtected && owner) {
+      addHistory(
+        room,
+        timedOut
+          ? `${owner.name} tidak mengonfirmasi Anti-Eliminasi tepat waktu.`
+          : `${owner.name} memilih tidak memakai Anti-Eliminasi.`
+      );
+    }
+  } else {
+    const shield = items.get(pending.itemId);
+    isProtected = !!(use && owner && shield && useShield(room, owner, shield, pending.event, data));
+    if (!isProtected && owner) addHistory(room, `${owner.name} memilih tidak memakai ${shield?.name || 'perisai'}.`);
+  }
 
   const { resume } = pending;
+  if (resume.type === 'stomp') {
+    const mover = room.players.find(p => p.id === resume.playerId) || attacker;
+    if (!isProtected && mover && owner) {
+      const oppVal = room.pawns[owner.id]?.[pending.pawnIdx];
+      const oppColorIdx = COLORS.indexOf(owner.color);
+      if (oppVal >= 1 && oppVal <= 39 && getTrackIndex(oppColorIdx, oppVal) === pending.trackPos && !isPawnProtected(room, owner, pending.trackPos)) {
+        if (executeStompCapture(room, mover, owner, pending.pawnIdx, pending.trackPos)) {
+          resume.move.captured = true;
+        }
+      }
+    }
+    processMoveCaptures(room, mover, resume.move, resume.victims, resume.victimIndex + 1);
+    return;
+  }
+
   if (resume.type === 'move') {
     const mover = room.players.find(p => p.id === resume.playerId) || owner;
     if (!isProtected) suckIntoBlackHole(room, mover, resume.move.pawnIdx, pending.trackPos);
@@ -648,7 +800,17 @@ function resolvePendingShield(room, use) {
     return;
   }
 
-  // resume.type === 'item': lanjutkan serangan item aktif yang tadi ditahan
+  // resume.type === 'item': jika skinShield ditolak, cek apakah pemain punya Universal Shield sebagai cadangan
+  if (!isProtected && pending.source === 'skinShield' && owner && attacker) {
+    const fallbackOutcome = protectPawn(room, owner, pending.event, data, resume, { skipSkinShield: true });
+    if (fallbackOutcome === 'pending') return emitRoom(room);
+    if (fallbackOutcome === 'protected') {
+      emitRoom(room);
+      return triggerTurn(room);
+    }
+  }
+
+  // Lanjutkan serangan item aktif yang tadi ditahan
   const item = items.get(resume.itemId);
   if (!isProtected && item && attacker && owner) {
     item.use(itemContext(room, attacker, item, { target: { player: owner, pawnIdx: pending.pawnIdx } }));

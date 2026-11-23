@@ -12,6 +12,9 @@ function turnStatus({ room, isTurn, currentTurnPlayer, movablePawns }) {
   const name = currentTurnPlayer?.name || 'pemain';
   if (room.pendingShield) {
     const owner = room.players.find(p => p.id === room.pendingShield.playerId);
+    if (room.pendingShield.source === 'skinShield') {
+      return `Menunggu ${owner?.name || 'pemain'} mengonfirmasi skill Anti-Eliminasi...`;
+    }
     return `Menunggu ${owner?.name || 'pemain'} memutuskan memakai perisai...`;
   }
   if (room.animatingMove) return isTurn ? 'Bidakmu sedang melangkah...' : `${name} sedang melangkah...`;
@@ -79,6 +82,30 @@ export default function TurnPanel({ room, me = null, isTurn, canAct, currentTurn
           )}
         </div>
       </div>
+
+      {me?.skinShield?.active && (
+        <div
+          className={`skin-shield-box skin-shield-box--${me.skinShield.skinKey === 'galaxy_purple' ? 'galaxy' : 'emerald'}`}
+          aria-label={`Skill Anti-Eliminasi ${me.skinShield.skinName}`}
+        >
+          <div className="skin-shield-box__head">
+            <span className="skin-shield-box__title">🛡️ Anti-Eliminasi · {me.skinShield.skinName}</span>
+            <span className="skin-shield-box__pips" aria-label={`Sisa ${me.skinShield.charges} dari ${me.skinShield.max}`}>
+              {Array.from({ length: me.skinShield.max }, (_, idx) => (
+                <span
+                  key={idx}
+                  className={`skin-shield-pip ${idx < me.skinShield.charges ? 'is-charged' : ''}`}
+                  aria-hidden="true"
+                />
+              ))}
+              <strong className="skin-shield-box__count">{me.skinShield.charges}/{me.skinShield.max}</strong>
+            </span>
+          </div>
+          <p className="skin-shield-box__sub">
+            Tahan injakan &amp; Force Return (konfirmasi) · +1 saat bidak finish · hanya 1 laga
+          </p>
+        </div>
+      )}
 
       {hintItems.length > 0 && (
         <div className="ocean-hint-box" aria-label="Hint langkah terbaik Ocean Blue">

@@ -78,7 +78,7 @@ export default function WinnerDialog({ room, me, actions }) {
             <span className="final-ranking__score">
               <strong title="Bidak masuk finish">★ {finished}/4</strong>
               {awards[player.id] && (
-                <span className="final-ranking__points" title="Poin yang didapat">+{awards[player.id].points + awards[player.id].dailyBonus} poin</span>
+                <span className="final-ranking__points" title="Coins yang didapat">+{awards[player.id].points + awards[player.id].dailyBonus} Coins</span>
               )}
             </span>
           </li>
@@ -86,7 +86,7 @@ export default function WinnerDialog({ room, me, actions }) {
       </ol>
       {myAward && (
         <p className="final-ranking__award" role="status">
-          Kamu dapat <strong>+{myAward.points} poin</strong>
+          Kamu dapat <strong>+{myAward.points} Coins</strong>
           {myAward.dailyBonus > 0 && <> dan <strong>+{myAward.dailyBonus} bonus harian</strong></>}.
         </p>
       )}

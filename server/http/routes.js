@@ -20,6 +20,7 @@ const social = require('../social/store');
 const paymentGateway = require('../lib/paymentGateway');
 const economy = require('../economy/store');
 const recaptcha = require('../lib/recaptcha');
+const { renderOrganicAvatarSvg } = require('../game/organicBots');
 
 const loginLimiter = createLimiter({ windowMs: 10 * 60 * 1000, max: 20 });
 const registerLimiter = createLimiter({ windowMs: 60 * 60 * 1000, max: Number(process.env.REGISTER_RATE_LIMIT || 30) });
@@ -406,6 +407,18 @@ function createApiRouter() {
   api.patch('/auth/profile', handleUpdateProfile);
   api.post('/auth/profile', handleUpdateProfile);
 
+  // Avatar SVG deterministik untuk pemain acak organik
+  api.get('/avatars/ava/:seed.svg', (req, res) => {
+    const raw = String(req.params.seed || '');
+    if (!/^[a-zA-Z0-9._-]{1,40}$/.test(raw)) {
+      return res.status(404).end();
+    }
+    res.set('Content-Type', 'image/svg+xml; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=86400, immutable');
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.send(renderOrganicAvatarSvg(raw));
+  });
+
   // Room yang masih aktif milik user (dibuat atau diikuti, termasuk yang sudah OUT agar tetap bisa menonton)
   api.get('/rooms/active', (req, res) => {
     const user = requireUser(req, res);
@@ -425,7 +438,7 @@ function createApiRouter() {
         players: r.players.map(p => ({
           name: p.name,
           color: p.color,
-          isBot: !!p.isBot,
+          isBot: p.organicBot ? false : !!p.isBot,
           connected: !!p.isBot || !!p.connected,
           isOut: !!p.isOut
         })),

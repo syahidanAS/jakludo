@@ -8,7 +8,7 @@ import { notify } from '../notifications';
 const roomFromUrl = () => new URLSearchParams(location.search).get('room') || '';
 
 // Koneksi socket, state room, chat, notifikasi permainan, dan semua aksi pemain
-export function useGameRoom({ authToken, currentUser, onNeedLogin }) {
+export function useGameRoom({ authToken, currentUser, onUpdateUser, onNeedLogin }) {
   // WebSocket dicoba lebih dulu (lebih stabil lewat tunnel/proxy), polling hanya cadangan
   const socket = useMemo(() => io({
     autoConnect: true,
@@ -43,6 +43,10 @@ export function useGameRoom({ authToken, currentUser, onNeedLogin }) {
   const seedEvents = useRef(false);
   const playerIdRef = useRef('');
   playerIdRef.current = playerId;
+  const authTokenRef = useRef(authToken);
+  authTokenRef.current = authToken;
+  const onUpdateUserRef = useRef(onUpdateUser);
+  onUpdateUserRef.current = onUpdateUser;
 
   const showError = useCallback(message => {
     setError(message);
@@ -109,6 +113,15 @@ export function useGameRoom({ authToken, currentUser, onNeedLogin }) {
             hasCelebrated.current = true;
             sound.playWin();
             triggerConfetti();
+            const tok = authTokenRef.current || storage.get('token');
+            if (tok && onUpdateUserRef.current) {
+              fetch('/api/auth/me', { headers: { Authorization: `Bearer ${tok}` } })
+                .then(r => (r.ok ? r.json() : null))
+                .then(d => {
+                  if (d?.success && d.user) onUpdateUserRef.current?.(d.user);
+                })
+                .catch(() => {});
+            }
           }
         } else {
           hasCelebrated.current = false;
@@ -187,6 +200,7 @@ export function useGameRoom({ authToken, currentUser, onNeedLogin }) {
     const itemSounds = {
       forceReturn: () => sound.playForceReturn(),
       universalShield: () => sound.playUniversalShield(),
+      skinAntiElimination: () => sound.playUniversalShield(),
       blackholeShield: () => sound.playBlackholeShield()
     };
     (itemSounds[event.itemId] || (() => sound.playJoinNotification()))();
@@ -334,8 +348,17 @@ export function useGameRoom({ authToken, currentUser, onNeedLogin }) {
     joinRoom,
     leaveRoom,
     setCode,
-    addBot: () => emitWithClick('room:add_bot'),
-    removeBot: () => emitWithClick('room:remove_bot'),
+    addBot: undefined,
+    removeBot: undefined,
+    inviteAllFriends: () =>
+      new Promise(resolve => {
+        socket.emit('room:invite_friends', {}, res => resolve(res || { ok: false, invitedCount: 0 }));
+      }),
+    findRandomPlayers: targetPlayers =>
+      new Promise(resolve => {
+        socket.emit('room:find_random', { targetPlayers }, res => resolve(res || { ok: false }));
+      }),
+    cancelRandomMatch: () => emitWithClick('room:cancel_random'),
     toggleSafeZones: () => emitWithClick('room:update_settings', { safeZones: room?.settings?.safeZones === false }),
     toggleBlackHole: () => emitWithClick('room:update_settings', { blackHole: !room?.settings?.blackHole }),
     setBlackHoleMode: mode => emitWithClick('room:update_settings', { blackHoleMode: mode }),

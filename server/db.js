@@ -2024,15 +2024,15 @@ function ensureGlobalLeaderboardRow(client, user) {
 }
 
 // Catat hasil pertandingan. Hanya akun terdaftar yang mendapat poin, dan hanya
-// jika lawannya mencakup minimal satu manusia lain (menang lawan bot tidak dihitung).
+// jika lawannya mencakup minimal satu manusia lain (kecuali match dengan bot organik matchmaking).
 // ranking: id pemain dari peringkat 1 ke bawah (lihat rankPlayers). Tanpa ranking, pemenang dianggap
 // peringkat 1 dan sisanya mengikuti urutan players.
 // Return { [playerId]: { points, dailyBonus } } untuk ditampilkan di layar hasil.
-function recordMatchResult({ winnerPlayerId, players, ranking, endReason = null, now = Date.now() }) {
+function recordMatchResult({ winnerPlayerId, players, ranking, endReason = null, allowBotMatch = false, now = Date.now() }) {
   const awards = {};
-  // Aturan bersama semua game: minimal 2 pemain asli (menang hanya melawan bot tidak dapat poin),
+  // Aturan bersama semua game: minimal 2 pemain asli (kecuali match matchmaking JakLudo),
   // dan tidak berlaku jika pertandingan berakhir karena forfeit instan (lihat server/lib/rewards.js).
-  if (!canAwardPoints(players, { endReason })) return awards;
+  if (!canAwardPoints(players, { endReason, allowBotMatch })) return awards;
   const humans = players.filter(p => !p.isBot);
   const today = todayWib(now);
 

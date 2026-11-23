@@ -258,7 +258,10 @@ function LudoBoardView({
     const event = room.lastItemEvent;
     if (!event?.id || event.id === lastPlayedItemIdRef.current) return;
     lastPlayedItemIdRef.current = event.id;
-    const kind = { forceReturn: 'bolt', universalShield: 'shield', blackholeShield: 'bhshield' }[event.itemId];
+    let kind = { forceReturn: 'bolt', universalShield: 'shield', blackholeShield: 'bhshield' }[event.itemId];
+    if (event.itemId === 'skinAntiElimination') {
+      kind = event.skinKey === 'galaxy_purple' ? 'galaxyshield' : 'emeraldshield';
+    }
     if (!kind || !event.fx) return;
     const coord = getPawnCoord(event.fx.color, event.fx.val);
     if (kind === 'bolt') addFx('flash', [0, 0], null, 450);
@@ -586,6 +589,14 @@ function LudoBoardView({
                 🌊 HINT
               </span>
             )}
+            {player?.skinShield?.active && (
+              <span
+                className={`hud-tag skin-shield-tag skin-shield-tag--${player.skinShield.skinKey === 'galaxy_purple' ? 'galaxy' : 'emerald'}`}
+                title={`Skill Anti-Eliminasi ${player.skinShield.skinName}: sisa ${player.skinShield.charges}/${player.skinShield.max} di pertandingan ini (+1 tiap bidak finish)`}
+              >
+                🛡️ {player.skinShield.charges}/{player.skinShield.max}
+              </span>
+            )}
             {player?.isBot && <span className="hud-tag bot-tag">BOT</span>}
             {player?.isLudoKing && <span className="hud-tag king-tag">👑</span>}
           </div>
@@ -644,6 +655,10 @@ function LudoBoardView({
         return <span className="board-fx__shield" />;
       case 'bhshield':
         return <span className="board-fx__bhshield" />;
+      case 'emeraldshield':
+        return <span className="board-fx__skinshield board-fx__skinshield--emerald" />;
+      case 'galaxyshield':
+        return <span className="board-fx__skinshield board-fx__skinshield--galaxy" />;
       default:
         return null;
     }

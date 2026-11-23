@@ -76,11 +76,37 @@ export default function LobbyScreen({ room, me, playerId, currentUser, error, ac
   const [groupMembers, setGroupMembers] = useState([]);
   const [inviteStatus, setInviteStatus] = useState({}); // { [userId]: 'sending' | 'sent' }
   const [inviteError, setInviteError] = useState('');
+  const [selectedTarget, setSelectedTarget] = useState(null);
+  const [invitingAll, setInvitingAll] = useState(false);
+  const [quickInviteMsg, setQuickInviteMsg] = useState('');
+  const [matchmakingBusy, setMatchmakingBusy] = useState(false);
+  const [matchmakingError, setMatchmakingError] = useState('');
+  const [remainingSec, setRemainingSec] = useState(() =>
+    room.matchmaking?.remainingMs ? Math.ceil(room.matchmaking.remainingMs / 1000) : 0
+  );
+
   const safeZones = room.settings?.safeZones !== false;
   const blackHole = !!room.settings?.blackHole;
   const blackHoleMode = room.settings?.blackHoleMode === 'random' ? 'random' : 'static';
   const count = room.players.length;
   const isHost = !!me?.isHost;
+  const isSearching = !!room.matchmaking?.active;
+  const effectiveTarget = selectedTarget && selectedTarget >= count ? selectedTarget : null;
+  const activeTarget = room.matchmaking?.targetPlayers || effectiveTarget || 4;
+  const slotIndices = Array.from({ length: activeTarget }, (_, i) => i);
+
+  useEffect(() => {
+    if (!room.matchmaking?.active) {
+      setRemainingSec(0);
+      return undefined;
+    }
+    const initial = Math.max(0, Math.ceil((room.matchmaking.remainingMs || 0) / 1000));
+    setRemainingSec(initial);
+    const id = setInterval(() => {
+      setRemainingSec(s => (s > 0 ? s - 1 : 0));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [room.matchmaking?.active, room.matchmaking?.targetPlayers, room.matchmaking?.remainingMs]);
 
   // Jika ini Match Grup, ambil daftar anggota grup agar bisa diundang langsung dari lobby
   const getGroupFn = social?.actions?.getGroup;
@@ -142,6 +168,7 @@ export default function LobbyScreen({ room, me, playerId, currentUser, error, ac
 
   const onShare = async () => {
     sound.playClick();
+    setQuickInviteMsg('');
     try {
       const result = await copyOrShare(room);
       if (result === 'copied') {
@@ -150,6 +177,55 @@ export default function LobbyScreen({ room, me, playerId, currentUser, error, ac
       }
     } catch {
       setCopyState('Gagal menyalin. Salin link dari bilah alamat browser.');
+    }
+  };
+
+  const onQuickInvite = async () => {
+    sound.playClick();
+    setQuickInviteMsg('');
+    setCopyState('');
+    setInvitingAll(true);
+    try {
+      const res = actions.inviteAllFriends ? await actions.inviteAllFriends() : { ok: false, invitedCount: 0 };
+      if (res?.ok && res.invitedCount > 0) {
+        setQuickInviteMsg(`Undangan dikirim ke ${res.invitedCount} teman online!`);
+        setTimeout(() => setQuickInviteMsg(''), 3500);
+        return;
+      }
+      const shareRes = await copyOrShare(room);
+      if (shareRes === 'copied') {
+        setQuickInviteMsg('Link undangan tersalin — bagikan ke temanmu!');
+        setTimeout(() => setQuickInviteMsg(''), 3500);
+      }
+    } catch {
+      try {
+        const shareRes = await copyOrShare(room);
+        if (shareRes === 'copied') {
+          setQuickInviteMsg('Link undangan tersalin — bagikan ke temanmu!');
+          setTimeout(() => setQuickInviteMsg(''), 3500);
+        }
+      } catch {
+        setCopyState('Gagal menyalin. Salin link dari bilah alamat browser.');
+      }
+    } finally {
+      setInvitingAll(false);
+    }
+  };
+
+  const onFindRandom = async () => {
+    if (!effectiveTarget || matchmakingBusy || !actions.findRandomPlayers) return;
+    sound.playClick();
+    setMatchmakingError('');
+    setMatchmakingBusy(true);
+    try {
+      const res = await actions.findRandomPlayers(effectiveTarget);
+      if (!res?.ok) {
+        setMatchmakingError(res?.error || 'Gagal mencari pemain acak.');
+      }
+    } catch (err) {
+      setMatchmakingError(err?.message || 'Gagal mencari pemain acak.');
+    } finally {
+      setMatchmakingBusy(false);
     }
   };
 
@@ -166,21 +242,117 @@ export default function LobbyScreen({ room, me, playerId, currentUser, error, ac
         <p className="muted lobby__code-hint">
           {room.group
             ? `Hanya anggota grup "${room.group.name}" yang bisa masuk ke room ini.`
-            : 'Bagikan kode atau link ini ke teman. Maksimal 4 pemain.'}
+            : 'Undang teman langsung dalam 1 klik atau bagikan kode ini (maksimal 4 pemain).'}
         </p>
-        <button type="button" className="btn btn--primary btn--block" onClick={onShare}>
-          Bagikan link undangan
-        </button>
-        <p className="lobby__copy-state" role="status">{copyState}</p>
+        <div className="lobby__code-actions">
+          <button
+            type="button"
+            className="btn btn--primary btn--block"
+            disabled={invitingAll || count >= 4}
+            onClick={onQuickInvite}
+          >
+            {invitingAll ? 'Mengundang teman...' : 'Undang Teman Bermain'}
+          </button>
+          <button type="button" className="btn btn--secondary btn--block" onClick={onShare}>
+            Salin link undangan
+          </button>
+        </div>
+        <p className="lobby__copy-state" role="status">{quickInviteMsg || copyState}</p>
       </section>
+
+      {isHost && !room.group && (
+        <section className="lobby__matchmaking card" aria-labelledby="matchmaking-title">
+          <div className="section-head">
+            <h2 id="matchmaking-title">Cari Pemain Acak</h2>
+            <span className="badge">{isSearching ? `${count}/${room.matchmaking.targetPlayers}` : '2–4 Pemain'}</span>
+          </div>
+
+          {!isSearching ? (
+            <div className="lobby__matchmaking-controls">
+              <p className="muted lobby__matchmaking-desc">
+                Pilih jumlah pemain dulu, lalu biarkan sistem mencarikan lawan main secara acak.
+              </p>
+
+              <div className="lobby__matchmaking-label">
+                <span>Pilih jumlah pemain</span>
+                <div className="segmented segmented--3" role="radiogroup" aria-label="Pilih jumlah pemain">
+                  {[2, 3, 4].map(n => (
+                    <button
+                      key={n}
+                      type="button"
+                      role="radio"
+                      aria-checked={effectiveTarget === n}
+                      disabled={n < count}
+                      className="segmented__option"
+                      onClick={() => {
+                        sound.playClick();
+                        setMatchmakingError('');
+                        setSelectedTarget(n);
+                      }}
+                    >
+                      {n} Pemain
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {matchmakingError && <p className="alert alert--error" role="alert">{matchmakingError}</p>}
+
+              <button
+                type="button"
+                className="btn btn--primary btn--block"
+                disabled={!effectiveTarget || matchmakingBusy || count >= 4}
+                onClick={onFindRandom}
+              >
+                {matchmakingBusy
+                  ? 'Mencari lawan...'
+                  : effectiveTarget && count === effectiveTarget
+                  ? `Mulai Main (${effectiveTarget} Pemain)`
+                  : effectiveTarget
+                  ? `Cari Pemain Acak (${effectiveTarget} Pemain)`
+                  : 'Cari Pemain Acak'}
+              </button>
+
+              {!effectiveTarget && (
+                <p className="muted lobby__matchmaking-note">
+                  Pilih jumlah pemain (2, 3, atau 4) dulu untuk mencari lawan acak.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="lobby__searching" role="status">
+              <div className="lobby__searching-status">
+                <span className="spinner" aria-hidden="true" />
+                <div>
+                  <strong>Mencari pemain acak...</strong>
+                  <span className="muted">
+                    {count}/{room.matchmaking.targetPlayers} pemain siap
+                    {remainingSec > 0 ? ` · ${remainingSec} dtk` : ''}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn--secondary btn--sm"
+                onClick={() => {
+                  sound.playClick();
+                  actions.cancelRandomMatch?.();
+                }}
+              >
+                Batalkan pencarian
+              </button>
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="lobby__players card" aria-labelledby="players-title">
         <div className="section-head">
           <h2 id="players-title">Pemain</h2>
-          <span className="badge">{count} / 4</span>
+          <span className="badge">{count} / {activeTarget}</span>
         </div>
         <ul className="slots">
-          {[0, 1, 2, 3].map(i => (
+          {slotIndices.map(i => (
             <PlayerSlot
               key={i}
               index={i}
@@ -208,16 +380,6 @@ export default function LobbyScreen({ room, me, playerId, currentUser, error, ac
             </button>
           </div>
         )}
-        {isHost && (
-          <div className="lobby__bots">
-            {count < 4 && (
-              <button type="button" className="btn btn--secondary" onClick={actions.addBot}>Tambah bot</button>
-            )}
-            {room.players.some(p => p.isBot) && (
-              <button type="button" className="btn btn--ghost" onClick={actions.removeBot}>Hapus bot</button>
-            )}
-          </div>
-        )}
       </section>
 
       <section className="lobby__settings card" aria-labelledby="settings-title">
@@ -228,7 +390,15 @@ export default function LobbyScreen({ room, me, playerId, currentUser, error, ac
             <p className="muted">{safeZones ? 'Bidak di petak bintang tidak bisa dimakan.' : 'Semua petak bisa dimakan (hardcore).'}</p>
           </div>
           {isHost ? (
-            <button type="button" className="switch" role="switch" aria-checked={safeZones} aria-label="Zona aman" onClick={actions.toggleSafeZones}>
+            <button
+              type="button"
+              className="switch"
+              role="switch"
+              aria-checked={safeZones}
+              aria-label="Zona aman"
+              disabled={isSearching}
+              onClick={actions.toggleSafeZones}
+            >
               <span className="switch__thumb" />
             </button>
           ) : (
@@ -243,7 +413,15 @@ export default function LobbyScreen({ room, me, playerId, currentUser, error, ac
             <p className="muted">{blackHole ? 'Bidak yang mendarat di lubang hitam kembali ke markas.' : 'Lubang hitam tidak dipakai.'}</p>
           </div>
           {isHost ? (
-            <button type="button" className="switch" role="switch" aria-checked={blackHole} aria-label="Black Hole" onClick={actions.toggleBlackHole}>
+            <button
+              type="button"
+              className="switch"
+              role="switch"
+              aria-checked={blackHole}
+              aria-label="Black Hole"
+              disabled={isSearching}
+              onClick={actions.toggleBlackHole}
+            >
               <span className="switch__thumb" />
             </button>
           ) : (
@@ -251,7 +429,7 @@ export default function LobbyScreen({ room, me, playerId, currentUser, error, ac
           )}
         </div>
         {blackHole && (
-          <fieldset className="setting setting--sub" disabled={!isHost}>
+          <fieldset className="setting setting--sub" disabled={!isHost || isSearching}>
             <legend className="setting__legend">Lokasi Black Hole</legend>
             <div className="segmented" role="radiogroup" aria-label="Lokasi Black Hole">
               {[
@@ -264,7 +442,7 @@ export default function LobbyScreen({ room, me, playerId, currentUser, error, ac
                   role="radio"
                   aria-checked={blackHoleMode === opt.value}
                   className="segmented__option"
-                  onClick={() => isHost && blackHoleMode !== opt.value && actions.setBlackHoleMode(opt.value)}
+                  onClick={() => isHost && !isSearching && blackHoleMode !== opt.value && actions.setBlackHoleMode(opt.value)}
                 >
                   {opt.label}
                 </button>
@@ -377,13 +555,24 @@ export default function LobbyScreen({ room, me, playerId, currentUser, error, ac
         {error && <p className="alert alert--error" role="alert">{error}</p>}
         {isHost ? (
           <>
-            <button type="button" className="btn btn--primary btn--lg btn--block" disabled={count < 2} onClick={actions.startGame}>
+            <button
+              type="button"
+              className="btn btn--primary btn--lg btn--block"
+              disabled={count < 2 || isSearching}
+              onClick={actions.startGame}
+            >
               Mulai permainan
             </button>
-            {count < 2 && <p className="muted lobby__hint">Butuh minimal 2 pemain. Tambahkan bot atau tunggu teman.</p>}
+            {count < 2 && !isSearching && (
+              <p className="muted lobby__hint">
+                Butuh minimal 2 pemain. Undang teman atau pilih jumlah pemain untuk cari lawan acak.
+              </p>
+            )}
           </>
         ) : (
-          <p className="lobby__waiting" role="status">Menunggu host memulai permainan...</p>
+          <p className="lobby__waiting" role="status">
+            {isSearching ? 'Host sedang mencarikan pemain acak...' : 'Menunggu host memulai permainan...'}
+          </p>
         )}
         <button type="button" className="btn btn--ghost btn--block" onClick={actions.leaveRoom}>Keluar dari room</button>
       </section>

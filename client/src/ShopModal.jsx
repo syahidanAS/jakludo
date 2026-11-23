@@ -1740,11 +1740,15 @@ export default function ShopModal({
                       <span className={`rarity-badge rarity-badge--${String(showcaseSkin.rarity).toLowerCase()}`}>
                         {showcaseSkin.rarity}
                       </span>
-                      {LUDO_SKIN_META[resolveSkinKey(showcaseSkin)]?.abilityLabel && (
-                        <span className="badge badge--ocean-ability">
-                          🌊 {LUDO_SKIN_META[resolveSkinKey(showcaseSkin)].abilityLabel}
-                        </span>
-                      )}
+                      {(() => {
+                        const abilityMeta = LUDO_SKIN_META[resolveSkinKey(showcaseSkin)];
+                        if (!abilityMeta?.abilityLabel) return null;
+                        return (
+                          <span className={`badge badge--${abilityMeta.abilityTone || 'ocean'}-ability`}>
+                            {abilityMeta.abilityIcon || '🌊'} {abilityMeta.abilityLabel}
+                          </span>
+                        );
+                      })()}
                       {showcaseSkin.equipped && <span className="badge badge--success">✓ Terpasang</span>}
                     </div>
                     <h2>{showcaseSkin.name}</h2>
@@ -1848,7 +1852,8 @@ export default function ShopModal({
                   {visibleSkins.map(skin => {
                     const isBusy = skinActionId === skin.id;
                     const canAfford = diamonds >= Number(skin.priceDiamonds);
-                    const abilityLabel = LUDO_SKIN_META[resolveSkinKey(skin)]?.abilityLabel || null;
+                    const abilityMeta = LUDO_SKIN_META[resolveSkinKey(skin)] || null;
+                    const abilityLabel = abilityMeta?.abilityLabel || null;
                     return (
                       <li
                         key={skin.id}
@@ -1863,7 +1868,9 @@ export default function ShopModal({
                               {skin.rarity}
                             </span>
                             {abilityLabel && (
-                              <span className="badge badge--ocean-ability">🌊 {abilityLabel}</span>
+                              <span className={`badge badge--${abilityMeta?.abilityTone || 'ocean'}-ability`}>
+                                {abilityMeta?.abilityIcon || '🌊'} {abilityLabel}
+                              </span>
                             )}
                             {skin.equipped ? (
                               <span className="badge badge--success">✓ DIPAKAI</span>

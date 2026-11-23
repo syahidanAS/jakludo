@@ -278,11 +278,68 @@ function registerSocketHandlers(io) {
     });
     on(socket, 'room:add_bot', () => {
       if (!ludoActionLimiter(socket.id)) return;
-      lobby.addBot(currentRoom(), socket.id);
+      socket.emit('room:error', 'Penambahan bot manual tidak tersedia. Undang teman atau gunakan Cari Pemain Acak.');
     });
     on(socket, 'room:remove_bot', () => {
       if (!ludoActionLimiter(socket.id)) return;
-      lobby.removeBot(currentRoom(), socket.id);
+      socket.emit('room:error', 'Penambahan bot manual tidak tersedia. Undang teman atau gunakan Cari Pemain Acak.');
+    });
+    on(socket, 'room:find_random', (payload, cb) => {
+      if (!ludoActionLimiter(socket.id)) {
+        const err = 'Terlalu banyak permintaan. Coba lagi sebentar.';
+        if (typeof cb === 'function') return cb({ ok: false, error: err });
+        return socket.emit('room:error', err);
+      }
+      const res = lobby.findRandomPlayers(currentRoom(), socket.id, payload);
+      if (typeof cb === 'function') cb(res);
+      else if (!res.ok) socket.emit('room:error', res.error);
+    });
+    on(socket, 'room:cancel_random', () => {
+      if (!ludoActionLimiter(socket.id)) return;
+      lobby.cancelRandomMatch(currentRoom(), socket.id);
+    });
+    on(socket, 'room:invite_friends', (_payload, cb) => {
+      const reply = data => { if (typeof cb === 'function') cb(data); };
+      if (!ludoActionLimiter(socket.id)) {
+        return reply({ ok: false, error: 'Terlalu banyak permintaan. Coba lagi sebentar.' });
+      }
+      const r = currentRoom();
+      if (!r || r.started) return reply({ ok: false, error: 'Room tidak tersedia atau permainan sudah dimulai.' });
+      if (r.players.length >= 4) return reply({ ok: false, error: 'Room sudah penuh.' });
+
+      const mePlayer = r.players.find(p => p.id === socket.id);
+      const senderUserId = socket.data.userId || mePlayer?.userId;
+      if (!senderUserId) {
+        return reply({ ok: false, error: 'Silakan login terlebih dahulu untuk mengundang teman.' });
+      }
+
+      const alreadyInRoom = new Set(r.players.map(p => p.userId).filter(Boolean));
+      let pool = [];
+      if (r.groupId) {
+        const detail = social.getGroupDetail(r.groupId, senderUserId);
+        if (!detail || detail.error) {
+          return reply({ ok: false, error: 'Gagal memuat daftar anggota grup.' });
+        }
+        pool = detail.members || [];
+      } else {
+        pool = social.listFriends(senderUserId).friends || [];
+      }
+
+      const targets = pool
+        .filter(u => u?.userId && u.userId !== senderUserId && !alreadyInRoom.has(u.userId) && social.isUserOnline(u.userId))
+        .slice(0, 15);
+      const fromSummary = social.userSummary(senderUserId);
+      const groupBasic = r.groupId ? social.getGroupBasic(r.groupId) : null;
+
+      for (const target of targets) {
+        social.emitToUser(target.userId, 'room:invite', {
+          code: r.code,
+          gameType: 'ludo',
+          from: fromSummary,
+          group: groupBasic
+        });
+      }
+      reply({ ok: true, invitedCount: targets.length, invitedNames: targets.map(t => t.name) });
     });
 
     on(socket, 'game:start', () => {

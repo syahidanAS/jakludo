@@ -24,6 +24,8 @@ export const LUDO_SKIN_META = {
     accent: '#0ea5e9',
     ringColor: '#bae6fd',
     glow: 'rgba(14, 165, 233, 0.55)',
+    abilityIcon: '🌊',
+    abilityTone: 'ocean',
     abilityLabel: 'Hint Langkah Terbaik'
   },
   emerald_green: {
@@ -32,7 +34,10 @@ export const LUDO_SKIN_META = {
     rarity: 'Rare',
     accent: '#10b981',
     ringColor: '#a7f3d0',
-    glow: 'rgba(16, 185, 129, 0.55)'
+    glow: 'rgba(16, 185, 129, 0.55)',
+    abilityIcon: '🛡️',
+    abilityTone: 'emerald',
+    abilityLabel: 'Anti-Eliminasi (Maks. 3)'
   },
   galaxy_purple: {
     id: 'galaxy_purple',
@@ -40,7 +45,10 @@ export const LUDO_SKIN_META = {
     rarity: 'Epic',
     accent: '#8b5cf6',
     ringColor: '#ddd6fe',
-    glow: 'rgba(139, 92, 246, 0.6)'
+    glow: 'rgba(139, 92, 246, 0.6)',
+    abilityIcon: '🛡️',
+    abilityTone: 'galaxy',
+    abilityLabel: 'Anti-Eliminasi (Maks. 3)'
   },
   fire_phoenix: {
     id: 'fire_phoenix',
