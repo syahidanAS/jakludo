@@ -44,7 +44,14 @@ const { addHistory, emitRoom, roomTimeout, clearRoomTimers } = store;
 const eventId = () => Date.now() + Math.random();
 // Sumber acak kriptografis [0, 1) untuk dadu
 const secureRandom = () => crypto.randomInt(2 ** 47) / 2 ** 47;
-const newDiceStats = () => ({ counts: [0, 0, 0, 0, 0, 0], total: 0, captureStreak: 0 });
+const newDiceStats = () => ({
+  counts: [0, 0, 0, 0, 0, 0],
+  total: 0,
+  captureStreak: 0,
+  lowRollStreak: 0,
+  stuckBaseStreak: 0,
+  blackHoleGrace: 0
+});
 
 // ==========================================
 // MULAI & SELESAI
@@ -289,6 +296,15 @@ function handleRoll(room, playerId, isAuto = false) {
     const roll = rollWeighted(diceWeights(room, currentPlayer, stats, DICE), secureRandom);
     stats.counts[roll - 1]++;
     stats.total++;
+    const pawns = room.pawns[currentPlayer.id] || [];
+    const hasActivePawn = pawns.some(v => v >= 1 && v < FINISH);
+    stats.lowRollStreak = roll <= 3 ? (stats.lowRollStreak || 0) + 1 : 0;
+    if (!hasActivePawn && pawns.some(v => v === 0)) {
+      stats.stuckBaseStreak = roll === 1 || roll === 6 ? 0 : (stats.stuckBaseStreak || 0) + 1;
+    } else {
+      stats.stuckBaseStreak = 0;
+    }
+    if ((stats.blackHoleGrace || 0) > 0) stats.blackHoleGrace = Math.max(0, stats.blackHoleGrace - 1);
     room.dice = roll;
     room.consecutiveSixes = roll === 6 ? (room.consecutiveSixes || 0) + 1 : 0;
 
@@ -497,6 +513,8 @@ function finishMove(room, player, { pawnIdx, fromVal, toVal, rollVal, captured }
 
 function suckIntoBlackHole(room, player, pawnIdx, trackPos) {
   room.pawns[player.id][pawnIdx] = 0;
+  if (!player.diceStats) player.diceStats = newDiceStats();
+  player.diceStats.blackHoleGrace = Math.max(player.diceStats.blackHoleGrace || 0, 3);
   room.lastBlackHole = { id: eventId(), playerId: player.id, pawnIdx, trackPos, color: player.color, time: Date.now() };
   addHistory(room, `🕳️ Bidak ${pawnIdx + 1} milik ${player.name} menginjak Black Hole dan tersedot kembali ke Base!`);
   room.message = `🕳️ Bidak ${player.name} tersedot Black Hole ke base!`;

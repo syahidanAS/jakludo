@@ -2398,3 +2398,28 @@ test('Fire Phoenix & Legendary Diamond menggabungkan seluruh skill (Invisible 2x
   assert.equal(restarted.players[1].skinShield.charges, 1);
   assert.equal(restarted.players[1].skinInvisible.charges, 2);
 });
+
+test('tersedot Black Hole memberi blackHoleGrace=3 pada diceStats di server (tetap tersembunyi dari payload klien)', async () => {
+  const { sockets, room } = await createRoomWith(['LuckyA', 'LuckyB']);
+  const [a] = sockets;
+  a.socket.emit('room:update_settings', { blackHole: true });
+  await wait(80);
+  a.socket.emit('game:start');
+  await waitForRoom(a.socket, r => r.started === true);
+
+  clearTimeout(room.turnTimer);
+  room.turn = 0;
+  room.dice = 1;
+  // Red val 4 -> +1 = 5 (track 4 = Black Hole)
+  room.pawns[a.playerId] = [4, 0, 0, 0];
+
+  const bhPromise = waitForRoom(
+    a.socket,
+    r => !r.animatingMove && r.lastBlackHole?.playerId === a.playerId
+  );
+  a.socket.emit('game:move', { pawn: 0 });
+  const publicState = await bhPromise;
+
+  assert.equal(room.players[0].diceStats.blackHoleGrace, 3);
+  assert.equal(publicState.players[0].diceStats, undefined);
+});

@@ -100,15 +100,33 @@ function getBlackHoles(room) {
   return Array.isArray(room.blackHoles) && room.blackHoles.length ? room.blackHoles : BLACK_HOLE_INDICES;
 }
 
+function hasBlackHoleProtection(player) {
+  return items.protectorsOf('blackHole').some(item => {
+    const stock = player?.items?.[item.id];
+    return (stock?.owned || 0) + (stock?.earned || 0) > 0;
+  });
+}
+
 // Pindahkan tiap Black Hole ke petak acak di ruasnya sendiri (ruas k = petak 10k..10k+9).
-// Petak start, petak aman, petak berisi bidak, dan posisi lama dihindari.
+// Petak start, petak aman, petak berisi bidak, dan posisi lama dihindari; jika memungkinkan juga
+// menghindari 1–6 langkah tepat di depan bidak tunggal atau pemain yang baru tersedot Black Hole.
 function relocateBlackHoles(room, random = Math.random) {
   const occupied = new Set();
+  const softAvoid = new Set();
   for (const p of room.players) {
     const colorIdx = COLORS.indexOf(p.color);
-    for (const v of room.pawns[p.id] || []) {
+    const pawns = room.pawns[p.id] || [];
+    const activeCount = pawns.filter(v => v >= 1 && v <= 39).length;
+    const protectAhead = !p.isOut && (activeCount <= 1 || (p.diceStats?.blackHoleGrace || 0) > 0);
+    for (const v of pawns) {
       const t = getTrackIndex(colorIdx, v);
       if (t !== null) occupied.add(t);
+      if (protectAhead && v >= 1 && v <= 39) {
+        for (let step = 1; step <= 6 && v + step <= 39; step++) {
+          const ahead = getTrackIndex(colorIdx, v + step);
+          if (ahead !== null) softAvoid.add(ahead);
+        }
+      }
     }
   }
   const current = getBlackHoles(room);
@@ -121,7 +139,9 @@ function relocateBlackHoles(room, random = Math.random) {
     }
     // Ruas penuh bidak: Black Hole tetap di tempat lamanya
     if (candidates.length === 0) return current[segment];
-    return candidates[Math.floor(random() * candidates.length)];
+    const preferred = candidates.filter(t => !softAvoid.has(t));
+    const pool = preferred.length > 0 ? preferred : candidates;
+    return pool[Math.floor(random() * pool.length)];
   });
 }
 
@@ -194,10 +214,7 @@ function evaluateMove(room, player, pawnIdx, dice) {
   score -= riskNext * pawnWorth(to) * AI.riskWeight;
 
   if (room.settings?.blackHole && toTrack !== null && getBlackHoles(room).includes(toTrack)) {
-    const shielded = items.protectorsOf('blackHole').some(item => {
-      const stock = player.items?.[item.id];
-      return (stock?.owned || 0) + (stock?.earned || 0) > 0;
-    });
+    const shielded = hasBlackHoleProtection(player);
     score -= shielded ? AI.shieldCost : AI.blackHole + pawnWorth(to);
   }
 
@@ -283,18 +300,78 @@ function captureFaces(room, player) {
   return faces;
 }
 
+// Angka dadu (1-6) yang membuat semua bidak valid milik pemain terpaksa masuk Black Hole tanpa perisai
+function forcedBlackHoleFaces(room, player) {
+  const faces = new Set();
+  if (!room?.settings?.blackHole || !player || hasBlackHoleProtection(player)) return faces;
+  const pawns = room.pawns?.[player.id] || [];
+  const colorIdx = COLORS.indexOf(player.color);
+  if (colorIdx === -1) return faces;
+  const holes = new Set(getBlackHoles(room));
+
+  for (let face = 1; face <= 6; face++) {
+    const movable = getMovablePawns(room, player, face);
+    if (movable.length === 0) continue;
+    const allTrap = movable.every(idx => {
+      const from = pawns[idx];
+      const to = from === 0 ? 1 : from + face;
+      if (to > 39) return false;
+      const track = getTrackIndex(colorIdx, to);
+      return track !== null && holes.has(track);
+    });
+    if (allTrap) faces.add(face);
+  }
+  return faces;
+}
+
 // Bobot tiap angka untuk lemparan berikutnya:
-// 1. Koreksi defisit (beta): angka yang kurang keluar di permainan ini sedikit lebih mungkin muncul,
-//    sehingga nasib buruk beruntun ditekan tapi peluang jangka panjang tetap 1/6.
-// 2. Dorongan makan (gamma) yang meluruh: angka yang bisa memakan lawan dikali
-//    (1 + gamma) x chainDecay^streak, streak = berapa kali pemain ini makan berturut-turut.
-//    Dengan gamma 0.1 dan chainDecay 0.5: 1.1 -> 0.55 -> 0.275 -> 0.1375, jadi makan pertama
-//    hanya sedikit didorong, makan kedua sudah di bawah normal, dan makan ketiga jarang terjadi.
-//    Kenaikan peluang dibatasi maxAdd (mis. 0.02 = 2 poin persen).
-// stats = { counts: [6 angka], total, captureStreak } milik pemain di permainan ini.
-function diceWeights(room, player, stats, { beta = 0, gamma = 0, maxAdd = 1, chainDecay = 1 } = {}) {
+// 1. Koreksi defisit (beta): angka yang kurang keluar di permainan ini sedikit lebih mungkin muncul.
+// 2. Anti-bad-luck ringan: saat dadu kecil beruntun (<=3) atau tertahan lama di markas, dorong angka besar / 1&6.
+// 3. Anti-frustrasi Black Hole: saat baru tersedot Black Hole, kurangi bobot angka yang memaksa masuk lubang lagi.
+// 4. Dorongan makan (gamma) yang meluruh (chainDecay^captureStreak), dibatasi maxAdd.
+function diceWeights(
+  room,
+  player,
+  stats,
+  {
+    beta = 0,
+    gamma = 0,
+    maxAdd = 1,
+    chainDecay = 1,
+    lowStreakThreshold = 0,
+    lowStreakBoost = 0,
+    stuckBaseThreshold = 0,
+    stuckBaseBoost = 0,
+    blackHoleGracePenalty = 0
+  } = {}
+) {
   const expected = stats.total / 6;
   const weights = stats.counts.map(c => Math.exp(beta * (expected - c)));
+
+  if (lowStreakThreshold > 0 && lowStreakBoost > 0 && (stats.lowRollStreak || 0) >= lowStreakThreshold) {
+    const steps = Math.min(3, stats.lowRollStreak - lowStreakThreshold + 1);
+    const boost = 1 + steps * lowStreakBoost;
+    for (const face of [4, 5, 6]) weights[face - 1] *= boost;
+  }
+
+  if (stuckBaseThreshold > 0 && stuckBaseBoost > 0 && (stats.stuckBaseStreak || 0) >= stuckBaseThreshold) {
+    const pawns = room?.pawns?.[player?.id] || [];
+    if (pawns.some(v => v === 0) && !pawns.some(v => v >= 1 && v < FINISH)) {
+      const steps = Math.min(3, stats.stuckBaseStreak - stuckBaseThreshold + 1);
+      const boost = 1 + steps * stuckBaseBoost;
+      weights[0] *= boost;
+      weights[5] *= boost;
+    }
+  }
+
+  if (blackHoleGracePenalty > 0 && (stats.blackHoleGrace || 0) > 0) {
+    const traps = forcedBlackHoleFaces(room, player);
+    if (traps.size > 0 && traps.size < 6) {
+      const factor = Math.max(0.15, 1 - blackHoleGracePenalty);
+      for (const face of traps) weights[face - 1] *= factor;
+    }
+  }
+
   const mult = (1 + gamma) * Math.pow(chainDecay, stats.captureStreak || 0);
   if (mult === 1) return weights;
 
@@ -342,6 +419,7 @@ module.exports = {
   chooseBestPawn,
   rankPlayers,
   captureFaces,
+  forcedBlackHoleFaces,
   diceWeights,
   rollWeighted,
   isPawnIndex

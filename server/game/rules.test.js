@@ -421,3 +421,54 @@ test('Ocean Blue hint #1 konsisten dengan chooseBestPawn pada skenario taktis ut
     assert.equal(hintBest, botBest);
   }
 });
+
+// ---------- Proteksi Anti-Bad-Luck & Anti-Frustrasi Black Hole ----------
+
+test('anti-bad-luck dadu ringan mendorong angka besar setelah dadu kecil beruntun & angka 1/6 saat tertahan di markas', () => {
+  const room = makeRoom({ a: [0, 0, 0, 0], b: [10, 0, 0, 0] });
+  const cfg = { lowStreakThreshold: 3, lowStreakBoost: 0.25, stuckBaseThreshold: 3, stuckBaseBoost: 0.35 };
+
+  // 1. Dadu kecil beruntun (<=3) selama 3x dan belum punya bidak di papan -> 4,5,6 + 1,6 terdorong
+  const statsBoth = { ...freshStats(), lowRollStreak: 3, stuckBaseStreak: 3 };
+  const wBoth = diceWeights(room, room.players[0], statsBoth, cfg);
+  assert.ok(share(wBoth, [4, 5, 6]) > 0.5, 'angka besar 4-6 lebih tinggi saat dadu kecil beruntun');
+  assert.ok(share(wBoth, [1, 6]) > 1 / 3, 'angka keluar markas 1 & 6 lebih tinggi saat tertahan di markas');
+
+  // 2. Saat sudah ada bidak di papan, stuckBaseBoost tidak aktif meski stuckBaseStreak tinggi
+  const activeRoom = makeRoom({ a: [10, 0, 0, 0], b: [20, 0, 0, 0] });
+  const wActive = diceWeights(activeRoom, activeRoom.players[0], { ...freshStats(), stuckBaseStreak: 5 }, cfg);
+  assert.deepEqual(wActive, [1, 1, 1, 1, 1, 1]);
+});
+
+test('anti-frustrasi Black Hole mengurangi peluang angka yang memaksa masuk lubang & relocateBlackHoles menghindar', () => {
+  const { forcedBlackHoleFaces, relocateBlackHoles } = require('./rules');
+  // Merah (offset 0) hanya 1 bidak di val 2 (track 1); Black Hole di track 4 -> angka 3 memaksa masuk lubang
+  const room = makeRoom({ a: [2, 0, 0, 0], b: [0, 0, 0, 0] }, { safeZones: true, blackHole: true });
+  const p = room.players[0];
+
+  assert.deepEqual([...forcedBlackHoleFaces(room, p)], [3]);
+
+  const wGrace = diceWeights(
+    room,
+    p,
+    { ...freshStats(), blackHoleGrace: 2 },
+    { blackHoleGracePenalty: 0.55 }
+  );
+  assert.ok(share(wGrace, [3]) < 1 / 6, 'peluang angka jebakan Black Hole diturunkan saat masa grace');
+
+  // Jika ada bidak lain yg aman dijalankan (mis. val 6 -> track 5..11 tidak masuk lubang), angka 3 tidak dianggap memaksa
+  room.pawns.a[1] = 6;
+  assert.equal(forcedBlackHoleFaces(room, p).size, 0);
+
+  // Jika punya Blackhole Shield, juga tidak dikurangi
+  room.pawns.a[1] = 0;
+  p.items = { blackholeShield: { owned: 1, earned: 0 } };
+  assert.equal(forcedBlackHoleFaces(room, p).size, 0);
+
+  // Mode acak: relocateBlackHoles menghindari 1..6 petak di depan bidak tunggal pemain tertinggal
+  // Merah punya 1 bidak di val 2 (track 1); 1..6 langkah ke depan di ruas 0 adalah track 2,3,4,5,6(star),7 -> aman tersisa di ruas 0: 8, 9 (0=start,1=occupied,4=old)
+  const relocRoom = makeRoom({ a: [2, 0, 0, 0], b: [0, 0, 0, 0] }, { safeZones: true, blackHole: true });
+  relocRoom.blackHoles = [4, 14, 24, 34];
+  const nextHoles = relocateBlackHoles(relocRoom, () => 0);
+  assert.ok([8, 9].includes(nextHoles[0]), `ruas 0 memilih ${nextHoles[0]} di luar jangkauan 1-6 langkah di depan bidak tunggal`);
+});
