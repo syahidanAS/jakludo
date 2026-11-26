@@ -25,6 +25,16 @@ function nextFreeColor(players) {
   return COLORS.find(c => !used.has(c)) || null;
 }
 
+// Urutkan daftar pemain mengikuti arah jarum jam papan: red -> green -> yellow -> blue
+function sortPlayersByColorOrder(players) {
+  if (!Array.isArray(players)) return [];
+  return players.sort((a, b) => {
+    const ia = COLORS.indexOf(a?.color);
+    const ib = COLORS.indexOf(b?.color);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+}
+
 // Perlindungan bidak di sebuah petak lintasan:
 // - Petak start (kotak pertama di luar markas) hanya aman bagi pemilik warnanya, selalu.
 //   Bidak warna lain yang singgah di sana bisa dimakan, termasuk oleh pemiliknya yang baru keluar markas.
@@ -409,6 +419,7 @@ module.exports = {
   FINISH,
   getTrackIndex,
   nextFreeColor,
+  sortPlayersByColorOrder,
   canPawnMove,
   getMovablePawns,
   isPawnProtected,

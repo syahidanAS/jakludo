@@ -2423,3 +2423,56 @@ test('tersedot Black Hole memberi blackHoleGrace=3 pada diceStats di server (tet
   assert.equal(room.players[0].diceStats.blackHoleGrace, 3);
   assert.equal(publicState.players[0].diceStats, undefined);
 });
+
+test('urutan giliran tetap searah jarum jam (red -> green -> yellow -> blue) meski kursi tengah lobby keluar dan digantikan pemain baru', async () => {
+  const engine = require('./game/engine');
+  const { code, sockets, room } = await createRoomWith(['TurnA', 'TurnB', 'TurnC', 'TurnD']);
+  assert.deepEqual(room.players.map(p => p.color), ['red', 'green', 'yellow', 'blue']);
+
+  // Pemain kursi ke-2 (green) keluar di lobby, lalu pemain baru E bergabung (mendapat warna green)
+  const leftGreen = once(sockets[0].socket, 'room:update');
+  sockets[1].socket.emit('room:leave', {});
+  await leftGreen;
+  assert.deepEqual(room.players.map(p => p.color), ['red', 'yellow', 'blue']);
+
+  const sockE = await connect();
+  const joinedE = once(sockE, 'room:joined');
+  sockE.emit('room:join', { code, name: 'TurnE' });
+  await joinedE;
+
+  assert.deepEqual(room.players.map(p => p.color), ['red', 'green', 'yellow', 'blue']);
+
+  const startPromise = waitForRoom(sockets[0].socket, r => r.started === true);
+  sockets[0].socket.emit('game:start');
+  await startPromise;
+
+  const seenColors = [room.players[room.turn].color];
+  for (let i = 0; i < 4; i++) {
+    clearTimeout(room.turnTimer);
+    engine.advanceTurn(room);
+    seenColors.push(room.players[room.turn].color);
+  }
+  assert.deepEqual(seenColors, ['red', 'green', 'yellow', 'blue', 'red']);
+});
+
+test('triggerTurn tidak menjadwalkan timer tumpang tindih saat passTimer masih aktif', async () => {
+  const engine = require('./game/engine');
+  const { sockets, room } = await createRoomWith(['PassA', 'PassB']);
+  const [a] = sockets;
+  a.socket.emit('game:start');
+  await waitForRoom(a.socket, r => r.started === true);
+
+  clearTimeout(room.turnTimer);
+  room.turnTimer = null;
+  room.turnClock = null;
+
+  let fired = false;
+  room.passTimer = setTimeout(() => { fired = true; }, 5000);
+  engine.triggerTurn(room);
+
+  assert.equal(room.turnTimer, null, 'triggerTurn wajib menunda penjadwalan timer selama passTimer berjalan');
+  assert.equal(room.turnClock, null, 'turnClock tidak boleh muncul saat passTimer aktif');
+  clearTimeout(room.passTimer);
+  room.passTimer = null;
+  assert.equal(fired, false);
+});

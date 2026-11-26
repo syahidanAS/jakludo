@@ -5,7 +5,7 @@ const inventory = require('./inventory');
 const store = require('./store');
 const engine = require('./engine');
 const social = require('../social/store');
-const { nextFreeColor } = require('./rules');
+const { nextFreeColor, sortPlayersByColorOrder } = require('./rules');
 const { MAX_PLAYERS, BOT_NAMES, MATCHMAKING_TIMEOUT_MS } = require('./config');
 const { createOrganicBotPlayer } = require('./organicBots');
 
@@ -126,6 +126,7 @@ function joinRoom(socket, code, payload) {
     room.creatorSessionId = player.sessionId;
   }
   room.players.push(player);
+  sortPlayersByColorOrder(room.players);
   room.pawns[socket.id] = [0, 0, 0, 0];
   store.cancelCleanup(room);
   socket.join(room.code);
@@ -176,6 +177,22 @@ function rejoinPlayer(socket, room, player, user) {
     if (room.matchResult?.awards && room.matchResult.awards[oldSocketId]) {
       room.matchResult.awards[socket.id] = room.matchResult.awards[oldSocketId];
       delete room.matchResult.awards[oldSocketId];
+    }
+    if (room.animatingMove?.playerId === oldSocketId) {
+      room.animatingMove.playerId = socket.id;
+    }
+    if (room.pendingShield) {
+      if (room.pendingShield.playerId === oldSocketId) room.pendingShield.playerId = socket.id;
+      if (room.pendingShield.attackerId === oldSocketId) room.pendingShield.attackerId = socket.id;
+      if (room.pendingShield.resume) {
+        if (room.pendingShield.resume.playerId === oldSocketId) room.pendingShield.resume.playerId = socket.id;
+        if (room.pendingShield.resume.attackerId === oldSocketId) room.pendingShield.resume.attackerId = socket.id;
+        if (Array.isArray(room.pendingShield.resume.victims)) {
+          for (const v of room.pendingShield.resume.victims) {
+            if (v?.playerId === oldSocketId) v.playerId = socket.id;
+          }
+        }
+      }
     }
   }
 
@@ -309,6 +326,7 @@ function mergeRoomInto(sourceRoom, targetRoom) {
       });
     }
   }
+  sortPlayersByColorOrder(targetRoom.players);
   store.cancelCleanup(targetRoom);
   store.removeRoomQuietly(sourceRoom);
 }
@@ -339,6 +357,7 @@ function completeMatchmakingWithFallback(room) {
     }
   }
 
+  sortPlayersByColorOrder(room.players);
   startMatchedRoom(room);
 }
 

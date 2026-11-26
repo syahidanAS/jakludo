@@ -27,6 +27,7 @@ const {
   COLORS,
   FINISH,
   getTrackIndex,
+  sortPlayersByColorOrder,
   canPawnMove,
   getMovablePawns,
   chooseBestPawn,
@@ -75,6 +76,7 @@ function startGame(r) {
   store.cancelCleanup(r);
   store.resetRoomEvents(r);
   r.started = true;
+  sortPlayersByColorOrder(r.players);
   r.turn = 0;
   r.blackHoles = r.settings.blackHole && r.settings.blackHoleMode === 'random' ? relocateBlackHoles(r) : null;
   r.turnsSinceBlackHoleShift = 0;
@@ -179,7 +181,7 @@ function shiftBlackHolesEachRound(room, activeCount) {
 
 // Jadwalkan aksi berikutnya untuk pemain yang sedang mendapat giliran
 function triggerTurn(room, { preserveClock = false } = {}) {
-  if (!room || !room.started || room.winner || room.rolling || room.animatingMove) return;
+  if (!room || !room.started || room.winner || room.rolling || room.animatingMove || room.passTimer) return;
   // Permainan berhenti sampai pemilik perisai memutuskan (timer dipasang ulang setelah server restart)
   if (room.pendingShield) {
     armShieldTimer(room);
@@ -280,6 +282,11 @@ function handleRoll(room, playerId, isAuto = false) {
   if (room.dice !== null || room.rolling || room.animatingMove || room.pendingShield) return;
 
   if (room.turnTimer) clearTimeout(room.turnTimer);
+  if (room.botTimeout) clearTimeout(room.botTimeout);
+  if (room.passTimer) clearTimeout(room.passTimer);
+  room.turnTimer = null;
+  room.botTimeout = null;
+  room.passTimer = null;
   room.turnClock = null;
   if (!isAuto && !currentPlayer.isBot) currentPlayer.autoPlayCount = 0;
 
@@ -289,7 +296,9 @@ function handleRoll(room, playerId, isAuto = false) {
 
   if (room.rollTimer) clearTimeout(room.rollTimer);
   room.rollTimer = roomTimeout(room, () => {
+    room.rollTimer = null;
     room.rolling = false;
+    if (!room.started || room.winner || room.players[room.turn]?.id !== currentPlayer.id || currentPlayer.isOut) return;
     // Room dari snapshot lama belum punya catatan lemparan
     if (!currentPlayer.diceStats) currentPlayer.diceStats = newDiceStats();
     const stats = currentPlayer.diceStats;
@@ -329,6 +338,8 @@ function handleRoll(room, playerId, isAuto = false) {
       emitRoom(room);
       if (room.passTimer) clearTimeout(room.passTimer);
       room.passTimer = roomTimeout(room, () => {
+        room.passTimer = null;
+        if (!room.started || room.winner || room.players[room.turn]?.id !== currentPlayer.id || currentPlayer.isOut) return;
         if (!bonus) return advanceTurn(room);
         room.dice = null;
         emitRoom(room);
@@ -362,6 +373,11 @@ function handleMove(room, playerId, pawnIdx, isAuto = false) {
   if (!canPawnMove(room, player, pawnIdx, room.dice)) return;
 
   if (room.turnTimer) clearTimeout(room.turnTimer);
+  if (room.botTimeout) clearTimeout(room.botTimeout);
+  if (room.passTimer) clearTimeout(room.passTimer);
+  room.turnTimer = null;
+  room.botTimeout = null;
+  room.passTimer = null;
   room.turnClock = null;
   if (!isAuto && !player.isBot) player.autoPlayCount = 0;
 
@@ -385,7 +401,9 @@ function handleMove(room, playerId, pawnIdx, isAuto = false) {
   // Efek langkah diproses setelah animasi di klien selesai
   if (room.moveTimer) clearTimeout(room.moveTimer);
   room.moveTimer = roomTimeout(room, () => {
+    room.moveTimer = null;
     room.animatingMove = null;
+    if (!room.started || room.winner) return;
     const move = { pawnIdx, fromVal, toVal, rollVal, captured: false };
     const victims = findCapturableVictims(room, player, toVal);
     processMoveCaptures(room, player, move, victims, 0);

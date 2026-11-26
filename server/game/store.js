@@ -4,7 +4,7 @@ const inventory = require('./inventory');
 const { publicSkinShield, publicSkinInvisible, isSkinInvisibleActive, isPlayerInvisibleTo } = require('./skinSkills');
 const social = require('../social/store');
 const adminSpectator = require('../admin/spectator');
-const { getMovablePawns, getBlackHoles } = require('./rules');
+const { getMovablePawns, getBlackHoles, sortPlayersByColorOrder } = require('./rules');
 const { ROOM_IDLE_TTL_MS, ROOM_SAVE_DELAY_MS, LOBBY_SEAT_GRACE_MS, MAX_HISTORY } = require('./config');
 
 const rooms = new Map();
@@ -270,12 +270,18 @@ function restoreRooms({ onResume }) {
       cleanupTimer: null
     };
     room.matchmaking = null;
+    const activeTurnId = room.started ? room.players[room.turn]?.id : null;
     for (const p of room.players) {
       inventory.normalizeLegacy(p);
       if (!p.isBot) {
         p.connected = false;
         p.disconnectedAt = now;
       }
+    }
+    sortPlayersByColorOrder(room.players);
+    if (activeTurnId) {
+      const idx = room.players.findIndex(p => p.id === activeTurnId);
+      if (idx !== -1) room.turn = idx;
     }
     delete room.lastShieldProtect;
     delete room.lastForceReturnReady;

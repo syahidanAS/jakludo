@@ -472,3 +472,18 @@ test('anti-frustrasi Black Hole mengurangi peluang angka yang memaksa masuk luba
   const nextHoles = relocateBlackHoles(relocRoom, () => 0);
   assert.ok([8, 9].includes(nextHoles[0]), `ruas 0 memilih ${nextHoles[0]} di luar jangkauan 1-6 langkah di depan bidak tunggal`);
 });
+
+test('sortPlayersByColorOrder mengurutkan pemain mengikuti arah jarum jam red -> green -> yellow -> blue', () => {
+  const { sortPlayersByColorOrder } = require('./rules');
+  const players = [
+    { id: '1', color: 'red' },
+    { id: '3', color: 'yellow' },
+    { id: '4', color: 'blue' },
+    { id: '2', color: 'green' }
+  ];
+  sortPlayersByColorOrder(players);
+  assert.deepEqual(
+    players.map(p => p.color),
+    ['red', 'green', 'yellow', 'blue']
+  );
+});
