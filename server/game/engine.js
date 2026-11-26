@@ -8,13 +8,20 @@ const social = require('../social/store');
 const {
   MAX_SKIN_SHIELD_CHARGES,
   SKIN_ANTI_ELIMINATION_ID,
+  MAX_SKIN_INVISIBLE_CHARGES,
+  SKIN_INVISIBLE_ID,
   resolveSkinKey,
   skinDisplayName,
   canUseSkinAntiElimination,
+  hasInvisibleSkin,
+  isSkinInvisibleActive,
+  canUseSkinInvisible,
   initPlayerSkinSkill,
   clearPlayerSkinSkill,
   rechargeSkinAntiElimination,
-  consumeSkinAntiElimination
+  consumeSkinAntiElimination,
+  consumeSkinInvisible,
+  expireSkinInvisible
 } = require('./skinSkills');
 const {
   COLORS,
@@ -142,7 +149,9 @@ function advanceTurn(room) {
   room.consecutiveSixes = 0;
   const holesShifted = shiftBlackHolesEachRound(room, activePlayers.length);
   const nextPlayer = room.players[room.turn];
-  room.message = `Giliran ${nextPlayer.name}${nextPlayer.autoPlayCount > 0 ? ` (Auto-Play ${nextPlayer.autoPlayCount}/${MAX_AUTO_PLAY})` : ''}.${holesShifted ? ' 🕳️ Black Hole pindah tempat!' : ''}`;
+  const invisibleEnded = expireSkinInvisible(nextPlayer);
+  if (invisibleEnded) addHistory(room, `👁️ Efek Invisible ${nextPlayer.name} berakhir. Bidaknya kembali terlihat.`);
+  room.message = `Giliran ${nextPlayer.name}${nextPlayer.autoPlayCount > 0 ? ` (Auto-Play ${nextPlayer.autoPlayCount}/${MAX_AUTO_PLAY})` : ''}.${holesShifted ? ' 🕳️ Black Hole pindah tempat!' : ''}${invisibleEnded ? ' 👁️ Invisible berakhir.' : ''}`;
 
   emitRoom(room);
   triggerTurn(room);
@@ -232,6 +241,7 @@ function executeAutoPlay(room, player) {
   const offlineTooLong = !player.connected && Date.now() - (player.disconnectedAt || 0) >= OFFLINE_OUT_MS;
   if ((player.autoPlayCount || 0) >= MAX_AUTO_PLAY && (player.connected || offlineTooLong)) {
     player.isOut = true;
+    expireSkinInvisible(player);
     player.autoPlayCount = MAX_AUTO_PLAY;
     addHistory(room, `❌ ${player.name} dinyatakan OUT (batas ${MAX_AUTO_PLAY}x auto-play tercapai tanpa respon).`);
     room.message = `❌ ${player.name} dinyatakan OUT!`;
@@ -351,7 +361,9 @@ function handleMove(room, playerId, pawnIdx, isAuto = false) {
   room.lastGoal = null;
 
   pawns[pawnIdx] = toVal;
-  room.message = `${player.name} memajukan bidak ${pawnIdx + 1} (${steps} langkah)...`;
+  room.message = isSkinInvisibleActive(player)
+    ? `👻 ${player.name} melangkah secara tersembunyi...`
+    : `${player.name} memajukan bidak ${pawnIdx + 1} (${steps} langkah)...`;
   emitRoom(room);
 
   // Efek langkah diproses setelah animasi di klien selesai
@@ -397,6 +409,7 @@ function findCapturableVictims(room, player, toVal) {
 function executeStompCapture(room, attacker, victim, pawnIdx, trackPos) {
   const oppPawns = room.pawns[victim.id];
   if (!oppPawns) return false;
+  const wasInvisible = isSkinInvisibleActive(victim);
   oppPawns[pawnIdx] = 0;
   room.lastCapture = {
     id: eventId(),
@@ -406,9 +419,15 @@ function executeStompCapture(room, attacker, victim, pawnIdx, trackPos) {
     defenderId: victim.id,
     color: victim.color,
     defenderIsOut: !!victim.isOut,
+    wasInvisible,
     trackPos
   };
-  addHistory(room, `⚔️ ${attacker.name} memakan bidak ${victim.name}${victim.isOut ? ' (pemain out)' : ''}!`);
+  addHistory(
+    room,
+    wasInvisible
+      ? `⚔️ ${attacker.name} menginjak bidak tersembunyi (Invisible) milik ${victim.name}${victim.isOut ? ' (pemain out)' : ''}!`
+      : `⚔️ ${attacker.name} memakan bidak ${victim.name}${victim.isOut ? ' (pemain out)' : ''}!`
+  );
   runItemHooks(room, attacker, 'capture', { victim, pawnIdx });
   return true;
 }
@@ -574,6 +593,10 @@ function resolveOpponentPawn(socket, room, actor, target) {
   const targetPlayer = typeof target?.playerId === 'string' ? room.players.find(p => p.id === target.playerId) : null;
   if (!targetPlayer || targetPlayer.id === actor.id) {
     socket.emit('room:error', 'Pemain target tidak valid.');
+    return null;
+  }
+  if (isSkinInvisibleActive(targetPlayer)) {
+    socket.emit('room:error', 'Bidak lawan sedang tidak terlihat (Invisible) dan tidak bisa ditarget.');
     return null;
   }
   const pawns = room.pawns[targetPlayer.id];
@@ -819,6 +842,47 @@ function resolvePendingShield(room, use, { timedOut = false } = {}) {
   triggerTurn(room);
 }
 
+function useSkinSkill(socket, room, { skill } = {}) {
+  if (skill !== 'invisible') return socket.emit('room:error', 'Skill skin tidak dikenal.');
+  const player = currentActor(socket, room);
+  if (!player) return;
+
+  if (!player.skinInvisibleEnabled || !hasInvisibleSkin(player.equippedSkin)) {
+    return socket.emit('room:error', 'Skin aktifmu tidak memiliki skill Invisible.');
+  }
+  if (isSkinInvisibleActive(player)) {
+    return socket.emit('room:error', 'Skill Invisible sedang aktif.');
+  }
+  if (!canUseSkinInvisible(player)) {
+    return socket.emit('room:error', 'Skill Invisible hanya bisa digunakan 2 kali per permainan.');
+  }
+
+  if (!consumeSkinInvisible(player)) {
+    return socket.emit('room:error', 'Skill Invisible gagal diaktifkan.');
+  }
+
+  const skinKey = resolveSkinKey(player.equippedSkin);
+  const skinName = skinDisplayName(player.equippedSkin);
+  const remaining = Math.max(0, Number(player.skinInvisibleCharges || 0));
+
+  addHistory(room, `👻 INVISIBLE (${skinName})! Bidak ${player.name} kini tidak terlihat musuh sampai giliran berikutnya. (Sisa skill: ${remaining}/${MAX_SKIN_INVISIBLE_CHARGES})`);
+  room.message = `👻 ${player.name} mengaktifkan Invisible (${skinName})! Bidaknya tidak terlihat musuh.`;
+  room.lastItemEvent = {
+    id: eventId(),
+    itemId: SKIN_INVISIBLE_ID,
+    skinKey,
+    icon: '👻',
+    sound: 'chime',
+    title: 'INVISIBLE AKTIF!',
+    text: `Bidak ${player.name} tidak terlihat oleh musuh sampai giliran berikutnya (Sisa: ${remaining}/${MAX_SKIN_INVISIBLE_CHARGES}).`,
+    playerId: player.id,
+    playerName: player.name,
+    fx: null
+  };
+  emitRoom(room);
+  triggerTurn(room, { preserveClock: true });
+}
+
 module.exports = {
   startGame,
   restartGame,
@@ -829,6 +893,7 @@ module.exports = {
   handleRoll,
   handleMove,
   useItem,
+  useSkinSkill,
   decideShield,
   resolvePendingShield
 };

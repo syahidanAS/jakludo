@@ -9,8 +9,9 @@ export default function Scoreboard({ room, playerId, currentTurnPlayer }) {
       <ul className="scoreboard__players">
         {room.players.map(p => {
           const pawns = room.pawns?.[p.id] || [0, 0, 0, 0];
+          const hiddenFromMe = p.id !== playerId && p.skinInvisible?.isInvisible;
           const home = pawns.filter(v => v === 0).length;
-          const track = pawns.filter(v => v > 0 && v < 44).length;
+          const track = pawns.filter(v => typeof v === 'number' && v > 0 && v < 44).length;
           const done = pawns.filter(v => v === 44).length;
           const offline = !p.isBot && p.connected === false;
           return (
@@ -32,9 +33,18 @@ export default function Scoreboard({ room, playerId, currentTurnPlayer }) {
                   {!p.isOut && p.autoPlayCount > 0 && <span className="badge badge--info">Auto {p.autoPlayCount}/3</span>}
                 </span>
               </span>
-              <span className="score-row__pawns" aria-label={`${home} di markas, ${track} di lintasan, ${done} finish`}>
-                <span title="Di markas">🏠 {home}</span>
-                <span title="Di lintasan">🏃 {track}</span>
+              <span
+                className="score-row__pawns"
+                aria-label={hiddenFromMe ? `Posisi bidak tersembunyi, ${done} finish` : `${home} di markas, ${track} di lintasan, ${done} finish`}
+              >
+                {hiddenFromMe ? (
+                  <span title="Invisible aktif">👻 Tersembunyi</span>
+                ) : (
+                  <>
+                    <span title="Di markas">🏠 {home}</span>
+                    <span title="Di lintasan">🏃 {track}</span>
+                  </>
+                )}
                 <strong title="Finish">★ {done}/4</strong>
               </span>
             </li>

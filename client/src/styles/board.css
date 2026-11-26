@@ -185,6 +185,54 @@
   background: rgba(139, 92, 246, 0.22);
 }
 
+.hud-tag.skin-invisible-tag--gold {
+  background: rgba(245, 158, 11, 0.16);
+  color: #b45309;
+  border: 1px solid rgba(245, 158, 11, 0.55);
+}
+
+:root[data-theme='dark'] .hud-tag.skin-invisible-tag--gold {
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.22);
+}
+
+.hud-tag.skin-invisible-tag--ruby {
+  background: rgba(244, 63, 94, 0.16);
+  color: #be123c;
+  border: 1px solid rgba(244, 63, 94, 0.55);
+}
+
+:root[data-theme='dark'] .hud-tag.skin-invisible-tag--ruby {
+  color: #fda4af;
+  background: rgba(244, 63, 94, 0.22);
+}
+
+.hud-tag.skin-shield-tag--phoenix,
+.hud-tag.skin-invisible-tag--phoenix {
+  background: rgba(249, 115, 22, 0.16);
+  color: #c2410c;
+  border: 1px solid rgba(249, 115, 22, 0.55);
+}
+
+:root[data-theme='dark'] .hud-tag.skin-shield-tag--phoenix,
+:root[data-theme='dark'] .hud-tag.skin-invisible-tag--phoenix {
+  color: #fdba74;
+  background: rgba(249, 115, 22, 0.22);
+}
+
+.hud-tag.skin-shield-tag--diamond,
+.hud-tag.skin-invisible-tag--diamond {
+  background: rgba(56, 189, 248, 0.16);
+  color: #0369a1;
+  border: 1px solid rgba(56, 189, 248, 0.55);
+}
+
+:root[data-theme='dark'] .hud-tag.skin-shield-tag--diamond,
+:root[data-theme='dark'] .hud-tag.skin-invisible-tag--diamond {
+  color: #7dd3fc;
+  background: rgba(56, 189, 248, 0.22);
+}
+
 .hud-sub-row {
   font-size: var(--fs-xs);
   color: var(--text-3);
@@ -197,6 +245,14 @@
 .hud-out-tag,
 .hud-offline-tag { color: var(--danger); font-weight: 700; }
 .hud-auto-tag { color: var(--info); font-weight: 700; }
+.hud-invisible-tag { color: #b45309; font-weight: 700; }
+:root[data-theme='dark'] .hud-invisible-tag { color: #fcd34d; }
+
+.pawn-token.pawn-invisible-self {
+  opacity: 0.58;
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.85), 0 0 12px rgba(251, 191, 36, 0.5);
+  filter: saturate(0.85) drop-shadow(0 0 4px rgba(255, 255, 255, 0.55));
+}
 
 /* ---------- Grid papan ---------- */
 
@@ -239,10 +295,10 @@
   overflow: hidden;
 }
 
-.base-green { background: #2ec246; }
-.base-yellow { background: #ffc72c; }
-.base-red { background: #ef4444; }
-.base-blue { background: #1e75d8; }
+.base-green { background: #2ec246; --base-team: #2ec246; }
+.base-yellow { background: #ffc72c; --base-team: #ffc72c; }
+.base-red { background: #ef4444; --base-team: #ef4444; }
+.base-blue { background: #1e75d8; --base-team: #1e75d8; }
 
 .board-base.base-active-turn {
   box-shadow: inset 0 0 0 3px #ffffff;
@@ -254,6 +310,7 @@
 }
 
 .base-inner-card {
+  position: relative;
   width: 76%;
   height: 76%;
   border-radius: 14px;
@@ -263,12 +320,32 @@
   box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
+.base-skin-emblem {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 58%;
+  height: 58%;
+  display: grid;
+  place-items: center;
+  opacity: 0.22;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.base-skin-emblem .pawn-skin-svg {
+  width: 100%;
+  height: 100%;
+}
+
 .base-green .base-inner-card { background: #249b38; }
 .base-yellow .base-inner-card { background: #f59e0b; }
 .base-red .base-inner-card { background: #dc2626; }
 .base-blue .base-inner-card { background: #1d4ed8; }
 
 .base-yard {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   padding: 6px;
@@ -294,6 +371,108 @@
 .yard-slot-yellow { background: #b45309; }
 .yard-slot-red { background: #b91c1c; }
 .yard-slot-blue { background: #1e3a8a; }
+
+/* Tema Base mengikuti skin pemain dengan tetap menjaga garis batas warna tim */
+.board-base[data-base-skin]:not([data-base-skin='']) {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--base-skin-accent, #fbbf24) 82%, #ffffff),
+    color-mix(in srgb, var(--base-skin-accent, #fbbf24) 76%, #0f172a)
+  );
+  box-shadow: inset 0 0 0 3px var(--base-team, rgba(255, 255, 255, 0.65));
+}
+
+.board-base[data-base-skin]:not([data-base-skin='']).base-active-turn {
+  box-shadow: inset 0 0 0 3px #ffffff, inset 0 0 14px color-mix(in srgb, var(--base-skin-accent, #ffffff) 65%, #ffffff);
+}
+
+.board-base[data-base-skin]:not([data-base-skin='']) .base-inner-card {
+  background: linear-gradient(155deg, rgba(15, 23, 42, 0.72), rgba(15, 23, 42, 0.9));
+  border: 2px solid color-mix(in srgb, var(--base-skin-accent, #fbbf24) 78%, #ffffff);
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.45), 0 0 0 2px color-mix(in srgb, var(--base-team, #ffffff) 55%, transparent);
+}
+
+.board-base[data-base-skin]:not([data-base-skin='']) .yard-slot {
+  border: 1.5px solid color-mix(in srgb, var(--base-team, #ffffff) 75%, #ffffff);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.52);
+}
+
+.board-base[data-base-skin='classic_gold'] {
+  background: linear-gradient(145deg, #fcd34d, #b45309 62%, #78350f);
+}
+.board-base[data-base-skin='classic_gold'] .base-inner-card {
+  background: linear-gradient(160deg, #451a03, #1c0f02);
+  border-color: #fde68a;
+}
+
+.board-base[data-base-skin='ruby_crystal'] {
+  background: linear-gradient(145deg, #fb7185, #be123c 60%, #881337);
+}
+.board-base[data-base-skin='ruby_crystal'] .base-inner-card {
+  background: linear-gradient(160deg, #4c0519, #1f030d);
+  border-color: #fecdd3;
+}
+
+.board-base[data-base-skin='ocean_blue'] {
+  background: linear-gradient(145deg, #38bdf8, #0284c7 58%, #075985);
+}
+.board-base[data-base-skin='ocean_blue'] .base-inner-card {
+  background: linear-gradient(160deg, #082f49, #0c1f38);
+  border-color: #7dd3fc;
+}
+
+.board-base[data-base-skin='emerald_green'] {
+  background: linear-gradient(145deg, #34d399, #059669 60%, #065f46);
+}
+.board-base[data-base-skin='emerald_green'] .base-inner-card {
+  background: linear-gradient(160deg, #022c22, #064e3b);
+  border-color: #a7f3d0;
+}
+
+.board-base[data-base-skin='galaxy_purple'] {
+  background:
+    radial-gradient(circle at 20% 22%, rgba(255, 255, 255, 0.65) 1px, transparent 1.5px),
+    radial-gradient(circle at 80% 18%, rgba(221, 214, 254, 0.7) 1.2px, transparent 2px),
+    radial-gradient(circle at 16% 82%, rgba(255, 255, 255, 0.55) 1px, transparent 1.5px),
+    radial-gradient(circle at 84% 78%, rgba(196, 181, 253, 0.65) 1.2px, transparent 2px),
+    linear-gradient(145deg, #a78bfa, #6d28d9 58%, #3b0764);
+}
+.board-base[data-base-skin='galaxy_purple'] .base-inner-card {
+  background: linear-gradient(160deg, #1e1b4b, #0f0728);
+  border-color: #ddd6fe;
+}
+
+.board-base[data-base-skin='fire_phoenix'] {
+  background: linear-gradient(145deg, #fdba74, #ea580c 52%, #991b1b);
+}
+.board-base[data-base-skin='fire_phoenix'] .base-inner-card {
+  background: linear-gradient(160deg, #431407, #1c0a04);
+  border-color: #fed7aa;
+}
+
+.board-base[data-base-skin='legendary_diamond'] {
+  background: linear-gradient(135deg, #e0f2fe, #38bdf8 48%, #0284c7 80%, #818cf8);
+}
+.board-base[data-base-skin='legendary_diamond'] .base-inner-card {
+  background: linear-gradient(160deg, #0f172a, #082f49);
+  border-color: #e0f2fe;
+  animation: base-diamond-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes base-diamond-glow {
+  0%, 100% {
+    box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.45), 0 0 0 2px color-mix(in srgb, var(--base-team, #38bdf8) 55%, transparent), 0 0 8px rgba(56, 189, 248, 0.45);
+  }
+  50% {
+    box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.45), 0 0 0 2px color-mix(in srgb, var(--base-team, #bae6fd) 75%, #ffffff), 0 0 16px rgba(125, 211, 252, 0.85);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-base[data-base-skin='legendary_diamond'] .base-inner-card {
+    animation: none;
+  }
+}
 
 /* Jalur menuju finish & kotak start */
 .cell-home-green,
@@ -893,6 +1072,18 @@
   border: 3px solid #8b5cf6;
   background: radial-gradient(circle, rgba(139, 92, 246, 0) 48%, rgba(139, 92, 246, 0.48) 100%);
   box-shadow: 0 0 16px #8b5cf6;
+}
+
+.board-fx__skinshield--phoenix {
+  border: 3px solid #f97316;
+  background: radial-gradient(circle, rgba(249, 115, 22, 0) 48%, rgba(249, 115, 22, 0.48) 100%);
+  box-shadow: 0 0 16px #f97316;
+}
+
+.board-fx__skinshield--diamond {
+  border: 3px solid #38bdf8;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0) 48%, rgba(56, 189, 248, 0.48) 100%);
+  box-shadow: 0 0 16px #38bdf8;
 }
 
 @keyframes board-fx-flash { from { opacity: 0.8; } to { opacity: 0; } }

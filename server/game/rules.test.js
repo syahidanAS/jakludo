@@ -235,21 +235,40 @@ function makeHintRoom(pawnsByPlayer, { settings = { safeZones: true }, skin = { 
   return room;
 }
 
-test('Ocean Blue ability: hanya aktif pada skin ocean_blue', async () => {
+test('Ocean Blue & Combo Skins ability: aktif pada ocean_blue, fire_phoenix, dan legendary_diamond', async () => {
   const { hasOceanBlueHintAbility, evaluateOceanBlueHints } = await import('../../client/src/utils/oceanBlueHints.mjs');
 
   assert.equal(hasOceanBlueHintAbility('ocean_blue'), true);
   assert.equal(hasOceanBlueHintAbility({ id: 'ocean_blue' }), true);
   assert.equal(hasOceanBlueHintAbility({ id: 'custom_skin', assetKey: 'ocean_blue' }), true);
+  assert.equal(hasOceanBlueHintAbility({ id: 'fire_phoenix', assetKey: 'fire_phoenix' }), true);
+  assert.equal(hasOceanBlueHintAbility({ id: 'legendary_diamond', assetKey: 'legendary_diamond' }), true);
+  assert.equal(hasOceanBlueHintAbility('fire_phoenix'), true);
+  assert.equal(hasOceanBlueHintAbility('legendary_diamond'), true);
   assert.equal(hasOceanBlueHintAbility(null), false);
   assert.equal(hasOceanBlueHintAbility(undefined), false);
   assert.equal(hasOceanBlueHintAbility({ id: 'classic_gold', assetKey: 'classic_gold' }), false);
-  assert.equal(hasOceanBlueHintAbility({ id: 'legendary_diamond', assetKey: 'legendary_diamond' }), false);
-  assert.equal(hasOceanBlueHintAbility({ id: 'fire_phoenix', assetKey: 'fire_phoenix' }), false);
+  assert.equal(hasOceanBlueHintAbility({ id: 'ruby_crystal', assetKey: 'ruby_crystal' }), false);
+  assert.equal(hasOceanBlueHintAbility({ id: 'emerald_green', assetKey: 'emerald_green' }), false);
+  assert.equal(hasOceanBlueHintAbility({ id: 'galaxy_purple', assetKey: 'galaxy_purple' }), false);
 
   const baseRoom = makeHintRoom({ a: [2, 10, 0, 0], b: [3, 0, 0, 0] });
   baseRoom.dice = 3;
   assert.equal(evaluateOceanBlueHints({ room: baseRoom, playerId: 'a', movablePawns: [0, 1], isMyTurn: true }).active, true);
+
+  const phoenixRoom = makeHintRoom(
+    { a: [2, 10, 0, 0], b: [3, 0, 0, 0] },
+    { skin: { id: 'fire_phoenix', assetKey: 'fire_phoenix' } }
+  );
+  phoenixRoom.dice = 3;
+  assert.equal(evaluateOceanBlueHints({ room: phoenixRoom, playerId: 'a', movablePawns: [0, 1], isMyTurn: true }).active, true);
+
+  const diamondRoom = makeHintRoom(
+    { a: [2, 10, 0, 0], b: [3, 0, 0, 0] },
+    { skin: { id: 'legendary_diamond', assetKey: 'legendary_diamond' } }
+  );
+  diamondRoom.dice = 3;
+  assert.equal(evaluateOceanBlueHints({ room: diamondRoom, playerId: 'a', movablePawns: [0, 1], isMyTurn: true }).active, true);
 
   // Guard non-aktif
   assert.equal(evaluateOceanBlueHints({ room: baseRoom, playerId: 'a', movablePawns: [0, 1], isMyTurn: false }).active, false);

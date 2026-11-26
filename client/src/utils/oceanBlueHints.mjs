@@ -7,10 +7,12 @@ export const SAFE_TRACK_INDICES = [0, 6, 10, 16, 20, 26, 30, 36];
 export const BLACK_HOLE_INDICES = [4, 14, 24, 34];
 export const FINISH = 44;
 
+const HINT_ABLE_SKINS = new Set(['ocean_blue', 'fire_phoenix', 'legendary_diamond']);
+
 export function hasOceanBlueHintAbility(skin) {
   if (!skin) return false;
-  if (typeof skin === 'string') return skin === 'ocean_blue';
-  return skin.id === 'ocean_blue' || skin.assetKey === 'ocean_blue';
+  if (typeof skin === 'string') return HINT_ABLE_SKINS.has(skin);
+  return HINT_ABLE_SKINS.has(skin.id) || HINT_ABLE_SKINS.has(skin.assetKey);
 }
 
 export function getTrackIndex(colorIdx, pawnVal) {

@@ -452,6 +452,7 @@ function handleDeparture(socket, r, { intentional }) {
   if (intentional) {
     const wasActive = !departing.isOut;
     departing.isOut = true;
+    departing.skinInvisibleActive = false;
     departing.left = true;
     addHistory(
       r,

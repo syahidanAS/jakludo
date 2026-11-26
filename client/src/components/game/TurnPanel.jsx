@@ -26,10 +26,32 @@ function turnStatus({ room, isTurn, currentTurnPlayer, movablePawns }) {
   return `Dapat ${room.dice}. Ketuk bidak di papan yang mau jalan.`;
 }
 
+const INVISIBLE_TONE = {
+  ruby_crystal: 'ruby',
+  fire_phoenix: 'phoenix',
+  legendary_diamond: 'diamond'
+};
+
+const SHIELD_TONE = {
+  galaxy_purple: 'galaxy',
+  fire_phoenix: 'phoenix',
+  legendary_diamond: 'diamond'
+};
+
+function hintHeadingForSkin(skin) {
+  const key = skin?.assetKey || skin?.id || (typeof skin === 'string' ? skin : '');
+  if (key === 'fire_phoenix') return { icon: '🔥', label: 'Hint Fire Phoenix' };
+  if (key === 'legendary_diamond') return { icon: '💎', label: 'Hint Legendary Diamond' };
+  return { icon: '🌊', label: 'Hint Ocean Blue' };
+}
+
 // Panel giliran: dadu, aksi utama, mode menonton saat OUT, reaksi, serta tombol chat & skor. Bidak dipilih langsung di papan.
 export default function TurnPanel({ room, me = null, isTurn, canAct, currentTurnPlayer, movablePawns, moveHints = null, unreadChats, actions, onOpenChat, onOpenScores }) {
   const status = turnStatus({ room, isTurn, currentTurnPlayer, movablePawns });
   const hintItems = moveHints?.active && !room.animatingMove ? (moveHints.displayList || []) : [];
+  const invisibleTone = INVISIBLE_TONE[me?.skinInvisible?.skinKey] || 'gold';
+  const shieldTone = SHIELD_TONE[me?.skinShield?.skinKey] || 'emerald';
+  const hintHeading = hintHeadingForSkin(me?.equippedSkin);
 
   return (
     <section className={`turn-panel card ${isTurn ? 'is-my-turn card--focus' : ''}`} aria-label="Giliran">
@@ -83,9 +105,53 @@ export default function TurnPanel({ room, me = null, isTurn, canAct, currentTurn
         </div>
       </div>
 
+      {me?.skinInvisible?.active && (
+        <div
+          className={`skin-invisible-box skin-invisible-box--${invisibleTone}`}
+          aria-label={`Skill Invisible ${me.skinInvisible.skinName}`}
+        >
+          <div className="skin-invisible-box__head">
+            <span className="skin-invisible-box__title">👻 Invisible · {me.skinInvisible.skinName}</span>
+            <span className="skin-invisible-box__pips" aria-label={`Sisa ${me.skinInvisible.charges} dari ${me.skinInvisible.max}`}>
+              {Array.from({ length: me.skinInvisible.max }, (_, idx) => (
+                <span
+                  key={idx}
+                  className={`skin-invisible-pip ${idx < me.skinInvisible.charges ? 'is-charged' : ''}`}
+                  aria-hidden="true"
+                />
+              ))}
+              <strong className="skin-invisible-box__count">{me.skinInvisible.charges}/{me.skinInvisible.max}</strong>
+            </span>
+          </div>
+          {me.skinInvisible.isInvisible ? (
+            <p className="skin-invisible-box__active">
+              👻 Bidakmu tidak terlihat musuh sampai giliranmu berikutnya (tetap tereliminasi jika kebetulan diinjak).
+            </p>
+          ) : me.skinInvisible.charges > 0 ? (
+            <div className="skin-invisible-box__actions">
+              <button
+                type="button"
+                className="btn btn--primary btn--sm"
+                disabled={!canAct}
+                onClick={() => actions.useSkinInvisible?.()}
+              >
+                Aktifkan Invisible ({me.skinInvisible.charges}/{me.skinInvisible.max})
+              </button>
+              <span className="skin-invisible-box__sub">
+                Pakai sebelum lempar dadu · bertahan 1 putaran
+              </span>
+            </div>
+          ) : (
+            <p className="skin-invisible-box__sub">
+              Kesempatan Invisible di permainan ini sudah habis (0/{me.skinInvisible.max}).
+            </p>
+          )}
+        </div>
+      )}
+
       {me?.skinShield?.active && (
         <div
-          className={`skin-shield-box skin-shield-box--${me.skinShield.skinKey === 'galaxy_purple' ? 'galaxy' : 'emerald'}`}
+          className={`skin-shield-box skin-shield-box--${shieldTone}`}
           aria-label={`Skill Anti-Eliminasi ${me.skinShield.skinName}`}
         >
           <div className="skin-shield-box__head">
@@ -108,9 +174,9 @@ export default function TurnPanel({ room, me = null, isTurn, canAct, currentTurn
       )}
 
       {hintItems.length > 0 && (
-        <div className="ocean-hint-box" aria-label="Hint langkah terbaik Ocean Blue">
+        <div className="ocean-hint-box" aria-label={hintHeading.label}>
           <div className="ocean-hint-box__head">
-            <span className="ocean-hint-box__title">🌊 Hint Ocean Blue</span>
+            <span className="ocean-hint-box__title">{hintHeading.icon} {hintHeading.label}</span>
             <span className="ocean-hint-box__sub">
               {hintItems.length > 1 ? 'Urutan peluang terbaik' : 'Peluang terbaik'}
             </span>

@@ -387,6 +387,10 @@ function registerSocketHandlers(io) {
       if (!ludoPlayLimiter(socket.id)) return;
       engine.useItem(socket, currentRoom(), { itemId, target });
     });
+    on(socket, 'game:use_skin_skill', payload => {
+      if (!ludoPlayLimiter(socket.id)) return;
+      engine.useSkinSkill(socket, currentRoom(), { skill: payload?.skill });
+    });
     // Kompatibilitas klien lama yang masih terbuka saat deploy. Hapus setelah semua klien diperbarui.
     on(socket, 'game:use_force_return', payload => {
       if (!ludoPlayLimiter(socket.id)) return;

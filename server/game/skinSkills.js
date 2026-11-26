@@ -1,9 +1,14 @@
 // Skill khusus skin per pertandingan JakLudo (non-persistent: tidak disimpan ke database akun).
 // Emerald Green & Galaxy Purple: skill Anti-Eliminasi terhadap injakan dan Force Return lawan.
+// Classic Gold & Ruby Crystal: skill Invisible (tidak terlihat oleh musuh) maksimal 2x per pertandingan.
 
-const ANTI_ELIMINATION_SKINS = new Set(['emerald_green', 'galaxy_purple']);
+const ANTI_ELIMINATION_SKINS = new Set(['emerald_green', 'galaxy_purple', 'fire_phoenix', 'legendary_diamond']);
 const MAX_SKIN_SHIELD_CHARGES = 3;
 const SKIN_ANTI_ELIMINATION_ID = 'skinAntiElimination';
+
+const INVISIBLE_SKINS = new Set(['classic_gold', 'ruby_crystal', 'fire_phoenix', 'legendary_diamond']);
+const MAX_SKIN_INVISIBLE_CHARGES = 2;
+const SKIN_INVISIBLE_ID = 'skinInvisible';
 
 function resolveSkinKey(skin) {
   if (!skin) return '';
@@ -15,10 +20,18 @@ function hasAntiEliminationSkin(skin) {
   return ANTI_ELIMINATION_SKINS.has(resolveSkinKey(skin));
 }
 
+function hasInvisibleSkin(skin) {
+  return INVISIBLE_SKINS.has(resolveSkinKey(skin));
+}
+
 function skinDisplayName(skin) {
   const key = resolveSkinKey(skin);
   if (key === 'emerald_green') return 'Emerald Green';
   if (key === 'galaxy_purple') return 'Galaxy Purple';
+  if (key === 'classic_gold') return 'Classic Gold';
+  if (key === 'ruby_crystal') return 'Ruby Crystal';
+  if (key === 'fire_phoenix') return 'Fire Phoenix';
+  if (key === 'legendary_diamond') return 'Legendary Diamond';
   return skin?.name || 'Skin';
 }
 
@@ -32,17 +45,57 @@ function canUseSkinAntiElimination(player) {
   );
 }
 
+function isSkinInvisibleActive(player) {
+  return Boolean(
+    player &&
+    !player.isOut &&
+    player.skinInvisibleEnabled &&
+    hasInvisibleSkin(player.equippedSkin) &&
+    player.skinInvisibleActive
+  );
+}
+
+function isPlayerInvisibleTo(player, viewerId, { revealInvisible = false } = {}) {
+  return Boolean(
+    !revealInvisible &&
+    viewerId &&
+    player &&
+    player.id !== viewerId &&
+    isSkinInvisibleActive(player)
+  );
+}
+
+function canUseSkinInvisible(player) {
+  return Boolean(
+    player &&
+    !player.isOut &&
+    player.skinInvisibleEnabled &&
+    hasInvisibleSkin(player.equippedSkin) &&
+    !player.skinInvisibleActive &&
+    Number(player.skinInvisibleCharges || 0) > 0
+  );
+}
+
 function initPlayerSkinSkill(player) {
   if (!player) return;
-  const enabled = hasAntiEliminationSkin(player.equippedSkin);
-  player.skinShieldEnabled = enabled;
-  player.skinShieldCharges = enabled ? 1 : 0;
+  const shieldEnabled = hasAntiEliminationSkin(player.equippedSkin);
+  player.skinShieldEnabled = shieldEnabled;
+  player.skinShieldCharges = shieldEnabled ? 1 : 0;
+
+  const invisibleEnabled = hasInvisibleSkin(player.equippedSkin);
+  player.skinInvisibleEnabled = invisibleEnabled;
+  player.skinInvisibleCharges = invisibleEnabled ? MAX_SKIN_INVISIBLE_CHARGES : 0;
+  player.skinInvisibleActive = false;
 }
 
 function clearPlayerSkinSkill(player) {
   if (!player) return;
   player.skinShieldEnabled = false;
   player.skinShieldCharges = 0;
+
+  player.skinInvisibleEnabled = false;
+  player.skinInvisibleCharges = 0;
+  player.skinInvisibleActive = false;
 }
 
 function rechargeSkinAntiElimination(player) {
@@ -64,6 +117,19 @@ function consumeSkinAntiElimination(player) {
   return true;
 }
 
+function consumeSkinInvisible(player) {
+  if (!canUseSkinInvisible(player)) return false;
+  player.skinInvisibleCharges = Math.max(0, Number(player.skinInvisibleCharges || 0) - 1);
+  player.skinInvisibleActive = true;
+  return true;
+}
+
+function expireSkinInvisible(player) {
+  if (!player?.skinInvisibleActive) return false;
+  player.skinInvisibleActive = false;
+  return true;
+}
+
 function publicSkinShield(player, room) {
   if (!player?.skinShieldEnabled || !hasAntiEliminationSkin(player.equippedSkin)) return null;
   if (!room?.started || room?.winner) return null;
@@ -76,17 +142,40 @@ function publicSkinShield(player, room) {
   };
 }
 
+function publicSkinInvisible(player, room) {
+  if (!player?.skinInvisibleEnabled || !hasInvisibleSkin(player.equippedSkin)) return null;
+  if (!room?.started || room?.winner) return null;
+  return {
+    active: true,
+    isInvisible: isSkinInvisibleActive(player),
+    charges: Math.max(0, Math.min(MAX_SKIN_INVISIBLE_CHARGES, Number(player.skinInvisibleCharges || 0))),
+    max: MAX_SKIN_INVISIBLE_CHARGES,
+    skinKey: resolveSkinKey(player.equippedSkin),
+    skinName: skinDisplayName(player.equippedSkin)
+  };
+}
+
 module.exports = {
   ANTI_ELIMINATION_SKINS,
   MAX_SKIN_SHIELD_CHARGES,
   SKIN_ANTI_ELIMINATION_ID,
+  INVISIBLE_SKINS,
+  MAX_SKIN_INVISIBLE_CHARGES,
+  SKIN_INVISIBLE_ID,
   resolveSkinKey,
   hasAntiEliminationSkin,
+  hasInvisibleSkin,
   skinDisplayName,
   canUseSkinAntiElimination,
+  isSkinInvisibleActive,
+  isPlayerInvisibleTo,
+  canUseSkinInvisible,
   initPlayerSkinSkill,
   clearPlayerSkinSkill,
   rechargeSkinAntiElimination,
   consumeSkinAntiElimination,
-  publicSkinShield
+  consumeSkinInvisible,
+  expireSkinInvisible,
+  publicSkinShield,
+  publicSkinInvisible
 };

@@ -1,7 +1,7 @@
 // State room di memori: broadcast ke klien, snapshot ke SQLite, dan siklus hidup room.
 const db = require('../db');
 const inventory = require('./inventory');
-const { publicSkinShield } = require('./skinSkills');
+const { publicSkinShield, publicSkinInvisible, isSkinInvisibleActive, isPlayerInvisibleTo } = require('./skinSkills');
 const social = require('../social/store');
 const adminSpectator = require('../admin/spectator');
 const { getMovablePawns, getBlackHoles } = require('./rules');
@@ -40,22 +40,62 @@ function roomTimeout(room, fn, ms) {
 function publicPlayer(p, room, { includeBotFlag = false } = {}) {
   // sessionId adalah rahasia reconnect; catatan dadu tidak dikirim agar lemparan tidak bisa dihitung;
   // stok item dikirim dalam bentuk ringkasan; bot organik disamarkan bagi klien pemain
-  const { sessionId, items, diceStats, organicBot, skinShieldCharges, skinShieldEnabled, ...rest } = p;
+  const {
+    sessionId,
+    items,
+    diceStats,
+    organicBot,
+    skinShieldCharges,
+    skinShieldEnabled,
+    skinInvisibleCharges,
+    skinInvisibleEnabled,
+    skinInvisibleActive,
+    ...rest
+  } = p;
   const isBot = includeBotFlag ? Boolean(p.isBot) : (organicBot ? false : Boolean(p.isBot));
   return {
     ...rest,
     isBot,
     equippedSkin: p.equippedSkin || null,
     skinShield: publicSkinShield(p, room),
+    skinInvisible: publicSkinInvisible(p, room),
     items: inventory.publicItems(p, room)
   };
 }
 
-function publicRoom(r, { includeBotFlag = false } = {}) {
+function publicRoom(r, { includeBotFlag = false, viewerId = undefined, revealInvisible = false } = {}) {
   const current = r.players[r.turn];
-  const movable = r.started && !r.winner && r.dice !== null && !r.rolling && !r.animatingMove && !r.pendingShield && current
+  const shouldProject = !revealInvisible && viewerId !== undefined;
+  const rawMovable = r.started && !r.winner && r.dice !== null && !r.rolling && !r.animatingMove && !r.pendingShield && current
     ? getMovablePawns(r, current, r.dice)
     : [];
+  const movable = shouldProject && current && isPlayerInvisibleTo(current, viewerId, { revealInvisible })
+    ? []
+    : rawMovable;
+
+  let projectedPawns = r.pawns;
+  if (shouldProject && r.players.some(p => isPlayerInvisibleTo(p, viewerId, { revealInvisible }))) {
+    projectedPawns = {};
+    for (const p of r.players) {
+      const list = r.pawns?.[p.id] || [0, 0, 0, 0];
+      projectedPawns[p.id] = isPlayerInvisibleTo(p, viewerId, { revealInvisible })
+        ? list.map(v => (v === 44 ? 44 : null))
+        : list;
+    }
+  }
+
+  let animatingMove = r.animatingMove || null;
+  if (shouldProject && animatingMove) {
+    const mover = r.players.find(p => p.id === animatingMove.playerId);
+    if (isPlayerInvisibleTo(mover, viewerId, { revealInvisible })) animatingMove = null;
+  }
+
+  let lastBlackHole = r.lastBlackHole || null;
+  if (shouldProject && lastBlackHole) {
+    const victim = r.players.find(p => p.id === lastBlackHole.playerId);
+    if (isPlayerInvisibleTo(victim, viewerId, { revealInvisible })) lastBlackHole = null;
+  }
+
   return {
     code: r.code,
     group: r.groupId ? social.getGroupBasic(r.groupId) : null,
@@ -66,9 +106,9 @@ function publicRoom(r, { includeBotFlag = false } = {}) {
     dice: r.dice,
     movable,
     rolling: !!r.rolling,
-    animatingMove: r.animatingMove || null,
+    animatingMove,
     winner: r.winner,
-    pawns: r.pawns,
+    pawns: projectedPawns,
     message: r.message,
     matchmaking: r.matchmaking?.active
       ? {
@@ -79,7 +119,7 @@ function publicRoom(r, { includeBotFlag = false } = {}) {
         }
       : null,
     lastCapture: r.lastCapture || null,
-    lastBlackHole: r.lastBlackHole || null,
+    lastBlackHole,
     lastGoal: r.lastGoal || null,
     lastItemEvent: r.lastItemEvent || null,
     matchResult: r.winner ? r.matchResult || null : null,
@@ -117,10 +157,21 @@ function publicRoom(r, { includeBotFlag = false } = {}) {
 
 function emitRoom(room) {
   if (!room) return;
-  io.to(room.code).emit('room:update', publicRoom(room));
+  const hasInvisible = room.players.some(p => isSkinInvisibleActive(p));
+  if (!hasInvisible) {
+    io.to(room.code).emit('room:update', publicRoom(room));
+  } else {
+    const roomSockets = io?.sockets?.adapter?.rooms?.get(room.code);
+    if (roomSockets) {
+      for (const sid of roomSockets) {
+        const sock = io.sockets.sockets.get(sid);
+        if (sock) sock.emit('room:update', publicRoom(room, { viewerId: sid }));
+      }
+    }
+  }
   if (adminSpectator.hasWatchers('ludo', room.code)) {
     adminSpectator.notifyState('ludo', room.code, {
-      ...publicRoom(room, { includeBotFlag: true }),
+      ...publicRoom(room, { includeBotFlag: true, revealInvisible: true }),
       chats: Array.isArray(room.chats) ? room.chats.slice(-50) : []
     });
   }

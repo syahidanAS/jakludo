@@ -1,6 +1,8 @@
 // Force Return: pulangkan 1 bidak lawan di lintasan langsung ke markas.
 // Hanya bisa didapat dengan membeli di toko. Lawan yang punya perisai untuk event 'forceReturn'
 // (mis. Universal Shield) boleh memilih menahannya.
+const { isSkinInvisibleActive } = require('../game/skinSkills');
+
 module.exports = {
   id: 'forceReturn',
   name: 'Force Return',
@@ -18,8 +20,13 @@ module.exports = {
   canUse({ room, player }) {
     // 44 = finish: bidak yang sudah finish tidak dihitung sebagai bidak di papan
     if (!(room.pawns[player.id] || []).some(v => v >= 1 && v < 44)) return 'keluarkan dulu minimal 1 bidakmu dari markas.';
-    const anyTarget = room.players.some(p => p.id !== player.id && (room.pawns[p.id] || []).some(v => v >= 1 && v <= 39));
-    if (!anyTarget) return 'tidak ada bidak lawan di luar markas.';
+    const onTrackOpponents = room.players.filter(
+      p => p.id !== player.id && (room.pawns[p.id] || []).some(v => v >= 1 && v <= 39)
+    );
+    if (onTrackOpponents.length === 0) return 'tidak ada bidak lawan di luar markas.';
+    if (!onTrackOpponents.some(p => !isSkinInvisibleActive(p))) {
+      return 'semua bidak lawan di lintasan sedang tidak terlihat (Invisible).';
+    }
     return null;
   },
 

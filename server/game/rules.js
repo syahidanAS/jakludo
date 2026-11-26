@@ -3,6 +3,7 @@
 
 // Registry item hanya data (tanpa IO), dipakai bot untuk tahu item mana yang menahan Black Hole
 const items = require('../items');
+const { isSkinInvisibleActive } = require('./skinSkills');
 
 const COLORS = ['red', 'green', 'yellow', 'blue'];
 const COLOR_OFFSETS = [0, 10, 20, 30];
@@ -150,7 +151,7 @@ function captureRisk(room, player, trackPos) {
 
   let chance = 0;
   for (const opp of room.players) {
-    if (opp.id === player.id || opp.isOut) continue;
+    if (opp.id === player.id || opp.isOut || isSkinInvisibleActive(opp)) continue;
     const oppColorIdx = COLORS.indexOf(opp.color);
     for (const v of room.pawns[opp.id] || []) {
       if (v >= 1 && v <= 39) {
@@ -180,7 +181,7 @@ function evaluateMove(room, player, pawnIdx, dice) {
   else if (from <= 39 && to >= 40) score += AI.enterHome;
 
   if (toTrack !== null) {
-    const victim = opponentPawnAt(room, player, toTrack);
+    const victim = opponentPawnAt(room, player, toTrack, { ignoreInvisible: true });
     if (victim && !isPawnProtected(room, victim.player, toTrack)) {
       score += AI.captureBase + victim.val * AI.captureProgress;
     }
@@ -203,9 +204,10 @@ function evaluateMove(room, player, pawnIdx, dice) {
   return score;
 }
 
-function opponentPawnAt(room, player, trackPos) {
+function opponentPawnAt(room, player, trackPos, { ignoreInvisible = false } = {}) {
   for (const opp of room.players) {
     if (opp.id === player.id) continue;
+    if (ignoreInvisible && isSkinInvisibleActive(opp)) continue;
     const oppColorIdx = COLORS.indexOf(opp.color);
     const pawns = room.pawns[opp.id] || [];
     for (let i = 0; i < pawns.length; i++) {
@@ -271,7 +273,7 @@ function captureFaces(room, player) {
       const from = room.pawns[player.id][i];
       const to = from === 0 ? 1 : from + face;
       if (to > 39) continue;
-      const victim = opponentPawnAt(room, player, getTrackIndex(colorIdx, to));
+      const victim = opponentPawnAt(room, player, getTrackIndex(colorIdx, to), { ignoreInvisible: true });
       if (victim && !isPawnProtected(room, victim.player, getTrackIndex(colorIdx, to))) {
         faces.add(face);
         break;

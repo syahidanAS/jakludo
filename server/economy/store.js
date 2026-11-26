@@ -71,7 +71,7 @@ const DEFAULT_LUDO_SKINS = [
   {
     id: 'classic_gold',
     name: 'Classic Gold',
-    description: 'Bidak emas klasik berlapis kilau mewah untuk gaya juara sejati.',
+    description: 'Bidak emas klasik berlapis kilau mewah. Dilengkapi skill Invisible (2x per laga) yang menyembunyikan seluruh bidakmu dari pandangan musuh selama 1 putaran (tetap tereliminasi bila kebetulan diinjak).',
     priceDiamonds: 10,
     rarity: 'Common',
     assetKey: 'classic_gold',
@@ -84,7 +84,7 @@ const DEFAULT_LUDO_SKINS = [
   {
     id: 'ruby_crystal',
     name: 'Ruby Crystal',
-    description: 'Kristal delima merah menyala dengan potongan faset permata elegan.',
+    description: 'Kristal delima merah menyala dengan potongan faset permata elegan. Dilengkapi skill Invisible (2x per laga) yang menyembunyikan seluruh bidakmu dari pandangan musuh selama 1 putaran (tetap tereliminasi bila kebetulan diinjak).',
     priceDiamonds: 15,
     rarity: 'Common',
     assetKey: 'ruby_crystal',
@@ -136,7 +136,7 @@ const DEFAULT_LUDO_SKINS = [
   {
     id: 'fire_phoenix',
     name: 'Fire Phoenix',
-    description: 'Sayap api phoenix membara yang memancarkan semangat pantang menyerah.',
+    description: 'Sayap api phoenix membara dengan seluruh skill gabungan: Hint Langkah Terbaik, Anti-Eliminasi (1x awal, +1 tiap finish, maks. 3), dan Invisible (2x per laga).',
     priceDiamonds: 40,
     rarity: 'Epic',
     assetKey: 'fire_phoenix',
@@ -149,7 +149,7 @@ const DEFAULT_LUDO_SKINS = [
   {
     id: 'legendary_diamond',
     name: 'Legendary Diamond',
-    description: 'Bidak berlian legendaris berlapis mahkota kristal tertinggi di PlayGo.',
+    description: 'Bidak berlian legendaris bermahkota kristal dengan seluruh skill gabungan: Hint Langkah Terbaik, Anti-Eliminasi (1x awal, +1 tiap finish, maks. 3), dan Invisible (2x per laga).',
     priceDiamonds: 50,
     rarity: 'Legendary',
     assetKey: 'legendary_diamond',

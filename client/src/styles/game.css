@@ -829,6 +829,52 @@
   color: #c4b5fd;
 }
 
+.skin-shield-box--phoenix {
+  border-color: #f97316;
+  box-shadow: inset 0 0 0 999px rgba(249, 115, 22, 0.08);
+}
+
+.skin-shield-box--phoenix .skin-shield-box__title {
+  color: #c2410c;
+}
+
+:root[data-theme='dark'] .skin-shield-box--phoenix .skin-shield-box__title {
+  color: #fdba74;
+}
+
+.skin-shield-box--phoenix .skin-shield-pip {
+  border-color: rgba(249, 115, 22, 0.5);
+}
+
+.skin-shield-box--phoenix .skin-shield-pip.is-charged {
+  background: #f97316;
+  border-color: #f97316;
+  box-shadow: 0 0 6px rgba(249, 115, 22, 0.7);
+}
+
+.skin-shield-box--diamond {
+  border-color: #38bdf8;
+  box-shadow: inset 0 0 0 999px rgba(56, 189, 248, 0.08);
+}
+
+.skin-shield-box--diamond .skin-shield-box__title {
+  color: #0369a1;
+}
+
+:root[data-theme='dark'] .skin-shield-box--diamond .skin-shield-box__title {
+  color: #7dd3fc;
+}
+
+.skin-shield-box--diamond .skin-shield-pip {
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
+.skin-shield-box--diamond .skin-shield-pip.is-charged {
+  background: #38bdf8;
+  border-color: #38bdf8;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.7);
+}
+
 .skin-shield-box__pips {
   display: inline-flex;
   align-items: center;
@@ -866,6 +912,166 @@
 }
 
 .skin-shield-box__sub {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--text-2);
+}
+
+/* ---------- Classic Gold & Ruby Crystal: Panel Skill Invisible ---------- */
+
+.skin-invisible-box {
+  display: grid;
+  gap: 6px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 2px solid #f59e0b;
+  box-shadow: inset 0 0 0 999px rgba(245, 158, 11, 0.06);
+}
+
+.skin-invisible-box--ruby {
+  border-color: #f43f5e;
+  box-shadow: inset 0 0 0 999px rgba(244, 63, 94, 0.06);
+}
+
+.skin-invisible-box__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.skin-invisible-box__title {
+  font-size: var(--fs-xs);
+  font-weight: 800;
+  color: #b45309;
+}
+
+.skin-invisible-box--ruby .skin-invisible-box__title {
+  color: #be123c;
+}
+
+:root[data-theme='dark'] .skin-invisible-box__title {
+  color: #fcd34d;
+}
+
+:root[data-theme='dark'] .skin-invisible-box--ruby .skin-invisible-box__title {
+  color: #fda4af;
+}
+
+.skin-invisible-box__pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.skin-invisible-pip {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(245, 158, 11, 0.5);
+  background: transparent;
+}
+
+.skin-invisible-pip.is-charged {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.65);
+}
+
+.skin-invisible-box--ruby .skin-invisible-pip {
+  border-color: rgba(244, 63, 94, 0.5);
+}
+
+.skin-invisible-box--ruby .skin-invisible-pip.is-charged {
+  background: #f43f5e;
+  border-color: #f43f5e;
+  box-shadow: 0 0 6px rgba(244, 63, 94, 0.65);
+}
+
+.skin-invisible-box__count {
+  font-size: var(--fs-xs);
+  color: var(--text);
+  margin-left: 2px;
+}
+
+.skin-invisible-box__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.skin-invisible-box__active {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: #b45309;
+}
+
+.skin-invisible-box--ruby .skin-invisible-box__active {
+  color: #be123c;
+}
+
+:root[data-theme='dark'] .skin-invisible-box__active {
+  color: #fde68a;
+}
+
+:root[data-theme='dark'] .skin-invisible-box--ruby .skin-invisible-box__active {
+  color: #fecdd3;
+}
+
+.skin-invisible-box--phoenix {
+  border-color: #f97316;
+  box-shadow: inset 0 0 0 999px rgba(249, 115, 22, 0.07);
+}
+
+.skin-invisible-box--phoenix .skin-invisible-box__title,
+.skin-invisible-box--phoenix .skin-invisible-box__active {
+  color: #c2410c;
+}
+
+:root[data-theme='dark'] .skin-invisible-box--phoenix .skin-invisible-box__title,
+:root[data-theme='dark'] .skin-invisible-box--phoenix .skin-invisible-box__active {
+  color: #fdba74;
+}
+
+.skin-invisible-box--phoenix .skin-invisible-pip {
+  border-color: rgba(249, 115, 22, 0.5);
+}
+
+.skin-invisible-box--phoenix .skin-invisible-pip.is-charged {
+  background: #f97316;
+  border-color: #f97316;
+  box-shadow: 0 0 6px rgba(249, 115, 22, 0.65);
+}
+
+.skin-invisible-box--diamond {
+  border-color: #38bdf8;
+  box-shadow: inset 0 0 0 999px rgba(56, 189, 248, 0.07);
+}
+
+.skin-invisible-box--diamond .skin-invisible-box__title,
+.skin-invisible-box--diamond .skin-invisible-box__active {
+  color: #0369a1;
+}
+
+:root[data-theme='dark'] .skin-invisible-box--diamond .skin-invisible-box__title,
+:root[data-theme='dark'] .skin-invisible-box--diamond .skin-invisible-box__active {
+  color: #7dd3fc;
+}
+
+.skin-invisible-box--diamond .skin-invisible-pip {
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
+.skin-invisible-box--diamond .skin-invisible-pip.is-charged {
+  background: #38bdf8;
+  border-color: #38bdf8;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.65);
+}
+
+.skin-invisible-box__sub {
   margin: 0;
   font-size: 0.7rem;
   color: var(--text-2);

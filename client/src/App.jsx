@@ -330,7 +330,7 @@ export default function App() {
     navigateTo({ modal: null });
   };
 
-  const oceanIntroKey = userId => (userId ? `skin_abilities_intro_seen_v2_${userId}` : 'skin_abilities_intro_seen_v2_guest');
+  const oceanIntroKey = userId => (userId ? `skin_abilities_intro_seen_v4_${userId}` : 'skin_abilities_intro_seen_v4_guest');
   const canShowOceanBlueIntro =
     !auth.checking &&
     game.screen === 'home' &&
@@ -360,9 +360,9 @@ export default function App() {
     setShowOceanBlueIntro(false);
   }, [auth.currentUser?.id]);
 
-  const handleOpenOceanBlueShopFromIntro = useCallback((skinId = 'emerald_green') => {
+  const handleOpenOceanBlueShopFromIntro = useCallback((skinId = 'fire_phoenix') => {
     handleCloseOceanBlueIntro();
-    openShopWithFocus({ tab: 'skins', skinId: skinId || 'emerald_green' });
+    openShopWithFocus({ tab: 'skins', skinId: skinId || 'fire_phoenix' });
   }, [handleCloseOceanBlueIntro, openShopWithFocus]);
 
   const handlePlayLudoFromIntro = useCallback(() => {

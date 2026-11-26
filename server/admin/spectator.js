@@ -89,7 +89,7 @@ function buildSnapshot(game, code) {
     const room = store.rooms.get(cleanCode);
     if (!room) return null;
     return {
-      ...store.publicRoom(room),
+      ...store.publicRoom(room, { includeBotFlag: true, revealInvisible: true }),
       chats: Array.isArray(room.chats) ? room.chats.slice(-50) : []
     };
   }

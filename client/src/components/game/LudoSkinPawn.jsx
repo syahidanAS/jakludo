@@ -7,7 +7,11 @@ export const LUDO_SKIN_META = {
     rarity: 'Common',
     accent: '#f59e0b',
     ringColor: '#fde68a',
-    glow: 'rgba(245, 158, 11, 0.5)'
+    glow: 'rgba(245, 158, 11, 0.5)',
+    abilityIcon: '👻',
+    abilityTone: 'gold',
+    abilityLabel: 'Invisible (2x)',
+    abilityDetail: 'Bidak tidak terlihat musuh & kebal target Force Return selama 1 putaran (maks. 2x per game, tetap tereliminasi bila kebetulan diinjak).'
   },
   ruby_crystal: {
     id: 'ruby_crystal',
@@ -15,7 +19,11 @@ export const LUDO_SKIN_META = {
     rarity: 'Common',
     accent: '#ef4444',
     ringColor: '#fecaca',
-    glow: 'rgba(239, 68, 68, 0.5)'
+    glow: 'rgba(239, 68, 68, 0.5)',
+    abilityIcon: '👻',
+    abilityTone: 'ruby',
+    abilityLabel: 'Invisible (2x)',
+    abilityDetail: 'Bidak tidak terlihat musuh & kebal target Force Return selama 1 putaran (maks. 2x per game, tetap tereliminasi bila kebetulan diinjak).'
   },
   ocean_blue: {
     id: 'ocean_blue',
@@ -26,7 +34,8 @@ export const LUDO_SKIN_META = {
     glow: 'rgba(14, 165, 233, 0.55)',
     abilityIcon: '🌊',
     abilityTone: 'ocean',
-    abilityLabel: 'Hint Langkah Terbaik'
+    abilityLabel: 'Hint Langkah Terbaik',
+    abilityDetail: 'Menyorot bidak dengan peluang posisi paling menguntungkan dan mengurutkannya (#1, #2, #3) saat giliranmu.'
   },
   emerald_green: {
     id: 'emerald_green',
@@ -37,7 +46,8 @@ export const LUDO_SKIN_META = {
     glow: 'rgba(16, 185, 129, 0.55)',
     abilityIcon: '🛡️',
     abilityTone: 'emerald',
-    abilityLabel: 'Anti-Eliminasi (Maks. 3)'
+    abilityLabel: 'Anti-Eliminasi (Maks. 3)',
+    abilityDetail: 'Menahan eliminasi dari injakan & Force Return dengan konfirmasi (1x awal laga, +1 tiap bidak finish, maks. 3, hanya 1 laga).'
   },
   galaxy_purple: {
     id: 'galaxy_purple',
@@ -48,7 +58,8 @@ export const LUDO_SKIN_META = {
     glow: 'rgba(139, 92, 246, 0.6)',
     abilityIcon: '🛡️',
     abilityTone: 'galaxy',
-    abilityLabel: 'Anti-Eliminasi (Maks. 3)'
+    abilityLabel: 'Anti-Eliminasi (Maks. 3)',
+    abilityDetail: 'Menahan eliminasi dari injakan & Force Return dengan konfirmasi (1x awal laga, +1 tiap bidak finish, maks. 3, hanya 1 laga).'
   },
   fire_phoenix: {
     id: 'fire_phoenix',
@@ -56,7 +67,11 @@ export const LUDO_SKIN_META = {
     rarity: 'Epic',
     accent: '#f97316',
     ringColor: '#fed7aa',
-    glow: 'rgba(249, 115, 22, 0.65)'
+    glow: 'rgba(249, 115, 22, 0.65)',
+    abilityIcon: '🔥',
+    abilityTone: 'phoenix',
+    abilityLabel: 'All Skills (3-in-1)',
+    abilityDetail: 'Gabungan semua skill: Hint Langkah Terbaik, Anti-Eliminasi (1x awal, +1 tiap finish, maks. 3), dan Invisible (2x per game).'
   },
   legendary_diamond: {
     id: 'legendary_diamond',
@@ -64,7 +79,11 @@ export const LUDO_SKIN_META = {
     rarity: 'Legendary',
     accent: '#38bdf8',
     ringColor: '#e0f2fe',
-    glow: 'rgba(56, 189, 248, 0.75)'
+    glow: 'rgba(56, 189, 248, 0.75)',
+    abilityIcon: '💎',
+    abilityTone: 'diamond',
+    abilityLabel: 'All Skills (3-in-1)',
+    abilityDetail: 'Gabungan semua skill: Hint Langkah Terbaik, Anti-Eliminasi (1x awal, +1 tiap finish, maks. 3), dan Invisible (2x per game).'
   }
 };
 
@@ -72,6 +91,26 @@ export function resolveSkinKey(skin) {
   if (!skin) return '';
   if (typeof skin === 'string') return skin;
   return skin.assetKey || skin.id || '';
+}
+
+export function getSkinAbilityInfo(skin) {
+  const meta = LUDO_SKIN_META[resolveSkinKey(skin)];
+  if (!meta?.abilityLabel) {
+    return {
+      hasSkill: false,
+      icon: '✨',
+      tone: 'neutral',
+      label: 'Kosmetik Eksklusif',
+      detail: 'Tampilan bidak khusus tanpa skill aktif.'
+    };
+  }
+  return {
+    hasSkill: true,
+    icon: meta.abilityIcon || '✨',
+    tone: meta.abilityTone || 'ocean',
+    label: meta.abilityLabel,
+    detail: meta.abilityDetail || ''
+  };
 }
 
 function SkinMotifSvg({ skinKey, accentColor }) {
@@ -162,6 +201,20 @@ export function LudoSkinTokenInner({ skin, number }) {
         <SkinMotifSvg skinKey={skinKey} accentColor={accent} />
       )}
       <span className="pawn-skin-num">{number}</span>
+    </span>
+  );
+}
+
+export function LudoSkinBaseEmblem({ skin, style }) {
+  const skinKey = resolveSkinKey(skin);
+  if (!skinKey) return null;
+
+  const meta = LUDO_SKIN_META[skinKey] || {};
+  const accent = skin?.accentColor || meta.accent || '#fbbf24';
+
+  return (
+    <span className="base-skin-emblem" style={style} aria-hidden="true">
+      <SkinMotifSvg skinKey={skinKey} accentColor={accent} />
     </span>
   );
 }

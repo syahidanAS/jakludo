@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Modal from './components/Modal';
 import Icon from './components/Icon';
-import { LudoSkinPreview, LUDO_SKIN_META, resolveSkinKey } from './components/game/LudoSkinPawn';
+import { LudoSkinPreview, LUDO_SKIN_META, resolveSkinKey, getSkinAbilityInfo } from './components/game/LudoSkinPawn';
 import { useItemCatalogState } from './items';
 import { sound } from './sound';
 import { storage } from './storage';
@@ -1753,6 +1753,18 @@ export default function ShopModal({
                     </div>
                     <h2>{showcaseSkin.name}</h2>
                     <p className="muted">{showcaseSkin.description}</p>
+                    {(() => {
+                      const skill = getSkinAbilityInfo(showcaseSkin);
+                      return (
+                        <div className={`mp-skin-skill-box mp-skin-skill-box--${skill.tone}`}>
+                          <div className="mp-skin-skill-box__head">
+                            <span aria-hidden="true">{skill.icon}</span>
+                            <span>{skill.hasSkill ? `Skill: ${skill.label}` : skill.label}</span>
+                          </div>
+                          <p className="mp-skin-skill-box__detail">{skill.detail}</p>
+                        </div>
+                      );
+                    })()}
                     <div className="mp-skin-showcase__actions">
                       <span className="mp-price-tag">
                         <Icon name="diamond" size={16} /> <strong>{showcaseSkin.priceDiamonds}</strong> Diamonds
@@ -1894,6 +1906,18 @@ export default function ShopModal({
                         <div className="mp-skin-card__body">
                           <h3 className="mp-skin-card__title">{skin.name}</h3>
                           <p className="mp-skin-card__desc">{skin.description}</p>
+                          {(() => {
+                            const skill = getSkinAbilityInfo(skin);
+                            return (
+                              <div className={`mp-skin-card__skill mp-skin-card__skill--${skill.tone}`}>
+                                <div className="mp-skin-card__skill-head">
+                                  <span aria-hidden="true">{skill.icon}</span>
+                                  <span>{skill.hasSkill ? `Skill: ${skill.label}` : skill.label}</span>
+                                </div>
+                                <p className="mp-skin-card__skill-detail">{skill.detail}</p>
+                              </div>
+                            );
+                          })()}
                         </div>
 
                         <div className="mp-skin-card__foot">
@@ -1993,6 +2017,18 @@ export default function ShopModal({
                       <span className={`rarity-badge rarity-badge--${String(confirmSkin.rarity).toLowerCase()}`}>
                         {confirmSkin.rarity}
                       </span>
+                      {(() => {
+                        const skill = getSkinAbilityInfo(confirmSkin);
+                        return (
+                          <div className={`mp-skin-skill-box mp-skin-skill-box--${skill.tone}`}>
+                            <div className="mp-skin-skill-box__head">
+                              <span aria-hidden="true">{skill.icon}</span>
+                              <span>{skill.hasSkill ? `Skill: ${skill.label}` : skill.label}</span>
+                            </div>
+                            <p className="mp-skin-skill-box__detail">{skill.detail}</p>
+                          </div>
+                        );
+                      })()}
                       <div className="skin-confirm-math">
                         <div><span>Harga Skin</span><strong>{confirmSkin.priceDiamonds} Diamonds</strong></div>
                         <div><span>Saldo Saat Ini</span><strong>{diamonds} Diamonds</strong></div>

@@ -11,7 +11,7 @@ import { HudTimer } from './components/game/TurnTimer';
 import Icon from './components/Icon';
 import PlayerAvatar from './components/PlayerAvatar';
 import { isAvatarUrl } from './social/media';
-import { LudoSkinTokenInner } from './components/game/LudoSkinPawn';
+import { LudoSkinTokenInner, LudoSkinBaseEmblem, resolveSkinKey } from './components/game/LudoSkinPawn';
 import { hasOceanBlueHintAbility } from './utils/oceanBlueHints.mjs';
 
 // Pemetaan sudut layar (Top-Left, Top-Right, Bottom-Left, Bottom-Right)
@@ -260,7 +260,12 @@ function LudoBoardView({
     lastPlayedItemIdRef.current = event.id;
     let kind = { forceReturn: 'bolt', universalShield: 'shield', blackholeShield: 'bhshield' }[event.itemId];
     if (event.itemId === 'skinAntiElimination') {
-      kind = event.skinKey === 'galaxy_purple' ? 'galaxyshield' : 'emeraldshield';
+      const shieldFxBySkin = {
+        galaxy_purple: 'galaxyshield',
+        fire_phoenix: 'phoenixshield',
+        legendary_diamond: 'diamondshield'
+      };
+      kind = shieldFxBySkin[event.skinKey] || 'emeraldshield';
     }
     if (!kind || !event.fx) return;
     const coord = getPawnCoord(event.fx.color, event.fx.val);
@@ -321,24 +326,32 @@ function LudoBoardView({
     const player = room.players.find(p => p.color === color);
     const pawns = player ? room.pawns[player.id] || [0, 0, 0, 0] : [0, 0, 0, 0];
     const isThisPlayerTurn = currentTurnPlayer?.color === color;
+    const baseSkinKey = player ? resolveSkinKey(player.equippedSkin) : '';
+    const baseSkinAccent = player?.equippedSkin?.accentColor || '';
+    const baseStyle = {
+      gridRow: `${rStart + 1} / span 4`,
+      gridColumn: `${cStart + 1} / span 4`,
+      ...(baseSkinAccent ? { '--base-skin-accent': baseSkinAccent } : {})
+    };
 
     return (
       <div
         key={`base-${color}`}
         className={`board-base base-${color} ${isThisPlayerTurn ? 'base-active-turn' : ''} ${player?.isOut ? 'base-player-out' : ''} ${!player ? 'base-empty' : ''}`}
-        style={{
-          gridRow: `${rStart + 1} / span 4`,
-          gridColumn: `${cStart + 1} / span 4`
-        }}
+        data-base-skin={baseSkinKey || undefined}
+        style={baseStyle}
       >
         <div className="base-inner-card">
+          <LudoSkinBaseEmblem skin={player?.equippedSkin} style={counterStyle} />
           <div className="base-yard" style={counterStyle}>
             {[0, 1, 2, 3].map(pawnIdx => {
               const rawVal = pawns[pawnIdx];
-              const isPawnOut = (animPawn && animPawn.playerId === player?.id && animPawn.pawnIdx === pawnIdx)
+              const isHidden = rawVal === null || rawVal === undefined;
+              const isPawnOut = !isHidden && ((animPawn && animPawn.playerId === player?.id && animPawn.pawnIdx === pawnIdx)
                 ? animPawn.currentVal >= 1
-                : rawVal >= 1;
-              const inBase = !isPawnOut;
+                : rawVal >= 1);
+              const inBase = !isHidden && !isPawnOut;
+              const isSelfStealth = player?.id === myPlayerId && player?.skinInvisible?.isInvisible;
               const canMove = inBase && isMyTurn && player?.id === myPlayerId && movablePawns.includes(pawnIdx) && !room.animatingMove;
               const hint = canMove ? hintsByPawn[pawnIdx] : null;
               const hintTierClass = hint ? ` pawn-ocean-hint pawn-ocean-hint--rank-${Math.min(hint.rank, 3)}` : '';
@@ -349,8 +362,8 @@ function LudoBoardView({
                   {inBase && player && (
                     <button
                       type="button"
-                      className={`pawn-token pawn-${color} ${canMove ? 'pawn-can-move pulse-anim' : ''}${hintTierClass}`}
-                      data-skin={player?.equippedSkin?.id || ''}
+                      className={`pawn-token pawn-${color} ${canMove ? 'pawn-can-move pulse-anim' : ''}${isSelfStealth ? ' pawn-invisible-self' : ''}${hintTierClass}`}
+                      data-skin={baseSkinKey}
                       onClick={() => handlePawnClick(pawnIdx, canMove)}
                       disabled={!canMove}
                       title={hint ? `Rekomendasi #${hint.rank}: ${hint.reason}` : undefined}
@@ -456,6 +469,7 @@ function LudoBoardView({
 
               let btnClass = `pawn-token pawn-${player.color}`;
               if (canMove) btnClass += ' pawn-can-move pulse-anim';
+              if (player.id === myPlayerId && player?.skinInvisible?.isInvisible && val < 44) btnClass += ' pawn-invisible-self';
               if (hint) btnClass += ` pawn-ocean-hint pawn-ocean-hint--rank-${Math.min(hint.rank, 3)}`;
               if (isHopping) btnClass += ' pawn-stepping';
               if (isTarget) btnClass += ' pawn-target pulse-target';
@@ -465,7 +479,7 @@ function LudoBoardView({
                   key={`${player.id}-${pawnIdx}`}
                   type="button"
                   className={btnClass}
-                  data-skin={player?.equippedSkin?.id || ''}
+                  data-skin={resolveSkinKey(player?.equippedSkin)}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (isTarget) {
@@ -581,22 +595,48 @@ function LudoBoardView({
           <div className="hud-name-row">
             <strong className="hud-player-name">{player ? player.name : 'Kursi kosong'}</strong>
             {isMe && <span className="hud-tag you-tag">KAMU</span>}
-            {isMe && hasOceanBlueHintAbility(player?.equippedSkin) && (
-              <span
-                className="hud-tag ocean-hint-tag"
-                title="Skin Ocean Blue aktif: Hint langkah terbaik otomatis menyala di giliranmu"
-              >
-                🌊 HINT
-              </span>
-            )}
-            {player?.skinShield?.active && (
-              <span
-                className={`hud-tag skin-shield-tag skin-shield-tag--${player.skinShield.skinKey === 'galaxy_purple' ? 'galaxy' : 'emerald'}`}
-                title={`Skill Anti-Eliminasi ${player.skinShield.skinName}: sisa ${player.skinShield.charges}/${player.skinShield.max} di pertandingan ini (+1 tiap bidak finish)`}
-              >
-                🛡️ {player.skinShield.charges}/{player.skinShield.max}
-              </span>
-            )}
+            {isMe && hasOceanBlueHintAbility(player?.equippedSkin) && (() => {
+              const key = resolveSkinKey(player?.equippedSkin);
+              const hintEmoji = key === 'fire_phoenix' ? '🔥' : key === 'legendary_diamond' ? '💎' : '🌊';
+              return (
+                <span
+                  className="hud-tag ocean-hint-tag"
+                  title={`Skin ${player?.equippedSkin?.name || 'Spesial'} aktif: Hint langkah terbaik otomatis menyala di giliranmu`}
+                >
+                  {hintEmoji} HINT
+                </span>
+              );
+            })()}
+            {player?.skinShield?.active && (() => {
+              const shieldTone = {
+                galaxy_purple: 'galaxy',
+                fire_phoenix: 'phoenix',
+                legendary_diamond: 'diamond'
+              }[player.skinShield.skinKey] || 'emerald';
+              return (
+                <span
+                  className={`hud-tag skin-shield-tag skin-shield-tag--${shieldTone}`}
+                  title={`Skill Anti-Eliminasi ${player.skinShield.skinName}: sisa ${player.skinShield.charges}/${player.skinShield.max} di pertandingan ini (+1 tiap bidak finish)`}
+                >
+                  🛡️ {player.skinShield.charges}/{player.skinShield.max}
+                </span>
+              );
+            })()}
+            {player?.skinInvisible?.active && (player.skinInvisible.isInvisible || isMe) && (() => {
+              const invTone = {
+                ruby_crystal: 'ruby',
+                fire_phoenix: 'phoenix',
+                legendary_diamond: 'diamond'
+              }[player.skinInvisible.skinKey] || 'gold';
+              return (
+                <span
+                  className={`hud-tag skin-invisible-tag skin-invisible-tag--${invTone}`}
+                  title={`Skill Invisible ${player.skinInvisible.skinName}: sisa ${player.skinInvisible.charges}/${player.skinInvisible.max} di pertandingan ini`}
+                >
+                  {player.skinInvisible.isInvisible ? '👻 INVISIBLE' : `👻 ${player.skinInvisible.charges}/${player.skinInvisible.max}`}
+                </span>
+              );
+            })()}
             {player?.isBot && <span className="hud-tag bot-tag">BOT</span>}
             {player?.isLudoKing && <span className="hud-tag king-tag">👑</span>}
           </div>
@@ -609,6 +649,8 @@ function LudoBoardView({
               <span className="hud-offline-tag">📶 Terputus</span>
             ) : player?.autoPlayCount > 0 ? (
               <span className="hud-auto-tag">Auto {player.autoPlayCount}/3</span>
+            ) : !isMe && player?.skinInvisible?.isInvisible ? (
+              <span className="hud-invisible-tag">👻 Tidak terlihat</span>
             ) : isThisPlayerTurn ? (
               <span className="hud-active-text">Giliran jalan...</span>
             ) : (
@@ -659,6 +701,10 @@ function LudoBoardView({
         return <span className="board-fx__skinshield board-fx__skinshield--emerald" />;
       case 'galaxyshield':
         return <span className="board-fx__skinshield board-fx__skinshield--galaxy" />;
+      case 'phoenixshield':
+        return <span className="board-fx__skinshield board-fx__skinshield--phoenix" />;
+      case 'diamondshield':
+        return <span className="board-fx__skinshield board-fx__skinshield--diamond" />;
       default:
         return null;
     }

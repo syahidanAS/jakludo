@@ -201,6 +201,7 @@ export function useGameRoom({ authToken, currentUser, onUpdateUser, onNeedLogin 
       forceReturn: () => sound.playForceReturn(),
       universalShield: () => sound.playUniversalShield(),
       skinAntiElimination: () => sound.playUniversalShield(),
+      skinInvisible: () => sound.playUniversalShield(),
       blackholeShield: () => sound.playBlackholeShield()
     };
     (itemSounds[event.itemId] || (() => sound.playJoinNotification()))();
@@ -369,6 +370,7 @@ export function useGameRoom({ authToken, currentUser, onUpdateUser, onNeedLogin 
     selectTarget,
     setItemTargeting,
     useItem: itemId => socket.emit('game:use_item', { itemId }),
+    useSkinInvisible: () => emitWithClick('game:use_skin_skill', { skill: 'invisible' }),
     decideShield: use => emitWithClick('game:shield_decision', { use }),
     sendReaction: emoji => emitWithClick('game:reaction', { emoji }),
     sendChat: (text, replyTo = null) => {

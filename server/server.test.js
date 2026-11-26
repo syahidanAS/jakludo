@@ -2022,3 +2022,379 @@ test('Anti-Eliminasi bertambah saat masuk finish (maks 3), tidak menahan Black H
   const afterUnequipRestart = await restartNoSkin;
   assert.equal(afterUnequipRestart.players[0].skinShield, null);
 });
+
+test('Classic Gold Invisible: sembunyikan posisi & animasi dari musuh, cegah Force Return, dan berakhir dalam 1 putaran', async () => {
+  const authA = await registerWithSkin('inv_gold', 'classic_gold');
+  const authB = await registerWithSkin('inv_opp', null);
+  const sockA = await connect();
+  const sockB = await connect();
+
+  sockA.emit('room:create', { token: authA.token });
+  const joinedA = await once(sockA, 'room:joined');
+  sockB.emit('room:join', { code: joinedA.code, token: authB.token });
+  const joinedB = await once(sockB, 'room:joined');
+
+  const startPromise = waitForRoom(sockA, r => r.started === true);
+  sockA.emit('game:start');
+  const startState = await startPromise;
+
+  assert.deepEqual(startState.players[0].skinInvisible, {
+    active: true,
+    isInvisible: false,
+    charges: 2,
+    max: 2,
+    skinKey: 'classic_gold',
+    skinName: 'Classic Gold'
+  });
+
+  const room = rooms.get(joinedA.code);
+  clearTimeout(room.turnTimer);
+  room.turn = 0;
+  room.dice = null;
+  room.pawns[joinedA.playerId] = [5, 0, 0, 44];
+  room.pawns[joinedB.playerId] = [5, 0, 0, 0];
+  room.players[1].items.forceReturn = { owned: 0, earned: 1, state: {} };
+
+  const unseenUpdatesB = [];
+  const collectB = state => unseenUpdatesB.push(state);
+  sockB.on('room:update', collectB);
+
+  const actPromiseA = waitForRoom(sockA, r => r.players[0].skinInvisible?.isInvisible === true);
+  const actPromiseB = waitForRoom(sockB, r => r.players[0].skinInvisible?.isInvisible === true);
+  sockA.emit('game:use_skin_skill', { skill: 'invisible' });
+  const [viewA, viewB] = await Promise.all([actPromiseA, actPromiseB]);
+
+  assert.equal(viewA.players[0].skinInvisible.charges, 1);
+  assert.deepEqual(viewA.pawns[joinedA.playerId], [5, 0, 0, 44]);
+  assert.deepEqual(viewB.pawns[joinedA.playerId], [null, null, null, 44]);
+
+  // Gerak saat Invisible: animasi & posisi A tidak bocor ke B, lalu giliran berpindah ke B
+  clearTimeout(room.turnTimer);
+  room.dice = 2;
+  const turnToBPromise = waitForRoom(sockB, r => r.turn === 1 && !r.animatingMove);
+  sockA.emit('game:move', { pawn: 0 });
+  const stateTurnB = await turnToBPromise;
+  sockB.off('room:update', collectB);
+
+  assert.equal(
+    unseenUpdatesB.some(u => u.animatingMove !== null),
+    false,
+    'animasi pemain Invisible tidak boleh dikirim ke musuh'
+  );
+  assert.deepEqual(stateTurnB.pawns[joinedA.playerId], [null, null, null, 44]);
+  assert.match(stateTurnB.players[1].items.forceReturn.blocked || '', /terlihat/i);
+
+  // Musuh tidak bisa menarget bidak Invisible dengan Force Return
+  const frErrPromise = once(sockB, 'room:error');
+  sockB.emit('game:use_item', {
+    itemId: 'forceReturn',
+    target: { playerId: joinedA.playerId, pawnIdx: 0 }
+  });
+  assert.match(await frErrPromise, /terlihat|Invisible/i);
+  assert.equal(room.pawns[joinedA.playerId][0], 7);
+
+  // Setelah giliran B selesai kembali ke A -> efek Invisible berakhir & posisi kembali terlihat
+  clearTimeout(room.turnTimer);
+  room.dice = 2;
+  const backToAPromise = waitForRoom(sockB, r => r.turn === 0 && r.players[0].skinInvisible?.isInvisible === false);
+  sockB.emit('game:move', { pawn: 0 });
+  const backToA = await backToAPromise;
+  assert.deepEqual(backToA.pawns[joinedA.playerId], [7, 0, 0, 44]);
+});
+
+test('Ruby Crystal Invisible: dibatasi tepat 2x pakai per game, validasi error, dan reset antar permainan', async () => {
+  const authA = await registerWithSkin('inv_ruby', 'ruby_crystal');
+  const authB = await registerWithSkin('inv_ocean', 'ocean_blue');
+  const sockA = await connect();
+  const sockB = await connect();
+
+  sockA.emit('room:create', { token: authA.token });
+  const joinedA = await once(sockA, 'room:joined');
+  sockB.emit('room:join', { code: joinedA.code, token: authB.token });
+  const joinedB = await once(sockB, 'room:joined');
+
+  const startPromise = waitForRoom(sockA, r => r.started === true);
+  sockA.emit('game:start');
+  const startState = await startPromise;
+  assert.equal(startState.players[0].skinInvisible.charges, 2);
+  assert.equal(startState.players[1].skinInvisible, null);
+
+  const room = rooms.get(joinedA.code);
+  clearTimeout(room.turnTimer);
+
+  // Pemain skin lain ditolak memakai skill Invisible
+  room.turn = 1;
+  room.dice = null;
+  const nonSkinErr = once(sockB, 'room:error');
+  sockB.emit('game:use_skin_skill', { skill: 'invisible' });
+  assert.match(await nonSkinErr, /tidak memiliki skill Invisible/i);
+
+  // Pemakaian ke-1
+  room.turn = 0;
+  room.dice = null;
+  const use1Promise = waitForRoom(sockA, r => r.players[0].skinInvisible?.charges === 1);
+  sockA.emit('game:use_skin_skill', { skill: 'invisible' });
+  await use1Promise;
+
+  // Tidak bisa diaktifkan dobel saat masih Invisible
+  const dupErr = once(sockA, 'room:error');
+  sockA.emit('game:use_skin_skill', { skill: 'invisible' });
+  assert.match(await dupErr, /sedang aktif/i);
+
+  // Selesaikan 1 putaran: A jalan lalu B jalan agar turn kembali ke A & efek ke-1 berakhir
+  clearTimeout(room.turnTimer);
+  room.pawns[joinedA.playerId] = [3, 0, 0, 0];
+  room.pawns[joinedB.playerId] = [3, 0, 0, 0];
+  room.dice = 2;
+  const toBPromise = waitForRoom(sockA, r => r.turn === 1 && !r.animatingMove);
+  sockA.emit('game:move', { pawn: 0 });
+  await toBPromise;
+
+  clearTimeout(room.turnTimer);
+  room.dice = 2;
+  const backAPromise = waitForRoom(sockA, r => r.turn === 0 && r.players[0].skinInvisible?.isInvisible === false);
+  sockB.emit('game:move', { pawn: 0 });
+  await backAPromise;
+
+  // Pemakaian ke-2 berhasil (sisa menjadi 0)
+  clearTimeout(room.turnTimer);
+  room.dice = null;
+  const use2Promise = waitForRoom(sockA, r => r.players[0].skinInvisible?.charges === 0 && r.players[0].skinInvisible?.isInvisible === true);
+  sockA.emit('game:use_skin_skill', { skill: 'invisible' });
+  await use2Promise;
+
+  // Putaran berikut setelah ke-2 habis
+  clearTimeout(room.turnTimer);
+  room.dice = 2;
+  const toB2Promise = waitForRoom(sockA, r => r.turn === 1 && !r.animatingMove);
+  sockA.emit('game:move', { pawn: 0 });
+  await toB2Promise;
+
+  clearTimeout(room.turnTimer);
+  room.dice = 2;
+  const backA2Promise = waitForRoom(sockA, r => r.turn === 0 && r.players[0].skinInvisible?.isInvisible === false);
+  sockB.emit('game:move', { pawn: 0 });
+  await backA2Promise;
+
+  // Pemakaian ke-3 ditolak karena batas 2x per game sudah habis
+  clearTimeout(room.turnTimer);
+  room.dice = null;
+  const exhaustErr = once(sockA, 'room:error');
+  sockA.emit('game:use_skin_skill', { skill: 'invisible' });
+  assert.match(await exhaustErr, /2 kali/i);
+
+  // Selesaikan laga -> non-persistent, lalu main lagi -> reset menjadi 2x kembali
+  room.pawns[joinedA.playerId] = [43, 44, 44, 44];
+  room.dice = 1;
+  const winPromise = waitForRoom(sockA, r => r.winner === joinedA.playerId);
+  sockA.emit('game:move', { pawn: 0 });
+  const winState = await winPromise;
+  assert.equal(winState.players[0].skinInvisible, null);
+  assert.equal(room.players[0].skinInvisibleCharges, 0);
+
+  const restartPromise = waitForRoom(sockA, r => r.started === true && !r.winner);
+  sockA.emit('game:restart');
+  const restarted = await restartPromise;
+  assert.equal(restarted.players[0].skinInvisible.charges, 2);
+  assert.equal(restarted.players[0].skinInvisible.isInvisible, false);
+});
+
+test('bidak Invisible tetap tereliminasi saat musuh menginjak petaknya dan memberi bonus giliran', async () => {
+  const authA = await registerWithSkin('stomp_inv', 'classic_gold');
+  const authB = await registerWithSkin('stomp_vis', null);
+  const sockA = await connect();
+  const sockB = await connect();
+
+  sockA.emit('room:create', { token: authA.token });
+  const joinedA = await once(sockA, 'room:joined');
+  sockB.emit('room:join', { code: joinedA.code, token: authB.token });
+  const joinedB = await once(sockB, 'room:joined');
+
+  sockA.emit('game:start');
+  await waitForRoom(sockA, r => r.started === true);
+
+  const room = rooms.get(joinedA.code);
+  clearTimeout(room.turnTimer);
+
+  // Red (A) di 16 -> track 15 (non-safe); Green (B) di 5 -> maju 1 ke 6 (track 15)
+  room.turn = 0;
+  room.dice = null;
+  room.pawns[joinedA.playerId] = [16, 0, 0, 0];
+  room.pawns[joinedB.playerId] = [5, 0, 0, 0];
+
+  const invPromise = waitForRoom(sockB, r => r.players[0].skinInvisible?.isInvisible === true);
+  sockA.emit('game:use_skin_skill', { skill: 'invisible' });
+  const viewB = await invPromise;
+  assert.deepEqual(viewB.pawns[joinedA.playerId], [null, null, null, null]);
+
+  // Giliran berpindah ke B sementara bidak A masih Invisible (A melempar / bergerak bidak lain)
+  clearTimeout(room.turnTimer);
+  room.dice = 2;
+  room.pawns[joinedA.playerId][1] = 2;
+  const toB = waitForRoom(sockB, r => r.turn === 1 && !r.animatingMove);
+  sockA.emit('game:move', { pawn: 1 });
+  await toB;
+
+  assert.equal(room.players[0].skinInvisibleActive, true);
+
+  // B kebetulan menginjak track 15 di mana bidak 0 milik A yang Invisible berada -> tetap tereliminasi
+  clearTimeout(room.turnTimer);
+  room.dice = 1;
+  const stompPromiseA = waitForRoom(
+    sockA,
+    r => !r.animatingMove && r.lastCapture?.defenderId === joinedA.playerId
+  );
+  sockB.emit('game:move', { pawn: 0 });
+  const afterStompA = await stompPromiseA;
+
+  assert.equal(room.pawns[joinedA.playerId][0], 0);
+  assert.equal(afterStompA.pawns[joinedA.playerId][0], 0);
+  assert.equal(afterStompA.lastCapture.wasInvisible, true);
+  assert.equal(afterStompA.turn, 1, 'musuh tetap mendapat bonus giliran karena berhasil mengeliminasi bidak');
+});
+
+test('Fire Phoenix & Legendary Diamond menggabungkan seluruh skill (Invisible 2x + Anti-Eliminasi 1..3 + reset)', async () => {
+  // Beri kedua akun cukup Diamonds agar bisa beli Fire Phoenix (40) & Legendary Diamond (50)
+  const registerCombo = async (prefix, skinId) => {
+    const uname = `${prefix}_${Date.now().toString(36).slice(-5)}_${Math.random().toString(36).slice(2, 5)}`;
+    const auth = await register(uname);
+    db.awardUserPoints(auth.user.id, 10000);
+    const convRes = await fetch(`${url}/api/economy/convert`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+      body: JSON.stringify({ diamonds: 50, direction: 'coins_to_diamonds' })
+    });
+    assert.equal(convRes.status, 200);
+    const buyRes = await fetch(`${url}/api/economy/skins/purchase`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+      body: JSON.stringify({ skinId })
+    });
+    assert.equal(buyRes.status, 200);
+    const eqRes = await fetch(`${url}/api/economy/skins/equip`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` },
+      body: JSON.stringify({ skinId })
+    });
+    assert.equal(eqRes.status, 200);
+    return auth;
+  };
+
+  const authPhoenix = await registerCombo('cmb_phx', 'fire_phoenix');
+  const authDiamond = await registerCombo('cmb_dmd', 'legendary_diamond');
+  const sockA = await connect();
+  const sockB = await connect();
+
+  sockA.emit('room:create', { token: authPhoenix.token });
+  const joinedA = await once(sockA, 'room:joined');
+  sockB.emit('room:join', { code: joinedA.code, token: authDiamond.token });
+  const joinedB = await once(sockB, 'room:joined');
+
+  const startPromise = waitForRoom(sockA, r => r.started === true);
+  sockA.emit('game:start');
+  const startState = await startPromise;
+
+  // Kedua skin langsung memiliki skill Invisible (2/2) DAN Anti-Eliminasi (1/3)
+  assert.deepEqual(startState.players[0].skinInvisible, {
+    active: true,
+    isInvisible: false,
+    charges: 2,
+    max: 2,
+    skinKey: 'fire_phoenix',
+    skinName: 'Fire Phoenix'
+  });
+  assert.deepEqual(startState.players[0].skinShield, {
+    active: true,
+    charges: 1,
+    max: 3,
+    skinKey: 'fire_phoenix',
+    skinName: 'Fire Phoenix'
+  });
+  assert.deepEqual(startState.players[1].skinInvisible, {
+    active: true,
+    isInvisible: false,
+    charges: 2,
+    max: 2,
+    skinKey: 'legendary_diamond',
+    skinName: 'Legendary Diamond'
+  });
+  assert.deepEqual(startState.players[1].skinShield, {
+    active: true,
+    charges: 1,
+    max: 3,
+    skinKey: 'legendary_diamond',
+    skinName: 'Legendary Diamond'
+  });
+
+  const room = rooms.get(joinedA.code);
+  clearTimeout(room.turnTimer);
+
+  // Combo: A (Fire Phoenix) aktifkan Invisible (2 -> 1), lalu B (Legendary Diamond) kebetulan menginjak petak A ->
+  // konfirmasi Anti-Eliminasi A muncul & menyelamatkan bidak A (charge 1 -> 0)
+  room.turn = 0;
+  room.dice = null;
+  room.pawns[joinedA.playerId] = [16, 2, 0, 0]; // 16 = track 15
+  room.pawns[joinedB.playerId] = [5, 0, 0, 0];  // 5 + 1 = 6 = track 15
+
+  const invPromise = waitForRoom(sockB, r => r.players[0].skinInvisible?.isInvisible === true);
+  sockA.emit('game:use_skin_skill', { skill: 'invisible' });
+  const hiddenView = await invPromise;
+  assert.deepEqual(hiddenView.pawns[joinedA.playerId], [null, null, null, null]);
+
+  clearTimeout(room.turnTimer);
+  room.dice = 2;
+  const toB = waitForRoom(sockB, r => r.turn === 1 && !r.animatingMove);
+  sockA.emit('game:move', { pawn: 1 });
+  await toB;
+
+  clearTimeout(room.turnTimer);
+  room.dice = 1;
+  const promptShield = waitForRoom(
+    sockA,
+    r => r.pendingShield?.source === 'skinShield' && r.pendingShield?.skinKey === 'fire_phoenix'
+  );
+  sockB.emit('game:move', { pawn: 0 });
+  await promptShield;
+
+  const afterConfirm = waitForRoom(
+    sockA,
+    r => !r.pendingShield && r.lastItemEvent?.itemId === 'skinAntiElimination'
+  );
+  sockA.emit('game:shield_decision', { use: true });
+  const survived = await afterConfirm;
+  assert.equal(survived.pawns[joinedA.playerId][0], 16);
+  assert.equal(survived.players[0].skinShield.charges, 0);
+
+  // Bidak A masuk finish -> Anti-Eliminasi bertambah lagi (+1)
+  clearTimeout(room.turnTimer);
+  room.turn = 0;
+  room.dice = 1;
+  room.pawns[joinedA.playerId] = [16, 43, 0, 0];
+  const rechargePromise = waitForRoom(
+    sockA,
+    r => !r.animatingMove && r.pawns[joinedA.playerId][1] === 44 && r.players[0].skinShield?.charges === 1
+  );
+  sockA.emit('game:move', { pawn: 1 });
+  await rechargePromise;
+
+  // Selesaikan laga -> non-persistent reset saat game:restart
+  clearTimeout(room.turnTimer);
+  room.turn = 1;
+  room.dice = 1;
+  room.pawns[joinedB.playerId] = [43, 44, 44, 44];
+  const winPromise = waitForRoom(sockB, r => r.winner === joinedB.playerId);
+  sockB.emit('game:move', { pawn: 0 });
+  const winState = await winPromise;
+  assert.equal(winState.players[0].skinShield, null);
+  assert.equal(winState.players[0].skinInvisible, null);
+  assert.equal(winState.players[1].skinShield, null);
+  assert.equal(winState.players[1].skinInvisible, null);
+
+  const restartPromise = waitForRoom(sockA, r => r.started === true && !r.winner);
+  sockA.emit('game:restart');
+  const restarted = await restartPromise;
+  assert.equal(restarted.players[0].skinShield.charges, 1);
+  assert.equal(restarted.players[0].skinInvisible.charges, 2);
+  assert.equal(restarted.players[1].skinShield.charges, 1);
+  assert.equal(restarted.players[1].skinInvisible.charges, 2);
+});
